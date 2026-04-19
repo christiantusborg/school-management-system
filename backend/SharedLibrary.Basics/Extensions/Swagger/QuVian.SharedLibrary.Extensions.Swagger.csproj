@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.1</Version>
+    <PackageId>QuVian.SharedLibrary.Extensions.Swagger</PackageId>
+    <Authors>QuVian SharedLibrary Team</Authors>
+    <Company>QuVian Aps</Company>
+    <Copyright>Â© 2025 QuVian. All rights reserved.</Copyright>
+    <Description>This package provides reusable Swagger and OpenAPI extensions for .NET applications, including support for JWT Bearer authentication, enhanced GUID and enum schema documentation, and operation/parameter metadata handling.</Description>
+    <PackageReleaseNotes>Initial release: Added circular array navigation, execution time tracking for request deprecation attributes, and improved Swagger/OpenAPI documentation with custom filters and schema enhancements.</PackageReleaseNotes>
+    <PackageTags>swagger, openapi, aspnetcore, endpointfilters, endpoint-filters, deprecations, guids, enums</PackageTags>
+    <RepositoryUrl>https://dev.azure.com/QuVian/SharedLibrary/_git/SharedLibrary.Extensions.Swagger</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://quvian.com/docs/sharedlibrary</PackageProjectUrl>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="[8.1.2,)" />
+  </ItemGroup>
+</Project>

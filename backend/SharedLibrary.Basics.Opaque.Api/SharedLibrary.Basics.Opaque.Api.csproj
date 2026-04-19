@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" Version="4.15.1" />
+    <PackageReference Include="MediatR" Version="14.1.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.5" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.5" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Sodium.Core" Version="1.4.0" />
+    <PackageReference Include="Fido2" Version="4.*" />
+    <PackageReference Include="Otp.NET" Version="1.*" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SharedLibrary.Basics\QuVian.SharedLibrary.Basics.csproj" />
+    <ProjectReference Include="..\Odin.Api.Base\Odin.Api.Base.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.TransientStateCache\SharedLibrary.Basics.TransientStateCache.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.OpaqueService\SharedLibrary.Basics.OpaqueService.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.LoginApi\SharedLibrary.Basics.Opaque.LoginApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.LogoutApi\SharedLibrary.Basics.Opaque.LogoutApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.RecoveryLoginApi\SharedLibrary.Basics.Opaque.RecoveryLoginApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.PasswordResetApi\SharedLibrary.Basics.Opaque.PasswordResetApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.MeApi\SharedLibrary.Basics.Opaque.MeApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.AccountApi\SharedLibrary.Basics.Opaque.AccountApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.KemKeyPairApi\SharedLibrary.Basics.Opaque.KemKeyPairApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.MfaStatusApi\SharedLibrary.Basics.Opaque.MfaStatusApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.MfaToTpApi\SharedLibrary.Basics.Opaque.MfaToTpApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.MfaEmailApi\SharedLibrary.Basics.Opaque.MfaEmailApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.MfaSmsApi\SharedLibrary.Basics.Opaque.MfaSmsApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.MfaFido2Api\SharedLibrary.Basics.Opaque.MfaFido2Api.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.ProfileApi\SharedLibrary.Basics.Opaque.ProfileApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.AdminApi\SharedLibrary.Basics.Opaque.AdminApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.RecoveryCodesApi\SharedLibrary.Basics.Opaque.RecoveryCodesApi.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.Opaque.ChangePasswordApi\SharedLibrary.Basics.Opaque.ChangePasswordApi.csproj" />
+    <ProjectReference Include="..\Api\RegisterApi\SharedLibrary.Basics.Opaque.RegisterApi\SharedLibrary.Basics.Opaque.RegisterApi.csproj" />
+    <ProjectReference Include="..\School\SystemConfigurations\School.DocumentTypeApi\School.DocumentTypeApi.csproj" />
+    <ProjectReference Include="..\School\SystemConfigurations\School.EnrollmentStatusApi\School.EnrollmentStatusApi.csproj" />
+    <ProjectReference Include="..\School\SystemConfigurations\School.FinalProjectStatusApi\School.FinalProjectStatusApi.csproj" />
+    <ProjectReference Include="..\School\SystemConfigurations\School.PathwayApi\School.PathwayApi.csproj" />
+    <ProjectReference Include="..\School\SystemConfigurations\School.TuitionFeeStatusApi\School.TuitionFeeStatusApi.csproj" />
+    <ProjectReference Include="..\School\SystemConfigurations\School.ModeOfStudyApi\School.ModeOfStudyApi.csproj" />
+    <ProjectReference Include="..\School\School.ProgrammeApi\School.ProgrammeApi.csproj" />
+    <ProjectReference Include="..\School\School.MajorApi\School.MajorApi.csproj" />
+    <ProjectReference Include="..\School\School.SubjectApi\School.SubjectApi.csproj" />
+    <ProjectReference Include="..\School\School.PartnerAdminApi\School.PartnerAdminApi.csproj" />
+  </ItemGroup>
+
+</Project>

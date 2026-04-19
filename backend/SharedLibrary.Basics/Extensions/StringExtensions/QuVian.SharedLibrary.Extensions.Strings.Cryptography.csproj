@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.1</Version>
+    <PackageId>QuVian.SharedLibrary.Extensions.Strings.Cryptography</PackageId>
+    <Authors>QuVian SharedLibrary Team</Authors>
+    <Company>QuVian Aps</Company>
+    <Copyright>© 2025 QuVian. All rights reserved.</Copyright>
+
+    <Description>Provides HATEOAS support for hypermedia-driven APIs with HateoasBaseResponse, HateoasLink, and HateoasLinksHelper.</Description>
+    <PackageReleaseNotes>Added HATEOAS support with HateoasBaseResponse, HateoasLink, and HateoasLinksHelper for hypermedia navigation.</PackageReleaseNotes>
+    <PackageTags>hateoas,hypermedia,rest-api,links,api-navigation </PackageTags>
+
+
+    <RepositoryUrl>https://dev.azure.com/QuVian/SharedLibrary/_git/SharedLibrary.Extensions.Strings.Cryptography</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://quvian.com/docs/sharedlibrary</PackageProjectUrl>
+
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\QuVian.SharedLibrary.Basics.csproj" />
+    </ItemGroup>
+
+
+
+</Project>

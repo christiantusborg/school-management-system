@@ -1,0 +1,167 @@
+using System.Threading.RateLimiting;
+using Fido2NetLib;
+using FluentValidation;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Odin.Api.Base;
+using Odin.Api.Base.Authentication;
+using Odin.Api.Base.Cache;
+using Odin.Api.Base.Crypto;
+using Odin.Api.Base.Data;
+using Odin.Api.Base.Data.Repositories;
+using Odin.Api.Base.Middleware;
+using SharedLibrary.Basics.Opaque.Domains;
+using QuVian.SharedLibrary.Basics.Dispatchers;
+using QuVian.SharedLibrary.Basics.SuccessOrFailures.Extensions;
+using QuVian.SharedLibrary.Endpoints.Essentials;
+using QuVian.SharedLibrary.Interfaces.Mappers;
+using QuVian.SharedLibrary.Validations;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Field encryption must be configured before DbContext
+FieldEncryption.Configure(
+    builder.Configuration["Encryption:FieldKey"]
+    ?? throw new InvalidOperationException("Encryption:FieldKey is required."));
+
+// Assembly markers for WebApi project
+//var markerTypes = new[] { typeof(OdinWebApiAssemblyMarkerAttribute) };
+//var assemblies = markerTypes.Select(t => t.Assembly).ToArray();
+
+// Database
+builder.Services.AddDbContext<OdinDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Identity
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
+{
+    options.User.RequireUniqueEmail = true;
+})
+    .AddRoles<ApplicationRole>()
+    .AddEntityFrameworkStores<OdinDbContext>()
+    .AddDefaultTokenProviders();
+
+// Authentication
+builder.Services.AddScoped<SessionTokenService>();
+builder.Services.AddSingleton<OpaqueServer>();
+builder.Services.AddAuthentication("SessionToken")
+    .AddScheme<SessionTokenOptions, SessionTokenAuthenticationHandler>("SessionToken", null);
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+});
+
+// Cache
+builder.Services.AddMemoryCache();
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddScoped<MemoryTransientStateCache>();
+builder.Services.AddScoped<DistributedTransientStateCache>();
+builder.Services.AddScoped<ITransientStateCacheFactory, TransientStateCacheFactory>();
+builder.Services.AddScoped<ITransientStateCache>(sp =>
+    sp.GetRequiredService<ITransientStateCacheFactory>().GetCache());
+
+// Rate limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("auth", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 10;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("mfa", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 5;
+        limiterOptions.Window = TimeSpan.FromMinutes(15);
+        limiterOptions.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+// FIDO2
+var fido2Origins = builder.Configuration.GetSection("App:Origins").Get<string[]>()
+    ?? [builder.Configuration["App:Origin"]!];
+builder.Services.AddSingleton<IFido2>(new Fido2(new Fido2Configuration
+{
+    ServerDomain = builder.Configuration["App:Domain"]!,
+    ServerName = "Odin",
+    Origins = new HashSet<string>(fido2Origins)
+}));
+
+// CORS
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins(allowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
+// Repositories
+builder.Services.AddScoped<IApplicationUserRepository, ApplicationUserRepository>();
+builder.Services.AddScoped<IOpaqueCredentialRepository, OpaqueCredentialRepository>();
+builder.Services.AddScoped<IOpaqueRecoveryCodeRepository, OpaqueRecoveryCodeRepository>();
+builder.Services.AddScoped<IKemKeyPairRepository, KemKeyPairRepository>();
+builder.Services.AddScoped<ISessionTokenRepository, SessionTokenRepository>();
+builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
+builder.Services.AddScoped<IInviteCodeRepository, InviteCodeRepository>();
+builder.Services.AddScoped<IUserTwoFactorMethodRepository, UserTwoFactorMethodRepository>();
+builder.Services.AddScoped<IFido2CredentialRepository, Fido2CredentialRepository>();
+builder.Services.AddScoped<IUserPhoneRepository, UserPhoneRepository>();
+builder.Services.AddScoped<IUserContactEmailRepository, UserContactEmailRepository>();
+builder.Services.AddScoped<IUserAddressRepository, UserAddressRepository>();
+
+// IDispatcher (scans WebApi assembly for IHandleableCommand implementations)
+//builder.Services.AddDispatcher(assemblies);
+
+// IMapper (scans WebApi assembly for IMapperMarker implementations)
+//builder.Services.AddMappers(markerTypes);
+
+// FluentValidation
+//builder.Services.AddValidatorsFromAssemblies(assemblies);
+builder.Services.AddValidations();
+builder.Services.AddScoped(typeof(ValidationRuleFactory<>));
+
+// HttpContextAccessor (needed by mappers and SuccessOrFailureResultExtensions)
+builder.Services.AddHttpContextAccessor();
+
+// OpenAPI/Swagger
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+#pragma warning disable ASP0000
+var serviceProvider = builder.Services.BuildServiceProvider();
+#pragma warning restore ASP0000
+EndpointV1Adjunct.Initialize(serviceProvider);
+SuccessOrFailureResultExtensions.Initialize(serviceProvider);
+
+var app = builder.Build();
+
+// Middleware
+app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+app.UseHttpsRedirection();
+app.UseCors();
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+   // app.UseSwaggerUI();
+}
+
+// Map endpoints (auto-discovers all IEndpointMarker in WebApi assembly)
+app.MapGroup("/api");
+   // .MapEndpointsExcluding(markerTypes);
+
+// Seed
+await DatabaseSeeder.SeedAsync(app.Services);
+
+app.Run();

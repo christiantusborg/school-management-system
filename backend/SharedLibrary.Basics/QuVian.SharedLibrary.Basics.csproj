@@ -1,0 +1,79 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <PackageId>QuVian.SharedLibrary.Basics.Dispatchers</PackageId>
+    <Authors>QuVian SharedLibrary Team</Authors>
+    <Company>QuVian Aps</Company>
+    <Copyright>© 2025 QuVian. All rights reserved.</Copyright>
+    <Description><![CDATA[
+QuVian.SharedLibrary.Basics is a foundational library for .NET 10.0 applications providing the following building blocks:
+
+- Dispatcher / Mediator: IDispatcher, ICommandHandler, IRequestHandler, IPipelineBehavior, and built-in pipeline support for audit logging and outbox patterns.
+- Endpoints: Minimal API helpers with typed MapGet/Post/Put/Patch/Delete extensions, endpoint adjunct metadata (name, tag, summary, description, URI), HATEOAS link support, file upload endpoints, bulk and search request models, and execution-time / trace-identifier endpoint filters.
+- Repositories: Generic EF Core repository with IRepositoryReader, IRepositoryWriter, IRootRepository, specification pattern (ISpecification, SpecificationEvaluator), and entity interfaces (IEntity, ICreateAtEntity, IModifiedAtEntity, IDeletedAtEntity).
+- Validations: FluentValidation integration with base validators, rule providers, and a ValidationRuleFactory.
+- SuccessOrFailure: Result type for representing success or failure without exceptions, including IResult mapping extensions.
+- Extensions: Helpers for arrays, claims principals, HTTP context (user-agent), memory streams (encryption), strings, Swagger (default values, GUID parameter filter, JWT Bearer security configuration), and Type reflection.
+- Mappers: IMapper, IUpdateMapper, IMapperMarker, and endpoint route builder mapper registration.
+- Log Interceptors: Castle DynamicProxy-based interceptor for automatic method logging with configurable log levels and exclusions.
+- Passwords: Password and salt generation with configurable options.
+- Filters: Generic filter, sorting, and pagination models.
+- Message Queue: IMessageQueue abstraction.
+- Mock Providers: IDateTimeProvider and IGuidProvider for testable time and identity.
+- Data Classifications: ClassificationAttribute and ClassificationLevels for data sensitivity tagging.
+- Assembly Markers: AssemblyMarkerAttribute for assembly scanning.
+- Permissions: IPermissionFailed result type.
+]]></Description>
+    <PackageReleaseNotes><![CDATA[
+Initial release:
+- Dispatcher/Mediator with pipeline behavior support (audit logging, outbox)
+- Minimal API endpoint helpers with adjunct metadata and HATEOAS
+- Generic EF Core repository with specification pattern
+- FluentValidation integration
+- SuccessOrFailure result type with IResult mapping
+- Castle DynamicProxy log interceptor
+- Swagger JWT Bearer setup updated for Microsoft.OpenApi 2.x (Swashbuckle 10)
+- Password and salt generation
+- Mock providers for DateTime and Guid
+]]></PackageReleaseNotes>
+    <PackageTags>mediator;dispatcher;dotnet10;minimal-api;endpoints;repository;efcore;specification;fluent-validation;result-type;hateoas;swagger;openapi;log-interceptor;castle-proxy;dependency-injection;pipeline</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <RepositoryUrl>https://dev.azure.com/QuVian/SharedLibrary/_git/SharedLibrary.Basics.Dispatchers</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://quvian.com/docs/sharedlibrary</PackageProjectUrl>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Castle.Core" Version="5.2.1" />
+    <PackageReference Include="FluentValidation" Version="12.1.1" />
+    <PackageReference Include="HtmlSanitizer" Version="9.0.892" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.5" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.5" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Swashbuckle.AspNetCore.Annotations" Version="10.1.7" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="10.1.7" />
+  </ItemGroup>
+
+  
+
+
+</Project>

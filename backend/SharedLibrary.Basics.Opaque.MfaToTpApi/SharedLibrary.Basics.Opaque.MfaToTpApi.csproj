@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>SharedLibrary.Basics.Opaque.MfaToTpApi</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Otp.NET" Version="1.*" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\SharedLibrary.Basics\QuVian.SharedLibrary.Basics.csproj" />
+        <ProjectReference Include="../SharedLibrary.Basics.Opaque.MessageQueues/SharedLibrary.Basics.Opaque.MessageQueues.csproj" />
+        <ProjectReference Include="../Odin.Api.Base/Odin.Api.Base.csproj" />
+        <ProjectReference Include="../SharedLibrary.Basics.Opaque.Domains/SharedLibrary.Basics.Opaque.Domains.csproj" />
+        <ProjectReference Include="../SharedLibrary.Basics.TransientStateCache/SharedLibrary.Basics.TransientStateCache.csproj" />
+    </ItemGroup>
+
+</Project>

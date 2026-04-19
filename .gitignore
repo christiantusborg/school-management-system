@@ -41,6 +41,10 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 
+# ── ASP.NET Core per-environment config (may carry secrets) ───────────────────
+appsettings.Development.json
+appsettings.*.local.json
+
 # ── OS noise ──────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
