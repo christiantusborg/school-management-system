@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Odin.Api.Base.Data;
@@ -11,9 +12,11 @@ using Odin.Api.Base.Data;
 namespace Odin.Api.Base.Data.Migrations
 {
     [DbContext(typeof(OdinDbContext))]
-    partial class OdinDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260505222613_AddLetterTemplateIsPublished")]
+    partial class AddLetterTemplateIsPublished
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
