@@ -1,6 +1,6 @@
 <template>
   <div class="cp-tab">
-    <p class="hint-text">Toggle majors to grant or revoke this partner's access to IBSS core programmes. A partner can further disable individual majors from their own portal.</p>
+    <p class="hint-text">Toggle specializations to grant or revoke this partner's access to IBSS core programmes. A partner can further disable individual specializations from their own portal.</p>
 
     <div v-if="loading" class="loading-row">Loading…</div>
     <div v-else-if="error" class="err-banner">{{ error }}</div>
@@ -14,19 +14,20 @@
             <span class="mono-code">{{ p.code }}</span>
           </div>
           <div>
-            <span class="prog-count">{{ grantedInProg(p.programmeId) }} / {{ majorsByProg(p.programmeId).length }}</span>
+            <span class="prog-count">{{ grantedInProg(p.programmeId) }} / {{ specializationsByProg(p.programmeId).length }}</span>
             <span class="caret">{{ openProgs.has(p.programmeId) ? '▾' : '▸' }}</span>
           </div>
         </div>
-        <div v-if="openProgs.has(p.programmeId)" class="major-list">
-          <div v-for="m in majorsByProg(p.programmeId)" :key="m.majorId" class="major-row">
+        <div v-if="openProgs.has(p.programmeId)" class="specialization-list">
+          <div v-for="m in specializationsByProg(p.programmeId)" :key="m.specializationId" class="specialization-row">
             <label>
-              <input type="checkbox" :checked="isGranted(m.majorId)" :disabled="busy.has(m.majorId)" @change="onToggle(m, $event.target.checked)" />
+              <input type="checkbox" :checked="isGranted(m.specializationId)" :disabled="busy.has(m.specializationId)" @change="onToggle(m, $event.target.checked)" />
               <span>{{ m.name }}</span>
             </label>
-            <span v-if="partnerDisabled(m.majorId)" class="pill pill-muted" title="Partner has disabled this major from their portal">Partner-disabled</span>
+            <span v-if="partnerDisabled(m.specializationId)" class="pill pill-muted" title="Partner has disabled this specialization from their portal">Partner-disabled</span>
           </div>
-          <p v-if="majorsByProg(p.programmeId).length === 0" class="empty-note">No majors defined.</p>
+          <p v-if="specializationsByProg(p.programmeId).length === 0" class="empty-note">No specializations defined.</p>
+          <LetterButtonsRow :programme-id="p.programmeId" :programme-name="p.name" />
         </div>
       </div>
     </div>
@@ -36,38 +37,39 @@
 <script setup>
 import { ref, reactive, onMounted, watch } from 'vue'
 import apiClient from '../../../api/client.js'
+import LetterButtonsRow from '../../letters/LetterButtonsRow.vue'
 
 const props = defineProps({ partnerId: { type: String, required: true } })
 
 const programmes = ref([])
-const majors = ref([])
+const specializations = ref([])
 const access = ref([])
 const loading = ref(false)
 const error = ref('')
 const openProgs = reactive(new Set())
 const busy = reactive(new Set())
 
-function majorsByProg(progId) { return majors.value.filter(m => m.programmeId === progId && !m.deletedAt) }
-function isGranted(majorId) { return access.value.some(a => a.majorId === majorId) }
-function partnerDisabled(majorId) { return access.value.some(a => a.majorId === majorId && a.disabledByPartner) }
-function grantedInProg(progId) { return majorsByProg(progId).filter(m => isGranted(m.majorId)).length }
+function specializationsByProg(progId) { return specializations.value.filter(m => m.programmeId === progId && !m.deletedAt) }
+function isGranted(specializationId) { return access.value.some(a => a.specializationId === specializationId) }
+function partnerDisabled(specializationId) { return access.value.some(a => a.specializationId === specializationId && a.disabledByPartner) }
+function grantedInProg(progId) { return specializationsByProg(progId).filter(m => isGranted(m.specializationId)).length }
 function toggleOpen(progId) { openProgs.has(progId) ? openProgs.delete(progId) : openProgs.add(progId) }
 
-async function onToggle(major, grant) {
-  if (busy.has(major.majorId)) return
-  busy.add(major.majorId)
+async function onToggle(specialization, grant) {
+  if (busy.has(specialization.specializationId)) return
+  busy.add(specialization.specializationId)
   try {
     if (grant) {
-      await apiClient.post(`/v1/admin/school/partners/${props.partnerId}/programme-access`, { majorIds: [major.majorId] })
-      access.value.push({ programmeId: major.programmeId, majorId: major.majorId, disabledByPartner: false })
+      await apiClient.post(`/v1/admin/school/partners/${props.partnerId}/programme-access`, { specializationIds: [specialization.specializationId] })
+      access.value.push({ programmeId: specialization.programmeId, specializationId: specialization.specializationId, disabledByPartner: false })
     } else {
-      await apiClient.delete(`/v1/admin/school/partners/${props.partnerId}/programme-access/${major.majorId}`)
-      access.value = access.value.filter(a => a.majorId !== major.majorId)
+      await apiClient.delete(`/v1/admin/school/partners/${props.partnerId}/programme-access/${specialization.specializationId}`)
+      access.value = access.value.filter(a => a.specializationId !== specialization.specializationId)
     }
   } catch (e) {
     error.value = e.response?.data ?? e.message ?? 'Operation failed'
   } finally {
-    busy.delete(major.majorId)
+    busy.delete(specialization.specializationId)
   }
 }
 
@@ -77,11 +79,11 @@ async function load() {
   try {
     const [pRes, mRes, aRes] = await Promise.all([
       apiClient.get('/v1/school/programmes?ownership=core'),
-      apiClient.get('/v1/school/majors'),
+      apiClient.get('/v1/school/specializations'),
       apiClient.get(`/v1/admin/school/partners/${props.partnerId}/programme-access`),
     ])
     programmes.value = (pRes.data.items ?? []).filter(p => !p.deletedAt)
-    majors.value = mRes.data.items ?? []
+    specializations.value = mRes.data.items ?? []
     access.value = aRes.data.items ?? []
     programmes.value.forEach(p => openProgs.add(p.programmeId))
   } catch (e) {
@@ -105,9 +107,9 @@ watch(() => props.partnerId, load)
 .mono-code { font-family: monospace; font-size: .78rem; color: #6b7888; background: #fff; border: 1px solid #e1e6ed; padding: 1px 6px; border-radius: 4px; }
 .prog-count { font-size: .78rem; color: #5f6e85; }
 .caret { font-size: .85rem; color: #6b7888; }
-.major-list { padding: .5rem .9rem; display: flex; flex-direction: column; gap: .3rem; border-top: 1px solid #e8edf3; }
-.major-row { display: flex; justify-content: space-between; align-items: center; font-size: .9rem; }
-.major-row label { display: flex; gap: .5rem; align-items: center; cursor: pointer; }
+.specialization-list { padding: .5rem .9rem; display: flex; flex-direction: column; gap: .3rem; border-top: 1px solid #e8edf3; }
+.specialization-row { display: flex; justify-content: space-between; align-items: center; font-size: .9rem; }
+.specialization-row label { display: flex; gap: .5rem; align-items: center; cursor: pointer; }
 .pill { font-size: .7rem; padding: 1px 7px; border-radius: 10px; }
 .pill-muted { background: #ecf0f6; color: #5f6e85; }
 .empty-note { font-size: .82rem; color: #8a93a4; margin: 0; }

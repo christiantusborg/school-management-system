@@ -10,4 +10,5 @@ public class ApplicationUser : IdentityUser, IEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public Guid TenantId { get; set; } = TenantConstants.DefaultTenantId;
     public Guid? PartnerId { get; set; }
+    public DateTime? DeletedAt { get; set; }
 }

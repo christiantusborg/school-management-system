@@ -1,5 +1,4 @@
 using School.DocumentTypeApi.DocumentType.V1.Create.Command;
-using School.DocumentTypeApi.DocumentType.V1.Create.Endpoint;
 
 namespace School.DocumentTypeApi.DocumentType.V1.Create.Endpoint.Mappers;
 
@@ -12,7 +11,7 @@ public sealed class DocumentTypeV1CreateEndpointRequestToCommandMapper
         return new DocumentTypeV1CreateCommand
         {
             Name = input.Name,
-            Description = input.Description
+            Description = input.Description,
         };
     }
 }

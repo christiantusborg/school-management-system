@@ -2,7 +2,7 @@ using School.PathwayApi.Pathway.V1.Update.Command;
 
 namespace School.PathwayApi.Pathway.V1.Update.Endpoint;
 
-[Route("/v1/school/system-config/pathways/{id:int}")]
+[Route("/v1/school/system-config/pathways/{id:guid}")]
 [EndpointTag("School.SystemConfig.Pathway")]
 public sealed class PathwayV1UpdateEndpoint : IEndpointMarker
 {
@@ -14,7 +14,7 @@ public sealed class PathwayV1UpdateEndpoint : IEndpointMarker
     }
 
     private async Task<IResult> EndpointHandlerAsync(
-        int id,
+        Guid id,
         [FromBody] PathwayV1UpdateEndpointRequest request,
         [FromServices] IDispatcher sender,
         [FromServices] IMapper<PathwayV1UpdateEndpointRequest, PathwayV1UpdateCommand> requestMapper,

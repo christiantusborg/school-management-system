@@ -37,7 +37,7 @@
           <div class="info-row"><span class="info-label">Partner Name</span><span>{{ partner.name }}</span></div>
           <div class="info-row"><span class="info-label">Username</span><span class="mono">{{ partner.username }}</span></div>
           <div class="info-row"><span class="info-label">Role</span><span>Partner</span></div>
-          <div class="info-row"><span class="info-label">Core Majors Enabled</span><span>{{ partner.coreAccess.length }}</span></div>
+          <div class="info-row"><span class="info-label">Core Specializations Enabled</span><span>{{ partner.coreAccess.length }}</span></div>
           <div class="info-row"><span class="info-label">Clones / Custom</span><span>{{ partner.clones.length }}</span></div>
         </div>
         <div class="info-card" style="margin-top:1rem">
@@ -57,7 +57,7 @@
         <div class="page-header">
           <div>
             <h1 class="page-title">Programme Access</h1>
-            <p class="page-sub">Toggle which IBSS core majors this partner can access. Partners manage their own programme clones from their portal.</p>
+            <p class="page-sub">Toggle which IBSS core specializations this partner can access. Partners manage their own programme clones from their portal.</p>
           </div>
         </div>
 
@@ -69,13 +69,13 @@
               <span class="arrow">{{ xProg === prog.id ? '▾' : '▸' }}</span>
               <strong>{{ prog.name }}</strong>
               <span class="badge-code">{{ prog.code }}</span>
-              <span class="badge-count">{{ enabledMajorCount(prog) }}/{{ prog.majors.length }} majors on</span>
+              <span class="badge-count">{{ enabledSpecializationCount(prog) }}/{{ prog.specializations.length }} specializations on</span>
             </div>
           </div>
 
           <div v-if="xProg === prog.id" class="acc-body">
-            <!-- Core majors — toggle access only -->
-            <div v-for="maj in prog.majors" :key="maj.id" class="maj-row-prog">
+            <!-- Core specializations — toggle access only -->
+            <div v-for="maj in prog.specializations" :key="maj.id" class="maj-row-prog">
               <label class="toggle-wrap">
                 <input type="checkbox"
                   :checked="hasAccess(prog.id, maj.id)"
@@ -95,7 +95,7 @@
               <div class="acc-title">
                 <strong>{{ clone.name }}</strong>
                 <span class="badge-code">{{ clone.code }}</span>
-                <span class="badge-count">{{ clone.majors?.length }} major{{ clone.majors?.length !== 1 ? 's' : '' }}</span>
+                <span class="badge-count">{{ clone.specializations?.length }} specialization{{ clone.specializations?.length !== 1 ? 's' : '' }}</span>
                 <span :class="statusBadgeClass(clone.status)">{{ statusLabel(clone.status) }}</span>
               </div>
             </div>
@@ -146,8 +146,8 @@ function toggleAccess(progId, majId) {
   if (idx >= 0) p.coreAccess.splice(idx, 1)
   else p.coreAccess.push(key)
 }
-function enabledMajorCount(prog) {
-  return prog.majors.filter(m => hasAccess(prog.id, m.id)).length
+function enabledSpecializationCount(prog) {
+  return prog.specializations.filter(m => hasAccess(prog.id, m.id)).length
 }
 
 // ── Partner programme clones (read-only view) ─────────────────────────────────
@@ -224,7 +224,7 @@ function logout() { auth.logout(); router.push('/login') }
 .badge-count  { background: #f0f3f7; color: #777; border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; }
 .badge-cloned { background: #e0f5f0; color: #0d6b55; border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600; }
 
-/* Core major row */
+/* Core specialization row */
 .core-maj-section { margin-bottom: 0.2rem; }
 .maj-row-prog { display: flex; align-items: center; justify-content: space-between; padding: 0.52rem 0.5rem; border-bottom: 1px solid #f5f6f8; }
 .toggle-wrap { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.88rem; }
@@ -232,7 +232,7 @@ function logout() { auth.logout(); router.push('/login') }
 .toggle-name { color: #333; font-weight: 500; }
 .core-tag { background: #f0f3f7; color: #999; border-radius: 3px; padding: 0px 5px; font-size: 0.67rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
 
-/* Clone rows (indented under their parent major) */
+/* Clone rows (indented under their parent specialization) */
 .clone-indent { margin-left: 1.8rem; margin-bottom: 0.15rem; }
 .clone-row-header { display: flex; align-items: center; gap: 0.45rem; padding: 0.42rem 0.6rem; border-radius: 6px; cursor: pointer; user-select: none; background: #fafbfc; border: 1px solid #e8edf4; margin-top: 0.25rem; }
 .clone-row-header:hover { background: #f0f5fa; }
@@ -245,12 +245,12 @@ function logout() { auth.logout(); router.push('/login') }
 .btn-icon { background: none; border: none; color: #bbb; cursor: pointer; font-size: 0.9rem; padding: 0 2px; flex-shrink: 0; line-height: 1; }
 .btn-icon:hover { color: #003366; }
 
-/* Custom major divider + rows */
+/* Custom specialization divider + rows */
 .custom-maj-divider { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #aaa; font-weight: 700; margin: 1rem 0 0.3rem 0.3rem; }
 .custom-maj-row-wrap { margin-bottom: 0.25rem; }
 .empty-note { font-size: 0.82rem; color: #bbb; font-style: italic; margin: 0.2rem 0 0.4rem; }
 
-/* Add custom major row */
+/* Add custom specialization row */
 .add-custom-row { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px dashed #dde6f0; }
 
 /* Subject editor */

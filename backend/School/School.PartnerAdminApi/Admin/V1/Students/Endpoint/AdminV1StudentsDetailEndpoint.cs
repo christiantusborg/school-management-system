@@ -141,7 +141,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             kvp => kvp.Key,
             kvp => canonicalByName.TryGetValue(kvp.Value, out var items) ? items : new());
 
-        var enrollments = await db.Enrollments
+        var enrollmentsRaw = await db.Enrollments
             .Where(e => e.StudentId == studentId && e.DeletedAt == null)
             .Select(e => new
             {
@@ -162,6 +162,52 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 statusLevel = e.Status.Level,
             })
             .ToListAsync(ct);
+
+        // Released letter PDFs surfaced per enrolment so the admin detail
+        // modal can render Download buttons. Picks the latest doc of each
+        // letter type from the already-loaded `documents` list — no extra
+        // queries. The frontend hits AdminV1StudentsDocumentFileEndpoint
+        // with the studentDocumentId.
+        object? PickLetter(Guid enrollmentId, Guid documentTypeId)
+        {
+            var d = documents
+                .Where(x => x.enrollmentId == enrollmentId && x.documentTypeId == documentTypeId)
+                .OrderByDescending(x => x.uploadedAt)
+                .FirstOrDefault();
+            return d is null ? null : new
+            {
+                studentDocumentId = d.studentDocumentId,
+                fileName = d.fileName,
+                uploadedAt = d.uploadedAt,
+            };
+        }
+
+        var enrollments = enrollmentsRaw.Select(e => new
+        {
+            e.studentEnrollmentId,
+            e.programmeId,
+            e.programmeCode,
+            e.programmeName,
+            e.specializationId,
+            e.specializationName,
+            e.pathwayId,
+            e.modeOfStudyId,
+            e.modeOfStudyName,
+            e.commencementDate,
+            e.durationOfStudyMonths,
+            e.tuitionFeeUsd,
+            e.statusCode,
+            e.statusName,
+            e.statusLevel,
+            letters = new
+            {
+                offerLetter            = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.OfferLetter),
+                admissionLetter        = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.AdmissionLetter),
+                transcript             = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.Transcript),
+                certificate            = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.Certificate),
+                provisionalCertificate = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.ProvisionalCertificate),
+            },
+        }).ToList();
 
         var languages = await db.UserLanguages
             .Where(ul => ul.UserId == student.StudentId && ul.DeletedAt == null)

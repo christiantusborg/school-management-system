@@ -15,20 +15,29 @@
         <thead>
           <tr>
             <th>Name</th>
+            <th>Min Years</th>
+            <th>Accepted Degrees</th>
             <th>Required Documents</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="3" class="empty-row">Loading…</td>
+            <td colspan="5" class="empty-row">Loading…</td>
           </tr>
           <tr v-else-if="items.length === 0">
-            <td colspan="3" class="empty-row">No pathways yet.</td>
+            <td colspan="5" class="empty-row">No pathways yet.</td>
           </tr>
           <template v-else>
             <tr v-for="item in items" :key="item.pathwayId" class="data-row">
               <td>{{ item.name }}</td>
+              <td>{{ item.minimumYearsWorkExperience ?? 0 }}</td>
+              <td>
+                <span v-if="!levelsByPathway[item.pathwayId]?.length" class="muted">—</span>
+                <span v-else class="doc-tag" v-for="lvl in levelsByPathway[item.pathwayId]" :key="lvl">
+                  {{ educationLevelName(lvl) }}
+                </span>
+              </td>
               <td>
                 <span v-if="!docsByPathway[item.pathwayId]?.length" class="muted">—</span>
                 <span v-else class="doc-tag" v-for="dt in docsByPathway[item.pathwayId]" :key="dt">
@@ -56,6 +65,23 @@
           <div class="field">
             <label>Name <span class="req">*</span></label>
             <input v-model="formName" placeholder="e.g. Pathway 1: Direct Entry" />
+          </div>
+          <div class="field">
+            <label>Minimum years of work experience</label>
+            <input type="number" min="0" v-model.number="formMinYears" />
+          </div>
+          <div class="field">
+            <label>Accepted prior degrees <span class="req">*</span></label>
+            <div class="doc-grid">
+              <label v-for="lvl in educationLevels" :key="lvl.educationLevelId" class="doc-row">
+                <input type="checkbox"
+                       :checked="formLevelIds.includes(lvl.educationLevelId)"
+                       @change="toggleLevel(lvl.educationLevelId)" />
+                {{ lvl.name }}
+              </label>
+              <p v-if="!educationLevels.length" class="muted">No education levels defined.</p>
+            </div>
+            <p class="hint">Pathway is hidden from students whose degree isn't checked. Select all that qualify.</p>
           </div>
           <div class="field">
             <label>Required Documents</label>
@@ -101,10 +127,13 @@ import api from '../../api/client.js'
 
 const ENDPOINT = '/v1/school/system-config/pathways'
 const DOC_ENDPOINT = '/v1/school/system-config/document-types'
+const LEVEL_ENDPOINT = '/v1/school/system-config/education-levels'
 
 const items = ref([])
 const documentTypes = ref([])
+const educationLevels = ref([])
 const docsByPathway = reactive({})
+const levelsByPathway = reactive({})
 const loading = ref(false)
 const error = ref(null)
 
@@ -112,6 +141,8 @@ const showForm = ref(false)
 const editTarget = ref(null)
 const formName = ref('')
 const formDocIds = ref([])
+const formLevelIds = ref([])
+const formMinYears = ref(0)
 const formError = ref(null)
 const saving = ref(false)
 const confirmDelete = ref(null)
@@ -119,23 +150,29 @@ const confirmDelete = ref(null)
 function documentTypeName(id) {
   return documentTypes.value.find(d => d.documentTypeId === id)?.name ?? `#${id}`
 }
+function educationLevelName(id) {
+  return educationLevels.value.find(d => d.educationLevelId === id)?.name ?? `#${id}`
+}
 
 async function fetchAll() {
   loading.value = true
   error.value = null
   try {
-    const [listRes, docRes] = await Promise.all([
+    const [listRes, docRes, lvlRes] = await Promise.all([
       api.get(ENDPOINT),
       api.get(DOC_ENDPOINT),
+      api.get(LEVEL_ENDPOINT),
     ])
     items.value = listRes.data.items ?? []
     documentTypes.value = docRes.data.items ?? []
+    educationLevels.value = lvlRes.data.items ?? []
 
     const detailReqs = items.value.map(p => api.get(`${ENDPOINT}/${p.pathwayId}`))
     const details = await Promise.all(detailReqs)
     details.forEach((res, idx) => {
       const id = items.value[idx].pathwayId
-      docsByPathway[id] = res.data.documentTypeIds ?? []
+      docsByPathway[id]   = res.data.documentTypeIds ?? []
+      levelsByPathway[id] = res.data.acceptedEducationLevelIds ?? []
     })
   } catch (e) {
     error.value = e.response?.data?.message ?? e.message ?? 'Failed to load'
@@ -150,11 +187,18 @@ function toggleDoc(id) {
   if (idx >= 0) formDocIds.value.splice(idx, 1)
   else formDocIds.value.push(id)
 }
+function toggleLevel(id) {
+  const idx = formLevelIds.value.indexOf(id)
+  if (idx >= 0) formLevelIds.value.splice(idx, 1)
+  else formLevelIds.value.push(id)
+}
 
 function openCreate() {
   editTarget.value = null
   formName.value = ''
   formDocIds.value = []
+  formLevelIds.value = []
+  formMinYears.value = 0
   formError.value = null
   showForm.value = true
 }
@@ -163,6 +207,8 @@ function openEdit(item) {
   editTarget.value = item
   formName.value = item.name
   formDocIds.value = [...(docsByPathway[item.pathwayId] ?? [])]
+  formLevelIds.value = [...(levelsByPathway[item.pathwayId] ?? [])]
+  formMinYears.value = item.minimumYearsWorkExperience ?? 0
   formError.value = null
   showForm.value = true
 }
@@ -177,10 +223,19 @@ async function save() {
     formError.value = 'Name is required'
     return
   }
+  if (formLevelIds.value.length === 0) {
+    formError.value = 'Pick at least one accepted prior degree (otherwise no student will see this pathway)'
+    return
+  }
   saving.value = true
   formError.value = null
   try {
-    const body = { name, documentTypeIds: [...formDocIds.value] }
+    const body = {
+      name,
+      documentTypeIds: [...formDocIds.value],
+      acceptedEducationLevelIds: [...formLevelIds.value],
+      minimumYearsWorkExperience: Math.max(0, Number(formMinYears.value) || 0),
+    }
     if (editTarget.value) {
       await api.put(`${ENDPOINT}/${editTarget.value.pathwayId}`, body)
     } else {
@@ -189,7 +244,10 @@ async function save() {
     closeForm()
     await fetchAll()
   } catch (e) {
-    formError.value = e.response?.data?.message ?? e.message ?? 'Save failed'
+    const msg = e.response?.data?.message ?? e.response?.data ?? e.message ?? 'Save failed'
+    formError.value = String(msg).includes('AcceptedEducationLevels_Required')
+      ? 'Pick at least one accepted prior degree.'
+      : msg
   } finally {
     saving.value = false
   }
@@ -279,6 +337,11 @@ onMounted(fetchAll)
 .doc-row { display: flex; align-items: center; gap: 0.5rem; font-weight: 500; font-size: 0.88rem; cursor: pointer; }
 
 .form-error { color: #b91c1c; font-size: 0.85rem; margin: 0.5rem 0; }
+.hint { font-size: 0.78rem; color: #888; margin: 0.35rem 0 0; }
+.field input[type="number"] {
+  width: 8rem; padding: 0.55rem 0.7rem; border: 1.5px solid #d0d7e0; border-radius: 5px;
+  font-size: 0.9rem; box-sizing: border-box;
+}
 .drawer-actions { display: flex; gap: 0.5rem; justify-content: flex-end; padding-top: 0.5rem; }
 .btn-cancel {
   background: #fff; color: #555; border: 1.5px solid #d0d7e0;

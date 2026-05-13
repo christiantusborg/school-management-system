@@ -8,4 +8,5 @@ public sealed class MeV1GetEndpointResponse : HateoasBaseResponse
     public required string[] Roles { get; init; }
     public required bool IsEnabled { get; init; }
     public required DateTime CreatedAt { get; init; }
+    public string? PartnerSlug { get; init; }
 }

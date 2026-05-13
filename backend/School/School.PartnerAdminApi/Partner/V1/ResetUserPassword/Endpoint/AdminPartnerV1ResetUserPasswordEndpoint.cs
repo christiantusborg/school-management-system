@@ -11,8 +11,15 @@ public sealed class AdminPartnerV1ResetUserPasswordEndpoint : IEndpointMarker
         return app;
     }
 
+    public sealed class ResetRequest
+    {
+        // Optional custom password. Blank → server generates random.
+        public string? Password { get; init; }
+    }
+
     private static async Task<IResult> EndpointHandlerAsync(
         Guid pid, string uid,
+        [FromBody] ResetRequest? body,
         [FromServices] OdinDbContext db,
         [FromServices] OpaqueUserCreationService creator,
         CancellationToken ct)
@@ -31,7 +38,8 @@ public sealed class AdminPartnerV1ResetUserPasswordEndpoint : IEndpointMarker
 
         await db.SaveChangesAsync(ct);
 
-        var password = await creator.RegenerateCredentialsAsync(user, ct);
+        var customPassword = string.IsNullOrWhiteSpace(body?.Password) ? null : body!.Password;
+        var password = await creator.RegenerateCredentialsAsync(user, ct, customPassword);
 
         return Results.Ok(new
         {

@@ -1,5 +1,4 @@
 using School.PathwayApi.Pathway.V1.SoftDelete.Command;
-using School.PathwayApi.Pathway.V1.SoftDelete.Endpoint;
 
 namespace School.PathwayApi.Pathway.V1.SoftDelete.Endpoint.Mappers;
 

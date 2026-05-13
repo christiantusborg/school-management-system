@@ -6,5 +6,5 @@ public sealed record DocumentTypeV1SoftDeleteCommand : IHandleableCommand<
     DocumentTypeV1SoftDeleteCommandHandler,
     DocumentTypeV1SoftDeleteCommandResult>
 {
-    public required int DocumentTypeId { get; init; }
+    public required Guid DocumentTypeId { get; init; }
 }

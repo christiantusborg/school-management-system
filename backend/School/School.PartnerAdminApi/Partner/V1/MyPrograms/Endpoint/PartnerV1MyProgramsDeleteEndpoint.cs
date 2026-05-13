@@ -1,54 +1,35 @@
+using School.PartnerAdminApi.Partner.V1.MyUsers;
+
 namespace School.PartnerAdminApi.Partner.V1.MyPrograms.Endpoint;
 
-[Route("/v1/partner/my-programs/{id:guid}")]
+[Route("/v1/partner/my-programs/{programmeId:guid}")]
 [EndpointTag("Partner.MyPrograms")]
 public sealed class PartnerV1MyProgramsDeleteEndpoint : IEndpointMarker
 {
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
-        app.MapDelete(Route, EndpointHandlerAsync)
-            .RequireAuthorization("PartnerOnly");
+        app.MapDelete("/v1/partner/my-programs/{programmeId:guid}", HandleAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
-    private static async Task<IResult> EndpointHandlerAsync(
-        Guid id,
-        [FromServices] OdinDbContext db,
-        HttpContext httpContext,
-        CancellationToken ct)
+    private static async Task<IResult> HandleAsync(
+        Guid programmeId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
     {
-        var (_, partnerIdOrNull) = await MyProgramsHelpers.ResolvePartnerAsync(httpContext, db, ct);
-        if (partnerIdOrNull is null) return Results.Forbid();
-        var partnerId = partnerIdOrNull.Value;
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
 
         var programme = await db.Programmes
-            .FirstOrDefaultAsync(p => p.ProgrammeId == id
-                                   && p.PartnerId == partnerId
-                                   && p.DeletedAt == null, ct);
+            .FirstOrDefaultAsync(p => p.ProgrammeId == programmeId && p.OwnerId == partnerId && p.DeletedAt == null, ct);
         if (programme is null) return Results.NotFound();
 
-        if (programme.IsDisabledByAdmin)
-            return Results.Conflict(new { error = "disabled_by_admin" });
+        var status = await db.PartnerProgrammeStatuses.FirstOrDefaultAsync(s => s.ProgrammeId == programmeId, ct);
+        if (await MyProgramsHelpers.HasEnrolmentsAsync(db, programmeId, ct))
+            return Results.BadRequest(new { error = "Programme has enrolled students and cannot be deleted." });
+        if (status is not null && status.Status is not (MyProgramsHelpers.StatusDraft or MyProgramsHelpers.StatusRejected))
+            return Results.BadRequest(new { error = "Only Draft or Rejected programmes can be deleted." });
 
-        if (await MyProgramsHelpers.HasEnrolmentsEverAsync(db, id, ct))
-            return Results.Conflict(new { error = "has_enrolments" });
-
-        var now = DateTime.UtcNow;
-        programme.DeletedAt = now;
-
-        var majors = await db.Majors
-            .Where(m => m.ProgrammeId == id && m.DeletedAt == null)
-            .Include(m => m.Subjects.Where(s => s.DeletedAt == null))
-            .ToListAsync(ct);
-        foreach (var m in majors)
-        {
-            m.DeletedAt = now;
-            foreach (var s in m.Subjects) s.DeletedAt = now;
-        }
-
+        programme.DeletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return Results.NoContent();
+        return Results.Ok(new { programmeId, deleted = true });
     }
-
-    private const string Route = "/v1/partner/my-programs/{id:guid}";
 }

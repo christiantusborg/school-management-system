@@ -1,5 +1,4 @@
 using School.DocumentTypeApi.DocumentType.V1.Update.Command;
-using School.DocumentTypeApi.DocumentType.V1.Update.Endpoint;
 
 namespace School.DocumentTypeApi.DocumentType.V1.Update.Endpoint.Mappers;
 
@@ -11,9 +10,9 @@ public sealed class DocumentTypeV1UpdateEndpointRequestToCommandMapper
         Debug.Assert(input != null, nameof(input) + " != null");
         return new DocumentTypeV1UpdateCommand
         {
-            DocumentTypeId = 0, // overwritten in endpoint from route parameter
+            DocumentTypeId = Guid.Empty,
             Name = input.Name,
-            Description = input.Description
+            Description = input.Description,
         };
     }
 }

@@ -16,8 +16,17 @@ public sealed class AdminPartnerV1ListUsersEndpoint : IEndpointMarker
         [FromServices] OdinDbContext db,
         CancellationToken ct)
     {
+        // Identify the Student role once so we can exclude student accounts
+        // (those signed up via the public wizard) from the partner-org Users list.
+        var studentRoleId = await db.Roles
+            .Where(r => r.Name == "Student")
+            .Select(r => r.Id)
+            .FirstOrDefaultAsync(ct);
+
         var users = await db.Users
-            .Where(u => u.PartnerId == id)
+            .Where(u => u.PartnerId == id && u.DeletedAt == null)
+            .Where(u => studentRoleId == null
+                || !db.UserRoles.Any(ur => ur.UserId == u.Id && ur.RoleId == studentRoleId))
             .OrderBy(u => u.UserName)
             .Select(u => new
             {

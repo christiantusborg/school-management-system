@@ -6,5 +6,5 @@ public sealed record PathwayV1SoftDeleteCommand : IHandleableCommand<
     PathwayV1SoftDeleteCommandHandler,
     PathwayV1SoftDeleteCommandResult>
 {
-    public required int PathwayId { get; init; }
+    public required Guid PathwayId { get; init; }
 }

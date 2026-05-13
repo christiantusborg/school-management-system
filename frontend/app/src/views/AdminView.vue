@@ -21,10 +21,62 @@
         Messages
         <span v-if="pendingMsgCount" class="tab-badge">{{ pendingMsgCount }}</span>
       </button>
+      <button v-if="auth.isSuperAdmin" :class="['tab-btn', { active: tab === 'admin-users' }]" @click="tab = 'admin-users'">
+        Admin Users
+      </button>
     </div>
 
     <!-- ══════════════════════ STUDENTS TAB ══════════════════════ -->
     <div v-show="tab === 'students'" class="container">
+      <div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
+        <h1 class="page-title">Students</h1>
+        <button class="btn-add-student-admin" @click="openAddStudentAdmin">+ Add Student</button>
+      </div>
+      <AdminStudentsTab v-if="tab === 'students'" :key="adminStudentsRefreshKey" />
+    </div>
+
+    <!-- Add Student modal (admin) — step 1 pick a partner, step 2 run the wizard iframe -->
+    <Teleport to="body">
+      <div v-if="showAddStudentAdmin" class="add-student-backdrop" @click="closeAddStudentAdmin"></div>
+      <div v-if="showAddStudentAdmin" class="add-student-modal" @click.stop>
+        <div class="add-student-head">
+          <h3>
+            Add Student
+            <span v-if="addStudentStep === 'wizard'" class="head-sub">— {{ addStudentPartnerName }}</span>
+          </h3>
+          <div style="display:flex; gap:.5rem;">
+            <button v-if="addStudentStep === 'wizard'" class="btn-close-modal" @click="addStudentStep = 'pick'">← Change partner</button>
+            <button class="btn-close-modal" @click="closeAddStudentAdmin">✕</button>
+          </div>
+        </div>
+
+        <!-- Step 1: Partner picker -->
+        <div v-if="addStudentStep === 'pick'" class="add-student-pick">
+          <p class="pick-hint">Which partner does this student belong to?</p>
+          <input v-model="addStudentPickSearch" class="pick-search" placeholder="Search partners by name or slug…" />
+          <div class="pick-list">
+            <button v-for="p in addStudentPartnerOptions" :key="p.partnerId"
+                    class="pick-item"
+                    @click="chooseAddStudentPartner(p)">
+              <strong>{{ p.name }}</strong>
+              <code>{{ p.slug }}</code>
+            </button>
+            <div v-if="addStudentPartnerOptions.length === 0" class="pick-empty">No partners match.</div>
+          </div>
+        </div>
+
+        <!-- Step 2: Wizard iframe -->
+        <iframe
+          v-else-if="addStudentStep === 'wizard' && addStudentPartnerSlug"
+          :src="`/#/apply?partner=${addStudentPartnerSlug}`"
+          class="add-student-iframe"
+          title="Student signup">
+        </iframe>
+      </div>
+    </Teleport>
+
+    <!-- ══════════════════════ STUDENTS TAB (legacy mock, hidden) ══════════════════════ -->
+    <div v-if="false" class="container">
       <div class="page-header">
         <div>
           <h1 class="page-title">Students</h1>
@@ -66,10 +118,10 @@
             <button v-if="filterProgs.size" class="ms-clear" @click="filterProgs.clear()">Clear</button>
           </div>
         </div>
-        <!-- Major multi-select -->
+        <!-- Specialization multi-select -->
         <div class="ms-wrap" v-click-outside="() => showMajDrop = false">
           <button class="ms-btn" :class="{ 'ms-btn-active': filterMajs.size }" @click="showMajDrop = !showMajDrop">
-            {{ filterMajs.size ? `${filterMajs.size} Major${filterMajs.size > 1 ? 's' : ''}` : 'All Majors' }}
+            {{ filterMajs.size ? `${filterMajs.size} Specialization${filterMajs.size > 1 ? 's' : ''}` : 'All Specializations' }}
             <span class="ms-caret">&#8964;</span>
           </button>
           <div v-if="showMajDrop" class="ms-dropdown">
@@ -117,7 +169,7 @@
             <table class="enr-table">
               <thead>
                 <tr>
-                  <th class="th-prog">Programme &amp; Major</th>
+                  <th class="th-prog">Programme &amp; Specialization</th>
                   <th class="th-status">Status</th>
                   <th class="th-acad">Academic Progress</th>
                   <th class="th-pay">Payment</th>
@@ -128,10 +180,10 @@
               <tbody>
                 <tr v-for="enr in s.enrollments" :key="enr.id" class="enr-row">
 
-                  <!-- Col 1: Programme & Major + doc links -->
+                  <!-- Col 1: Programme & Specialization + doc links -->
                   <td class="td-prog">
                     <div class="prog-name-main">{{ enr.programme }}</div>
-                    <div class="prog-major-sub">{{ enr.major }}</div>
+                    <div class="prog-specialization-sub">{{ enr.specialization }}</div>
                     <div class="enr-doc-list">
                       <span :class="['doc-chip', enr.offerType ? 'doc-chip-on' : 'doc-chip-off']">
                         &#128196; Offer {{ enr.offerType ? (enr.offerType === 'offer' ? '(Full)' : '(Cond.)') : '—' }}
@@ -253,7 +305,13 @@
           <h1 class="page-title">Partners</h1>
           <p class="page-sub" v-if="!partnersLoading">{{ partners.length }} partner{{ partners.length !== 1 ? 's' : '' }} registered</p>
         </div>
-        <button class="btn-primary" @click="openCreatePartner">+ Add Partner</button>
+        <div class="partners-header-actions">
+          <label class="show-deleted">
+            <input type="checkbox" v-model="showDeleted" />
+            Show deleted
+          </label>
+          <button class="btn-primary" @click="openCreatePartner">+ Add Partner</button>
+        </div>
       </div>
 
       <div v-if="partnersError" class="err-banner">{{ partnersError }}</div>
@@ -273,26 +331,36 @@
             <tr v-if="partners.length === 0">
               <td colspan="4" class="empty-row">No partners yet.</td>
             </tr>
-            <tr v-for="p in partners" :key="p.partnerId" class="data-row">
+            <tr v-for="p in partners" :key="p.partnerId" class="data-row" :class="{ 'row-deleted': p.deletedAt }">
               <td><strong>{{ p.name }}</strong></td>
               <td>{{ p.userCount }} user{{ p.userCount !== 1 ? 's' : '' }}</td>
               <td>
-                <span :class="p.isEnabled ? 'badge-enabled' : 'badge-disabled'">
-                  {{ p.isEnabled ? 'Active' : 'Disabled' }}
-                </span>
+                <span v-if="p.deletedAt" class="badge-deleted">Deleted</span>
+                <span v-else-if="p.isEnabled" class="badge-enabled">Active</span>
+                <span v-else class="badge-disabled">Disabled</span>
               </td>
               <td class="actions-cell">
-                <button class="btn-sm" @click="openManagePartner(p)">Manage</button>
-                <button v-if="p.isEnabled" class="btn-sm btn-warn" @click="disablePartner(p)">Disable</button>
-                <button v-else class="btn-sm btn-ok" @click="enablePartner(p)">Enable</button>
+                <template v-if="p.deletedAt">
+                  <button class="btn-sm btn-ok" @click="restorePartner(p)">Restore</button>
+                </template>
+                <template v-else>
+                  <button class="btn-sm" @click="openManagePartner(p)">Manage</button>
+                  <button v-if="p.isEnabled" class="btn-sm btn-warn" @click="disablePartner(p)">Disable</button>
+                  <template v-else>
+                    <button class="btn-sm btn-ok" @click="enablePartner(p)">Enable</button>
+                    <button class="btn-sm btn-danger" @click="deletePartner(p)">Delete</button>
+                  </template>
+                </template>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <!-- Manage partner panel (inline, tabbed) -->
-      <div v-if="managingPartner" class="manage-panel">
+      <!-- Manage partner — right-side drawer so it isn't buried under a long list -->
+      <Teleport to="body">
+        <div v-if="managingPartner" class="manage-backdrop" @click="managingPartner = null"></div>
+        <aside v-if="managingPartner" ref="managePanelEl" class="manage-drawer" @click.stop>
         <div class="manage-panel-header">
           <h2>{{ managingPartner.name }}</h2>
           <button class="btn-close-panel" @click="managingPartner = null">✕ Close</button>
@@ -326,6 +394,7 @@
                     </button>
                     <button v-if="u.isEnabled" class="btn-sm btn-warn" @click="disableUser(u)">Disable</button>
                     <button v-else class="btn-sm btn-ok" @click="enableUser(u)">Enable</button>
+                    <button class="btn-sm btn-danger" @click="deleteUser(u)">Delete</button>
                   </td>
                 </tr>
                 <tr v-if="editingUserId === u.userId" class="edit-row">
@@ -359,6 +428,10 @@
           <div class="add-user-row">
             <input v-model="newUserUsername" class="inp-add" placeholder="New username" @keyup.enter="addUserToPartner" />
             <input v-model="newUserEmail" class="inp-add" placeholder="Email (optional)" />
+            <div class="pw-row pw-row-add">
+              <input v-model="newUserCustomPassword" class="inp-add" placeholder="Password (blank = auto)" />
+              <button type="button" class="btn-gen" @click="newUserCustomPassword = genPassword()" title="Generate random">🎲</button>
+            </div>
             <button class="btn-primary-sm" :disabled="addingUser || !newUserUsername" @click="addUserToPartner">
               {{ addingUser ? 'Adding…' : '+ Add User' }}
             </button>
@@ -383,9 +456,15 @@
         </div>
 
         <div v-show="manageTab === 'students'" class="manage-section">
-          <PartnerStudentsTab :partner-name="managingPartner.name" />
+          <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" />
         </div>
-      </div>
+        </aside>
+      </Teleport>
+    </div>
+
+    <!-- ══════════════════════ ADMIN USERS TAB (SuperAdministrator only) ══════════════════════ -->
+    <div v-show="tab === 'admin-users'" class="container">
+      <AdminUsersTab v-if="tab === 'admin-users' && auth.isSuperAdmin" />
     </div>
 
     <!-- ══════════════════════ MESSAGES TAB ══════════════════════ -->
@@ -511,10 +590,10 @@
             </select>
           </div>
           <div class="field">
-            <label>Major <span class="req">*</span></label>
-            <select v-model="sForm.major" required>
+            <label>Specialization <span class="req">*</span></label>
+            <select v-model="sForm.specialization" required>
               <option value="">— Select —</option>
-              <option v-for="n in majorNames" :key="n">{{ n }}</option>
+              <option v-for="n in specializationNames" :key="n">{{ n }}</option>
             </select>
           </div>
           <div class="field"><label>Commencement Date <span class="req">*</span></label><input v-model="sForm.commencementDate" type="date" required /></div>
@@ -555,13 +634,15 @@ import { students, getNextId, nextEnrollId, ENROLLMENT_STATUSES } from '../mock/
 import {
   partnerRecords, uid,
   getAllCoreAccessKeys,
-  getProgrammeNames, getMajorNames, getPartnerNames,
+  getProgrammeNames, getSpecializationNames, getPartnerNames,
 } from '../mock/programmes.js'
 import CreatePartnerWizard from '../components/partner/CreatePartnerWizard.vue'
 import PartnerProfileTab from '../components/partner/tabs/PartnerProfileTab.vue'
 import PartnerCoreProgrammesTab from '../components/partner/tabs/PartnerCoreProgrammesTab.vue'
 import PartnerCustomProgrammesTab from '../components/partner/tabs/PartnerCustomProgrammesTab.vue'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
+import AdminStudentsTab from '../components/admin/AdminStudentsTab.vue'
+import AdminUsersTab from '../components/admin/AdminUsersTab.vue'
 import { isGraded } from '../store/grades.js'
 import { announcements, nextAnnouncementId } from '../mock/announcements.js'
 import { tickets } from '../mock/tickets.js'
@@ -573,7 +654,7 @@ const tab = ref('students')
 // ── Derived dropdown lists (live) ─────────────────────────────────────────────
 const partnerNames   = computed(() => getPartnerNames())
 const programmeNames = computed(() => getProgrammeNames())
-const majorNames     = computed(() => getMajorNames())
+const specializationNames     = computed(() => getSpecializationNames())
 
 // ── Students tab ──────────────────────────────────────────────────────────────
 const collapsedCards = reactive(new Set())
@@ -601,7 +682,7 @@ const availableProgs = computed(() => {
 })
 const availableMajs = computed(() => {
   const s = new Set()
-  students.forEach(st => st.enrollments?.forEach(e => s.add(e.major)))
+  students.forEach(st => st.enrollments?.forEach(e => s.add(e.specialization)))
   return [...s].sort()
 })
 
@@ -626,7 +707,7 @@ const filteredStudents = computed(() =>
     if (!fuzzy(`${s.firstName} ${s.lastName} ${s.studentId}`, search.value)) return false
     if (filterPartner.value && s.partner !== filterPartner.value) return false
     if (filterProgs.size && !s.enrollments?.some(e => filterProgs.has(e.programme))) return false
-    if (filterMajs.size  && !s.enrollments?.some(e => filterMajs.has(e.major)))      return false
+    if (filterMajs.size  && !s.enrollments?.some(e => filterMajs.has(e.specialization)))      return false
     return true
   })
 )
@@ -668,8 +749,8 @@ const NEXT_ACTION = {
 // Add student
 const showStudentDrawer = ref(false)
 const sSuccess = ref('')
-const sForm = reactive({ firstName:'', lastName:'', passportId:'', address:'', partner:'', programme:'', major:'', commencementDate:'', modeOfStudy:'' })
-function openAddStudent() { Object.assign(sForm, { firstName:'', lastName:'', passportId:'', address:'', partner:'', programme:'', major:'', commencementDate:'', modeOfStudy:'' }); sSuccess.value=''; showStudentDrawer.value=true }
+const sForm = reactive({ firstName:'', lastName:'', passportId:'', address:'', partner:'', programme:'', specialization:'', commencementDate:'', modeOfStudy:'' })
+function openAddStudent() { Object.assign(sForm, { firstName:'', lastName:'', passportId:'', address:'', partner:'', programme:'', specialization:'', commencementDate:'', modeOfStudy:'' }); sSuccess.value=''; showStudentDrawer.value=true }
 
 const progCodeMap = { 'Master of Business Administration':'MBA', 'Bachelor of Business Administration':'BBA', 'Master of Finance':'MF', 'Bachelor of Computer Science':'BCS', 'Master of Marketing':'MM' }
 function submitStudent() {
@@ -688,7 +769,7 @@ function submitStudent() {
     enrollments: [
       {
         id: nextEnrollId(),
-        programme: sForm.programme, major: sForm.major,
+        programme: sForm.programme, specialization: sForm.specialization,
         commencementDate: sForm.commencementDate, modeOfStudy: sForm.modeOfStudy,
         durationOfStudy: '',
         selectedPathway: null, offerType: null,
@@ -712,6 +793,7 @@ const partners        = ref([])
 const partnersLoading = ref(false)
 const partnersError   = ref('')
 const managingPartner = ref(null)
+const managePanelEl   = ref(null)
 const partnerUsers    = ref([])
 const partnerUsersLoading = ref(false)
 
@@ -729,6 +811,31 @@ const MANAGE_TABS = [
 const manageTab = ref('users')
 
 // Add user to partner
+const newUserCustomPassword = ref('')
+
+// Strong random password generator — mirrors backend's GeneratePassword.
+function genPassword() {
+  const upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+  const lower   = 'abcdefghjkmnpqrstuvwxyz'
+  const digits  = '23456789'
+  const special = '!@#$%&*'
+  const all = upper + lower + digits + special
+  const rng = new Uint8Array(16)
+  crypto.getRandomValues(rng)
+  const chars = new Array(16)
+  chars[0] = upper[rng[0] % upper.length]
+  chars[1] = lower[rng[1] % lower.length]
+  chars[2] = digits[rng[2] % digits.length]
+  chars[3] = special[rng[3] % special.length]
+  for (let i = 4; i < 16; i++) chars[i] = all[rng[i] % all.length]
+  crypto.getRandomValues(rng)
+  for (let i = 15; i > 0; i--) {
+    const j = rng[i] % (i + 1)
+    ;[chars[i], chars[j]] = [chars[j], chars[i]]
+  }
+  return chars.join('')
+}
+
 const newUserUsername = ref('')
 const newUserEmail    = ref('')
 const newUserPassword = ref('')
@@ -744,11 +851,18 @@ const resetUserId    = ref(null)
 const resetPassword  = ref('')
 const resettingUserId = ref(null)
 
+// "Show deleted" toggle controls whether the partner list includes
+// soft-deleted rows. Server filters by default; toggle adds ?includeDeleted=true.
+const showDeleted = ref(false)
+
 async function loadPartners() {
   partnersLoading.value = true
   partnersError.value = ''
   try {
-    const res = await apiClient.get('/v1/admin/school/partners')
+    const url = showDeleted.value
+      ? '/v1/admin/school/partners?includeDeleted=true'
+      : '/v1/admin/school/partners'
+    const res = await apiClient.get(url)
     partners.value = res.data.items ?? []
   } catch (e) {
     partnersError.value = e.response?.data?.message ?? e.message ?? 'Failed to load partners'
@@ -756,6 +870,8 @@ async function loadPartners() {
     partnersLoading.value = false
   }
 }
+
+watch(showDeleted, () => loadPartners())
 
 function openCreatePartner() {
   showPartnerWizard.value = true
@@ -782,10 +898,19 @@ async function enablePartner(p) {
   try { await apiClient.post(`/v1/admin/school/partners/${p.partnerId}/enable`); await loadPartners() }
   catch (e) { partnersError.value = e.response?.data?.message ?? 'Failed' }
 }
+async function deletePartner(p) {
+  if (!confirm(`Delete partner "${p.name}"? The row will be soft-deleted (can be restored via "Show deleted").`)) return
+  try { await apiClient.post(`/v1/admin/school/partners/${p.partnerId}/delete`); await loadPartners() }
+  catch (e) { partnersError.value = e.response?.data?.message ?? 'Failed to delete' }
+}
+async function restorePartner(p) {
+  try { await apiClient.post(`/v1/admin/school/partners/${p.partnerId}/restore`); await loadPartners() }
+  catch (e) { partnersError.value = e.response?.data?.message ?? 'Failed to restore' }
+}
 
 async function openManagePartner(p) {
   managingPartner.value = p
-  newUserUsername.value = ''; newUserEmail.value = ''; newUserPassword.value = ''; addUserError.value = ''
+  newUserUsername.value = ''; newUserEmail.value = ''; newUserPassword.value = ''; newUserCustomPassword.value = ''; addUserError.value = ''
   editingUserId.value = null; editError.value = ''
   resetUserId.value = null; resetPassword.value = ''
   partnerUsersLoading.value = true
@@ -829,10 +954,18 @@ async function saveEditUser() {
 }
 
 async function resetUserPassword(u) {
+  // Prompt for an optional custom password. Blank/cancel → server generates
+  // random (existing behaviour). The admin can paste their own value here.
+  const entered = prompt(`Reset password for ${u.username}\n\nEnter a custom password (or leave blank for an auto-generated one):`, '')
+  if (entered === null) return // admin cancelled
+
   resettingUserId.value = u.userId
   resetUserId.value = null; resetPassword.value = ''
   try {
-    const res = await apiClient.post(`/v1/admin/school/partners/${managingPartner.value.partnerId}/users/${u.userId}/reset-password`)
+    const body = entered.trim() ? { password: entered.trim() } : {}
+    const res = await apiClient.post(
+      `/v1/admin/school/partners/${managingPartner.value.partnerId}/users/${u.userId}/reset-password`,
+      body)
     resetUserId.value = u.userId
     resetPassword.value = res.data.temporaryPassword
   } catch (e) {
@@ -853,9 +986,11 @@ async function addUserToPartner() {
     const res = await apiClient.post(`/v1/admin/school/partners/${managingPartner.value.partnerId}/users`, {
       username: newUserUsername.value.trim(),
       email: newUserEmail.value.trim() || undefined,
+      password: newUserCustomPassword.value.trim() || undefined,
     })
     newUserPassword.value = res.data.temporaryPassword
     newUserEmail.value = ''
+    newUserCustomPassword.value = ''
     await openManagePartner(managingPartner.value)
     await loadPartners()
   } catch (e) {
@@ -877,6 +1012,13 @@ async function enableUser(u) {
     await openManagePartner(managingPartner.value)
   } catch (e) { addUserError.value = e.response?.data?.message ?? 'Failed' }
 }
+async function deleteUser(u) {
+  if (!confirm(`Delete user ${u.username}? They will be soft-deleted and cannot log in. The data is kept; an admin can recover it later from the database if needed.`)) return
+  try {
+    await apiClient.delete(`/v1/admin/school/partners/${managingPartner.value.partnerId}/users/${u.userId}`)
+    await openManagePartner(managingPartner.value)
+  } catch (e) { addUserError.value = e.response?.data?.message ?? 'Failed' }
+}
 
 function copyPassword() {
   navigator.clipboard.writeText(newUserPassword.value).catch(() => {})
@@ -884,6 +1026,45 @@ function copyPassword() {
 
 // Load partners when Partners tab is activated
 watch(tab, (t) => { if (t === 'partners') loadPartners() })
+
+// ── Add Student modal (admin) ─────────────────────────────────────────────────
+// Two stages: pick a partner, then host /apply?partner=<slug> in an iframe.
+const showAddStudentAdmin    = ref(false)
+const addStudentStep         = ref('pick')  // 'pick' | 'wizard'
+const addStudentPartnerSlug  = ref('')
+const addStudentPartnerName  = ref('')
+const addStudentPickSearch   = ref('')
+const adminStudentsRefreshKey = ref(0)
+
+const addStudentPartnerOptions = computed(() => {
+  const q = addStudentPickSearch.value.trim().toLowerCase()
+  const list = partners.value.filter(p => p.isEnabled !== false)
+  if (!q) return list
+  return list.filter(p =>
+    (p.name  ?? '').toLowerCase().includes(q) ||
+    (p.slug  ?? '').toLowerCase().includes(q))
+})
+
+async function openAddStudentAdmin() {
+  addStudentStep.value = 'pick'
+  addStudentPartnerSlug.value = ''
+  addStudentPartnerName.value = ''
+  addStudentPickSearch.value = ''
+  showAddStudentAdmin.value = true
+  // Make sure we have a fresh partner list for the picker.
+  if (partners.value.length === 0) await loadPartners()
+}
+function chooseAddStudentPartner(p) {
+  addStudentPartnerSlug.value = p.slug
+  addStudentPartnerName.value = p.name
+  addStudentStep.value = 'wizard'
+}
+function closeAddStudentAdmin() {
+  showAddStudentAdmin.value = false
+  addStudentStep.value = 'pick'
+  // Force a reload of the admin students table so the new student appears.
+  adminStudentsRefreshKey.value++
+}
 
 // ── Messages tab ──────────────────────────────────────────────────────────────
 function studentNameById(sid) {
@@ -1065,7 +1246,7 @@ function logout() { auth.logout(); router.push('/login') }
 
 .td-prog {}
 .prog-name-main { font-size: 0.88rem; font-weight: 700; color: #003366; }
-.prog-major-sub { font-size: 0.8rem; color: #555; margin-top: 1px; margin-bottom: 0.45rem; }
+.prog-specialization-sub { font-size: 0.8rem; color: #555; margin-top: 1px; margin-bottom: 0.45rem; }
 .enr-doc-list { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 .doc-chip { font-size: 0.72rem; padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
 .doc-chip-on  { background: #e0f5f0; color: #0d6b55; border: 1px solid #a8ddd0; }
@@ -1152,7 +1333,7 @@ function logout() { auth.logout(); router.push('/login') }
 .subj-credits-input { width: 60px; padding: 0.38rem 0.5rem; border: 1.5px solid #ccc; border-radius: 5px; font-size: 0.85rem; outline: none; text-align: center; }
 .subj-credits-input:focus { border-color: #003366; }
 
-.add-major-row { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed #e0e8f0; }
+.add-specialization-row { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed #e0e8f0; }
 .maj-input { flex: 1; padding: 0.42rem 0.75rem; border: 1.5px solid #ccc; border-radius: 6px; font-size: 0.87rem; outline: none; }
 .maj-input:focus { border-color: #003366; }
 
@@ -1248,8 +1429,62 @@ function logout() { auth.logout(); router.push('/login') }
 .btn-ok { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7;
   border-radius: 5px; padding: 0.3rem 0.75rem; font-size: 0.8rem; cursor: pointer; font-weight: 600; }
 .btn-ok:hover { background: #a7f3d0; }
+.btn-danger { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;
+  border-radius: 5px; padding: 0.3rem 0.75rem; font-size: 0.8rem; cursor: pointer; font-weight: 600; }
+.btn-danger:hover { background: #fecaca; }
+.badge-deleted { background: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db;
+  border-radius: 20px; padding: 2px 10px; font-size: 0.74rem; font-weight: 700; }
+.row-deleted td { opacity: 0.6; }
+.partners-header-actions { display: flex; align-items: center; gap: 1rem; }
+.show-deleted { display: flex; align-items: center; gap: .35rem; font-size: .85rem; color: #4b5563; cursor: pointer; user-select: none; }
+.show-deleted input { cursor: pointer; }
 
-/* Manage panel */
+/* + Add Student (admin) modal — two-step: pick partner, then /apply iframe */
+.btn-add-student-admin { background: #1a5276; color: #fff; border: 0; padding: .55rem 1rem;
+  border-radius: 6px; font-weight: 600; cursor: pointer; font-size: .88rem; }
+.btn-add-student-admin:hover { background: #133e58; }
+.add-student-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 2000; }
+.add-student-modal { position: fixed; top: 4vh; left: 50%; transform: translateX(-50%);
+  width: min(960px, 95vw); height: 92vh; background: #fff; border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3); z-index: 2001;
+  display: flex; flex-direction: column; overflow: hidden; }
+.add-student-head { display: flex; align-items: center; justify-content: space-between;
+  padding: .85rem 1.25rem; border-bottom: 1px solid #e5eaf1; background: #fafbfc; }
+.add-student-head h3 { margin: 0; color: #003366; font-size: 1rem; }
+.head-sub { color: #5f6e85; font-weight: 500; margin-left: .25rem; }
+.btn-close-modal { background: transparent; border: 1px solid #d0d7e0; border-radius: 5px;
+  padding: .3rem .65rem; cursor: pointer; font-size: .85rem; color: #555; }
+.btn-close-modal:hover { background: #f0f3f7; }
+.add-student-pick { padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: .65rem;
+  flex: 1; overflow-y: auto; }
+.pick-hint { color: #5f6e85; font-size: .9rem; margin: 0; }
+.pick-search { padding: .55rem .75rem; border: 1.5px solid #d0d7e0; border-radius: 6px;
+  font-size: .9rem; }
+.pick-list { display: flex; flex-direction: column; gap: .3rem; }
+.pick-item { background: #fff; border: 1.5px solid #e5eaf1; border-radius: 6px;
+  padding: .6rem .85rem; text-align: left; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.pick-item:hover { background: #f1f6fc; border-color: #1a5276; }
+.pick-item strong { color: #0a264f; font-weight: 600; }
+.pick-item code { color: #5f6e85; background: #f3f5f9; padding: 1px 8px; border-radius: 4px;
+  font-family: ui-monospace, monospace; font-size: .8rem; }
+.pick-empty { padding: 1rem; color: #888; font-size: .88rem; text-align: center; background: #f6f9fd;
+  border-radius: 6px; }
+.add-student-iframe { flex: 1; border: 0; width: 100%; }
+
+/* Manage drawer — right-side slide-in for editing a partner. Renders via
+   <Teleport to="body"> so it isn't constrained by the partners container. */
+.manage-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45);
+  z-index: 1000; animation: fade-in 120ms ease-out; }
+.manage-drawer { position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(780px, 95vw); background: #fff; z-index: 1001;
+  box-shadow: -8px 0 24px rgba(0,0,0,0.15);
+  padding: 1.25rem 1.5rem; overflow-y: auto;
+  animation: slide-in 180ms ease-out; }
+@keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+/* Legacy inline panel styles (kept in case other views still use them) */
 .manage-panel { background: #fff; border: 1.5px solid #dde6f0; border-radius: 10px;
   padding: 1.25rem 1.5rem; margin-top: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
 .manage-panel-header { display: flex; justify-content: space-between; align-items: center;
@@ -1273,6 +1508,10 @@ function logout() { auth.logout(); router.push('/login') }
 .inp-add { flex: 1; padding: 0.5rem 0.75rem; border: 1.5px solid #ccc; border-radius: 6px;
   font-size: 0.88rem; outline: none; }
 .inp-add:focus { border-color: #0055a5; }
+.pw-row-add { display: flex; gap: .3rem; flex: 1; min-width: 0; align-items: stretch; }
+.pw-row-add .inp-add { flex: 1; min-width: 0; }
+.btn-gen { padding: 0 .6rem; border: 1.5px solid #ccc; background: #f6f9fc; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+.btn-gen:hover { background: #eef3fb; }
 
 .password-reveal { margin-top: 0.75rem; padding: 0.85rem 1rem; background: #eafaf1;
   border: 1.5px solid #2ecc71; border-radius: 8px; font-size: 0.88rem; }

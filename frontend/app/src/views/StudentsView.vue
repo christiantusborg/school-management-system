@@ -44,13 +44,13 @@
           <option v-for="p in programmes" :key="p">{{ p }}</option>
         </select>
 
-        <select v-model="filterMajor" class="filter-select">
-          <option value="">All Majors</option>
-          <option v-for="m in majors" :key="m">{{ m }}</option>
+        <select v-model="filterSpecialization" class="filter-select">
+          <option value="">All Specializations</option>
+          <option v-for="m in specializations" :key="m">{{ m }}</option>
         </select>
 
         <button
-          v-if="search || filterPartner || filterProgramme || filterMajor"
+          v-if="search || filterPartner || filterProgramme || filterSpecialization"
           class="btn-clear-all"
           @click="clearFilters"
         >Clear filters</button>
@@ -66,7 +66,7 @@
               <th>Passport / ID</th>
               <th>Partner</th>
               <th>Programme</th>
-              <th>Major</th>
+              <th>Specialization</th>
               <th>Commenced</th>
             </tr>
           </thead>
@@ -80,7 +80,7 @@
               <td class="mono">{{ s.passportId }}</td>
               <td>{{ s.partner }}</td>
               <td>{{ s.programme }}</td>
-              <td>{{ s.major }}</td>
+              <td>{{ s.specialization }}</td>
               <td>{{ formatDate(s.commencementDate) }}</td>
             </tr>
           </tbody>
@@ -139,10 +139,10 @@
           </div>
 
           <div class="field">
-            <label>Major <span class="req">*</span></label>
-            <select v-model="form.major" required>
-              <option value="">— Select major —</option>
-              <option v-for="m in majors" :key="m">{{ m }}</option>
+            <label>Specialization <span class="req">*</span></label>
+            <select v-model="form.specialization" required>
+              <option value="">— Select specialization —</option>
+              <option v-for="m in specializations" :key="m">{{ m }}</option>
             </select>
           </div>
 
@@ -179,7 +179,7 @@
 import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { auth } from '../store/auth.js'
-import { students, partners, programmes, majors, getNextId } from '../mock/data.js'
+import { students, partners, programmes, specializations, getNextId } from '../mock/data.js'
 
 const router = useRouter()
 
@@ -187,7 +187,7 @@ const router = useRouter()
 const search = ref('')
 const filterPartner = ref('')
 const filterProgramme = ref('')
-const filterMajor = ref('')
+const filterSpecialization = ref('')
 
 function fuzzyMatch(haystack, needle) {
   if (!needle) return true
@@ -209,7 +209,7 @@ const filtered = computed(() => {
     if (!fuzzyMatch(fullName, search.value)) return false
     if (filterPartner.value && s.partner !== filterPartner.value) return false
     if (filterProgramme.value && s.programme !== filterProgramme.value) return false
-    if (filterMajor.value && s.major !== filterMajor.value) return false
+    if (filterSpecialization.value && s.specialization !== filterSpecialization.value) return false
     return true
   })
 })
@@ -218,7 +218,7 @@ function clearFilters() {
   search.value = ''
   filterPartner.value = ''
   filterProgramme.value = ''
-  filterMajor.value = ''
+  filterSpecialization.value = ''
 }
 
 // ── Date formatting ───────────────────────────────────────────────────────────
@@ -239,7 +239,7 @@ const emptyForm = () => ({
   address: '',
   partner: '',
   programme: '',
-  major: '',
+  specialization: '',
   commencementDate: '',
   modeOfStudy: '',
 })
@@ -282,7 +282,7 @@ function submitStudent() {
     address: form.address,
     partner: form.partner,
     programme: form.programme,
-    major: form.major,
+    specialization: form.specialization,
     commencementDate: form.commencementDate,
     modeOfStudy: form.modeOfStudy,
   }

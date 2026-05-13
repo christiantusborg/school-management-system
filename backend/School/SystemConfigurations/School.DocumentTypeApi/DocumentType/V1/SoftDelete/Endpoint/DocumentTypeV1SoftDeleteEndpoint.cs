@@ -2,7 +2,7 @@ using School.DocumentTypeApi.DocumentType.V1.SoftDelete.Command;
 
 namespace School.DocumentTypeApi.DocumentType.V1.SoftDelete.Endpoint;
 
-[Route("/v1/school/system-config/document-types/{id:int}")]
+[Route("/v1/school/system-config/document-types/{id:guid}")]
 [EndpointTag("School.SystemConfig.DocumentType")]
 public sealed class DocumentTypeV1SoftDeleteEndpoint : IEndpointMarker
 {
@@ -14,7 +14,7 @@ public sealed class DocumentTypeV1SoftDeleteEndpoint : IEndpointMarker
     }
 
     private async Task<IResult> EndpointHandlerAsync(
-        int id,
+        Guid id,
         [FromServices] IDispatcher sender,
         [FromServices] IMapper<DocumentTypeV1SoftDeleteCommandResult, DocumentTypeV1SoftDeleteEndpointResponse> responseMapper,
         CancellationToken cancellationToken)

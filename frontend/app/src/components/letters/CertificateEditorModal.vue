@@ -180,7 +180,10 @@
         <div v-if="saveError" class="modal-err">{{ saveError }}</div>
         <div class="modal-actions">
           <button class="btn-ghost" @click="$emit('close')">Cancel</button>
-          <button class="btn-primary" :disabled="saving" @click="onSave">
+          <button class="btn-ghost btn-preview" :disabled="saving || previewing" @click="onPreview">
+            {{ previewing ? 'Rendering…' : '👁 Preview' }}
+          </button>
+          <button class="btn-primary" :disabled="saving || previewing" @click="onSave">
             {{ saving ? 'Saving…' : (isPublished ? 'Save' : 'Save & Publish') }}
           </button>
         </div>
@@ -261,6 +264,7 @@ const loading = ref(false)
 const loadError = ref('')
 const saving = ref(false)
 const saveError = ref('')
+const previewing = ref(false)
 // Tracks whether THIS letter type is currently published for the programme.
 // Seeded defaults are unpublished; first save flips it true server-side.
 const isPublished = ref(false)
@@ -937,26 +941,59 @@ async function load() {
   fitStage()
 }
 
+// Snapshot of the current canvas — shared between Save and Preview so the
+// admin sees the in-flight edits, not whatever was last persisted.
+function buildLayoutPayload() {
+  return {
+    certificateLayoutJson: JSON.stringify({
+      width: layout.width,
+      height: layout.height,
+      pageSize: layout.pageSize,
+      orientation: layout.orientation,
+      marginTop: layout.marginTop,
+      marginRight: layout.marginRight,
+      marginBottom: layout.marginBottom,
+      marginLeft: layout.marginLeft,
+      pages: pages.value.map(p => ({
+        backgroundAssetId: p.backgroundAssetId,
+        fields: p.fields,
+      })),
+    }),
+  }
+}
+
+async function onPreview() {
+  if (previewing.value) return
+  previewing.value = true
+  saveError.value = ''
+  try {
+    const res = await apiClient.post(
+      `/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}/preview`,
+      buildLayoutPayload(),
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    window.open(url, '_blank')
+    // Revoke after the new tab has had time to load it. Don't revoke
+    // immediately — Firefox/Chrome both need the URL alive while the tab loads.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (e) {
+    let msg = 'Preview failed'
+    if (e.response?.data instanceof Blob) {
+      try { msg = JSON.parse(await e.response.data.text())?.error ?? msg } catch { /* keep generic */ }
+    } else {
+      msg = e.response?.data?.error ?? e.message ?? msg
+    }
+    saveError.value = msg
+  } finally {
+    previewing.value = false
+  }
+}
+
 async function onSave() {
   saving.value = true
   saveError.value = ''
   try {
-    const payload = {
-      certificateLayoutJson: JSON.stringify({
-        width: layout.width,
-        height: layout.height,
-        pageSize: layout.pageSize,
-        orientation: layout.orientation,
-        marginTop: layout.marginTop,
-        marginRight: layout.marginRight,
-        marginBottom: layout.marginBottom,
-        marginLeft: layout.marginLeft,
-        pages: pages.value.map(p => ({
-          backgroundAssetId: p.backgroundAssetId,
-          fields: p.fields,
-        })),
-      }),
-    }
+    const payload = buildLayoutPayload()
     await apiClient.put(`/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}`, payload)
     emit('saved')
     emit('close')
@@ -1056,6 +1093,9 @@ onBeforeUnmount(() => {
 
 .modal-actions { display: flex; justify-content: flex-end; gap: .5rem; padding: .85rem 1.1rem; border-top: 1px solid #e6ebf2; }
 .btn-ghost { border: 1px solid #cfd7e3; background: #fff; color: #1a2d4f; padding: .42rem .9rem; border-radius: 5px; cursor: pointer; }
+.btn-ghost:disabled { opacity: .55; cursor: default; }
+.btn-preview { border-color: #1a4d8c; color: #1a4d8c; font-weight: 600; }
+.btn-preview:hover:not(:disabled) { background: #eef3fb; }
 .btn-primary { border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; padding: .42rem 1rem; border-radius: 5px; cursor: pointer; font-weight: 700; }
 .btn-primary:disabled { opacity: .55; cursor: default; }
 

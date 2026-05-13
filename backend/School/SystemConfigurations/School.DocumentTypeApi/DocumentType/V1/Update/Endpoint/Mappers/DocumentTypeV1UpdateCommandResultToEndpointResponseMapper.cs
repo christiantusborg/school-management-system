@@ -1,5 +1,4 @@
 using School.DocumentTypeApi.DocumentType.V1.Update.Command;
-using School.DocumentTypeApi.DocumentType.V1.Update.Endpoint;
 
 namespace School.DocumentTypeApi.DocumentType.V1.Update.Endpoint.Mappers;
 

@@ -6,5 +6,5 @@ public sealed record PathwayV1GetCommand : IHandleableCommand<
     PathwayV1GetCommandHandler,
     PathwayV1GetCommandResult>
 {
-    public required int PathwayId { get; init; }
+    public required Guid PathwayId { get; init; }
 }

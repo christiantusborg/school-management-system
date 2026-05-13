@@ -30,3 +30,16 @@ export function signChallenge(password, blind, evaluatedElementB64, challengeB64
   const signature = ed25519.sign(challenge, ed25519Seed)
   return toBase64(signature)
 }
+
+/**
+ * Registration step 2: unblind the server's OPRF output, derive the Ed25519 keypair,
+ * and return the client's public key (base64) for the server to store.
+ */
+export function deriveClientPublicKey(password, blind, evaluatedElementB64) {
+  const passwordBytes = new TextEncoder().encode(password)
+  const evaluatedElement = fromBase64(evaluatedElementB64)
+  const oprfOutput = ristretto255_oprf.oprf.finalize(passwordBytes, blind, evaluatedElement)
+  const ed25519Seed = hkdf(sha512, oprfOutput, HKDF_SALT, HKDF_INFO, 32)
+  const publicKey = ed25519.getPublicKey(ed25519Seed)
+  return toBase64(publicKey)
+}

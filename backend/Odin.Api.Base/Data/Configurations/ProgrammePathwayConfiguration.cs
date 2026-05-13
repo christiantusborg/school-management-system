@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SharedLibrary.Basics.Opaque.Domains;
+using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
 namespace Odin.Api.Base.Data.Configurations;
 

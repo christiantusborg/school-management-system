@@ -1,5 +1,4 @@
 using School.PathwayApi.Pathway.V1.Get.Command;
-using School.PathwayApi.Pathway.V1.Get.Endpoint;
 
 namespace School.PathwayApi.Pathway.V1.Get.Endpoint.Mappers;
 
@@ -13,8 +12,10 @@ public sealed class PathwayV1GetCommandResultToEndpointResponseMapper(IHttpConte
         {
             PathwayId = input.PathwayId,
             Name = input.Name,
+            Description = input.Description,
+            MinimumYearsWorkExperience = input.MinimumYearsWorkExperience,
             DocumentTypeIds = input.DocumentTypeIds,
-            DeletedAt = input.DeletedAt,
+            AcceptedEducationLevelIds = input.AcceptedEducationLevelIds,
             Links = []
         };
     }

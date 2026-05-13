@@ -1,5 +1,4 @@
 using School.PathwayApi.Pathway.V1.List.Command;
-using School.PathwayApi.Pathway.V1.List.Endpoint;
 
 namespace School.PathwayApi.Pathway.V1.List.Endpoint.Mappers;
 
@@ -13,7 +12,8 @@ public sealed class PathwayV1ListCommandResultToEndpointResponseMapper(IHttpCont
         {
             PathwayId = x.PathwayId,
             Name = x.Name,
-
+            Description = x.Description,
+            MinimumYearsWorkExperience = x.MinimumYearsWorkExperience,
             Links = []
         }).ToList();
 

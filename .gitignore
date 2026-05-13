@@ -36,6 +36,9 @@ pnpm-debug.log*
 *.db-shm
 *.db-wal
 
+# ── Uploaded student documents ────────────────────────────────────────────────
+uploads/
+
 # ── Local environment overrides ───────────────────────────────────────────────
 .env
 .env.local

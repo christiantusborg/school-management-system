@@ -43,7 +43,7 @@ export const students = [
       {
         id: 100,
         programme: 'Master of Business Administration',
-        major: 'Business Administration',
+        specialization: 'Business Administration',
         commencementDate: '2023-11-04',
         modeOfStudy: 'Distance/Online self-study',
         durationOfStudy: '18 months',
@@ -76,7 +76,7 @@ export const students = [
       {
         id: 101,
         programme: 'Master of Business Administration',
-        major: 'Finance',
+        specialization: 'Finance',
         commencementDate: '2023-11-04',
         modeOfStudy: 'Blended learning',
         durationOfStudy: '18 months',
@@ -94,7 +94,7 @@ export const students = [
       {
         id: 105,
         programme: 'Master of Finance',
-        major: 'Finance',
+        specialization: 'Finance',
         commencementDate: '2024-03-01',
         modeOfStudy: 'Distance/Online self-study',
         durationOfStudy: '18 months',
@@ -125,7 +125,7 @@ export const students = [
       {
         id: 102,
         programme: 'Bachelor of Business Administration',
-        major: 'Marketing',
+        specialization: 'Marketing',
         commencementDate: '2023-12-01',
         modeOfStudy: 'Blended learning',
         durationOfStudy: '',
@@ -143,7 +143,7 @@ export const students = [
       {
         id: 106,
         programme: 'Master of Marketing',
-        major: 'Marketing',
+        specialization: 'Marketing',
         commencementDate: '2024-06-01',
         modeOfStudy: 'Distance/Online self-study',
         durationOfStudy: '18 months',
@@ -174,7 +174,7 @@ export const students = [
       {
         id: 103,
         programme: 'Master of Finance',
-        major: 'Finance',
+        specialization: 'Finance',
         commencementDate: '2024-01-04',
         modeOfStudy: 'Distance/Online self-study',
         durationOfStudy: '',
@@ -206,7 +206,7 @@ export const students = [
       {
         id: 104,
         programme: 'Bachelor of Computer Science',
-        major: 'Computer Science',
+        specialization: 'Computer Science',
         commencementDate: '2024-02-05',
         modeOfStudy: 'Blended learning',
         durationOfStudy: '',
@@ -224,6 +224,35 @@ export const students = [
     ],
   },
 ]
+
+// ── Partner review wizard seeding ─────────────────────────────────────────────
+export function makePartnerReview() {
+  return {
+    passport:  { status: 'pending', reason: '' },
+    degree:    { status: 'pending', reason: '' },
+    language:  { status: 'pending', reason: '' },
+    cv:        { status: 'pending', reason: '' },
+    programme: { status: 'pending', reason: '' },
+    completedAt: null,
+    partnerName: '',
+  }
+}
+
+for (const s of students) {
+  if (!s.partnerReview) s.partnerReview = makePartnerReview()
+  for (const e of s.enrollments) {
+    if (e.durationMonths === undefined) e.durationMonths = null
+    if (e.paymentPlan === undefined) e.paymentPlan = null
+  }
+}
+
+// Seed sample doc filenames on the first two students so previews render in the review wizard.
+if (students[0]) Object.assign(students[0], {
+  docPassport: 'passport.jpg', docDegree: 'degree.pdf', docLanguage: 'ielts.pdf', docCV: 'cv.pdf',
+})
+if (students[1]) Object.assign(students[1], {
+  docPassport: 'id-card.png', docDegree: 'degree-cert.pdf', docLanguage: 'toefl.pdf', docCV: 'resume.docx',
+})
 
 // ── In-memory questions ───────────────────────────────────────────────────────
 export const mockQuestions = []

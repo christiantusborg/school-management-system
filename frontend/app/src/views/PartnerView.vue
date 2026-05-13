@@ -4,9 +4,17 @@
     <nav class="navbar">
       <span class="brand-text">IBSS Partner Portal &nbsp;—&nbsp; {{ auth.user?.name }}</span>
       <div class="nav-right">
+        <router-link class="btn-logout btn-nav-link" to="/partner/change-password">Change password</router-link>
         <button class="btn-logout" @click="logout">Log out</button>
       </div>
     </nav>
+
+    <!-- Public signup link — shareable with prospective students -->
+    <div v-if="auth.user?.partnerSlug" class="signup-link-bar">
+      <span class="signup-link-label">Student signup link:</span>
+      <a class="signup-link-url" :href="signupLink" target="_blank" rel="noopener">{{ signupLink }}</a>
+      <button class="btn-copy-link" @click="copySignupLink">{{ signupLinkCopied ? '✓ Copied' : 'Copy' }}</button>
+    </div>
 
     <!-- Main tab bar -->
     <div class="main-tab-bar">
@@ -16,6 +24,7 @@
         My Programs
         <span v-if="pendingProgCount" class="tab-badge">{{ pendingProgCount }}</span>
       </button>
+      <button :class="['main-tab-btn', { active: mainTab === 'users' }]" @click="mainTab = 'users'">My Users</button>
     </div>
 
     <!-- ══ MY CORE PROGRAMMES TAB ══════════════════════════════════════════════ -->
@@ -23,7 +32,7 @@
       <div class="page-header">
         <div>
           <h1 class="page-title">My Core Programmes</h1>
-          <p class="page-sub">Programmes granted to you by IBSS admin. Disable any major you don't currently offer — it will be hidden from new enrolments.</p>
+          <p class="page-sub">Programmes granted to you by IBSS admin. Disable any specialization you don't currently offer — it will be hidden from new enrolments.</p>
         </div>
       </div>
 
@@ -35,13 +44,13 @@
         <div v-for="group in coreAccessGrouped" :key="group.programmeId" class="core-group">
           <div class="core-group-head">
             <strong>{{ group.programmeName }}</strong>
-            <span class="core-count">{{ group.majors.length }} major{{ group.majors.length === 1 ? '' : 's' }}</span>
+            <span class="core-count">{{ group.specializations.length }} specialization{{ group.specializations.length === 1 ? '' : 's' }}</span>
           </div>
-          <div class="core-major-list">
-            <div v-for="m in group.majors" :key="m.majorId" class="core-major-row" :class="{ dim: m.disabledByPartner }">
-              <div class="core-major-name">{{ m.majorName }}</div>
+          <div class="core-specialization-list">
+            <div v-for="m in group.specializations" :key="m.specializationId" class="core-specialization-row" :class="{ dim: m.disabledByPartner }">
+              <div class="core-specialization-name">{{ m.specializationName }}</div>
               <label class="toggle">
-                <input type="checkbox" :checked="!m.disabledByPartner" :disabled="coreBusy.has(m.majorId)" @change="toggleMajor(m, !$event.target.checked)" />
+                <input type="checkbox" :checked="!m.disabledByPartner" :disabled="coreBusy.has(m.specializationId)" @change="toggleSpecialization(m, !$event.target.checked)" />
                 <span>{{ m.disabledByPartner ? 'Disabled' : 'Active' }}</span>
               </label>
             </div>
@@ -52,6 +61,35 @@
 
     <!-- ══ MY STUDENTS TAB ══════════════════════════════════════════════════════ -->
     <div v-show="mainTab === 'students'" class="container">
+      <div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
+        <h1 class="page-title">My Students</h1>
+        <button class="btn-add-student" :disabled="!auth.user?.partnerSlug" @click="showAddStudent = true"
+                :title="auth.user?.partnerSlug ? '' : 'Partner slug not loaded'">
+          + Add Student
+        </button>
+      </div>
+      <PartnerStudentsTab v-if="mainTab === 'students'" :key="studentsRefreshKey" />
+    </div>
+
+    <!-- Add Student modal — hosts the public signup wizard scoped to this partner -->
+    <Teleport to="body">
+      <div v-if="showAddStudent" class="add-student-backdrop" @click="closeAddStudent"></div>
+      <div v-if="showAddStudent" class="add-student-modal" @click.stop>
+        <div class="add-student-head">
+          <h3>Add Student — {{ auth.user?.displayName }}</h3>
+          <button class="btn-close-modal" @click="closeAddStudent">✕</button>
+        </div>
+        <iframe
+          v-if="auth.user?.partnerSlug"
+          :src="`/#/apply?partner=${auth.user.partnerSlug}`"
+          class="add-student-iframe"
+          title="Student signup">
+        </iframe>
+      </div>
+    </Teleport>
+
+    <!-- ══ MY STUDENTS LEGACY (mock-based, hidden) ════════════════════════════ -->
+    <div v-if="false" class="container">
       <div class="page-header">
         <div>
           <h1 class="page-title">My Students</h1>
@@ -98,10 +136,10 @@
           </div>
         </div>
 
-        <!-- Major multi-select -->
+        <!-- Specialization multi-select -->
         <div class="ms-wrap" v-click-outside="() => showMajDrop = false">
           <button class="ms-btn" :class="{ 'ms-btn-active': filterMajs.size }" @click="showMajDrop = !showMajDrop">
-            {{ filterMajs.size ? `${filterMajs.size} Major${filterMajs.size > 1 ? 's' : ''}` : 'All Majors' }}
+            {{ filterMajs.size ? `${filterMajs.size} Specialization${filterMajs.size > 1 ? 's' : ''}` : 'All Specializations' }}
             <span class="ms-caret">&#8964;</span>
           </button>
           <div v-if="showMajDrop" class="ms-dropdown">
@@ -136,6 +174,8 @@
           </div>
           <div class="sc-header-right">
             <span v-if="hasPendingAbsence(s.studentId)" class="abs-badge">Absence</span>
+            <button v-if="!s.partnerReview?.completedAt" class="btn-review-app" @click.stop="openReview(s)">Review Application</button>
+            <span v-else class="reviewed-badge" :title="'Reviewed ' + s.partnerReview.completedAt">✓ Reviewed</span>
             <span v-if="collapsedCards.has(s.id)" class="sc-summary">
               {{ s.enrollments.length }} programme{{ s.enrollments.length !== 1 ? 's' : '' }}
               &nbsp;·&nbsp;
@@ -150,7 +190,7 @@
           <table class="enr-table">
             <thead>
               <tr>
-                <th class="th-prog">Programme &amp; Major</th>
+                <th class="th-prog">Programme &amp; Specialization</th>
                 <th class="th-status">Status</th>
                 <th class="th-acad">Academic Progress</th>
                 <th class="th-pay">Payment</th>
@@ -160,10 +200,10 @@
             </thead>
             <tbody>
               <tr v-for="enr in s.enrollments" :key="enr.id" class="enr-row">
-                <!-- Col 1: Programme & Major + Document list -->
+                <!-- Col 1: Programme & Specialization + Document list -->
                 <td class="td-prog">
                   <div class="prog-name-main">{{ enr.programme }}</div>
-                  <div class="prog-major-sub">{{ enr.major }}</div>
+                  <div class="prog-specialization-sub">{{ enr.specialization }}</div>
                   <div class="doc-list">
                     <a class="doc-row" :class="enr.offerType ? 'doc-avail' : 'doc-disabled'" href="#" @click.prevent="enr.offerType && openLetter(s, enr, 'offer')">
                       <span class="doc-icon">&#128196;</span> Offer Letter
@@ -399,15 +439,15 @@
               </div>
             </div>
 
-            <div class="prog-majors-section">
-              <div class="prog-majors-title">Majors</div>
-              <div v-for="maj in clone.majors" :key="maj.id" class="prog-maj-block">
+            <div class="prog-specializations-section">
+              <div class="prog-specializations-title">Specializations</div>
+              <div v-for="maj in clone.specializations" :key="maj.id" class="prog-maj-block">
                 <div class="prog-maj-header" @click="toggleMajEdit(clone.id + maj.id)">
                   <span class="arrow-sm">{{ expandedMaj === clone.id + maj.id ? '▾' : '▸' }}</span>
-                  <input v-model="maj.name" class="prog-maj-name-input" placeholder="Major name…" @click.stop />
+                  <input v-model="maj.name" class="prog-maj-name-input" placeholder="Specialization name…" @click.stop />
                   <span class="badge-count-p">{{ maj.subjects.length }} subjects</span>
                   <button class="btn-del-maj" @click.stop="removeMajFromClone(clone, maj.id)"
-                    title="Remove major">✕</button>
+                    title="Remove specialization">✕</button>
                 </div>
                 <div v-if="expandedMaj === clone.id + maj.id" class="prog-subj-block">
                   <!-- Column headers -->
@@ -432,8 +472,8 @@
                 </div>
               </div>
               <div class="prog-add-maj-row">
-                <input v-model="newMajNameForms[clone.id]" class="prog-edit-input" placeholder="New major name…" />
-                <button class="btn-add-maj" @click="addMajToClone(clone)">+ Add Major</button>
+                <input v-model="newMajNameForms[clone.id]" class="prog-edit-input" placeholder="New specialization name…" />
+                <button class="btn-add-maj" @click="addMajToClone(clone)">+ Add Specialization</button>
               </div>
             </div>
 
@@ -458,9 +498,9 @@
                 </span>
               </div>
             </div>
-            <div class="prog-majors-section">
-              <div class="prog-majors-title">Majors &amp; Subjects</div>
-              <div v-for="maj in clone.majors" :key="maj.id" class="prog-maj-block">
+            <div class="prog-specializations-section">
+              <div class="prog-specializations-title">Specializations &amp; Subjects</div>
+              <div v-for="maj in clone.specializations" :key="maj.id" class="prog-maj-block">
                 <div class="prog-maj-header prog-maj-header-ro" @click="toggleMajEdit(clone.id + maj.id)">
                   <span class="arrow-sm">{{ expandedMaj === clone.id + maj.id ? '▾' : '▸' }}</span>
                   <span class="prog-maj-name-ro">{{ maj.name }}</span>
@@ -487,11 +527,16 @@
 
         <!-- Collapsed pill summary -->
         <div v-else class="prog-maj-summary">
-          <span v-for="maj in clone.majors" :key="maj.id" class="prog-maj-pill">
+          <span v-for="maj in clone.specializations" :key="maj.id" class="prog-maj-pill">
             {{ maj.name }} <span class="prog-maj-pill-count">{{ maj.subjects.length }}s</span>
           </span>
         </div>
       </div>
+    </div>
+
+    <!-- ══ MY USERS TAB ════════════════════════════════════════════════════════ -->
+    <div v-show="mainTab === 'users'" class="container">
+      <PartnerUsersTab v-if="mainTab === 'users'" />
     </div>
 
     <!-- Clone core programme modal -->
@@ -510,7 +555,7 @@
             <div v-for="prog in cloneSources" :key="prog.id" class="clone-modal-item">
               <div class="clone-modal-prog-info">
                 <span class="clone-modal-prog-name">{{ prog.name }}</span>
-                <span class="badge-count-p">{{ prog.majorCount }} major{{ prog.majorCount !== 1 ? 's' : '' }}</span>
+                <span class="badge-count-p">{{ prog.specializationCount }} specialization{{ prog.specializationCount !== 1 ? 's' : '' }}</span>
               </div>
               <button class="btn-clone-prog" :disabled="progBusy.has(prog.id)" @click="doCloneProgram(prog.id)">Clone</button>
             </div>
@@ -527,7 +572,7 @@
             <h3>Create Programme from Scratch</h3>
             <button class="btn-modal-close" @click="showFromScratchModal = false">✕</button>
           </div>
-          <p class="clone-modal-sub">Creates a new blank programme under your account. Add majors and subjects, then submit it for IBSS approval.</p>
+          <p class="clone-modal-sub">Creates a new blank programme under your account. Add specializations and subjects, then submit it for IBSS approval.</p>
           <div class="field" style="margin:.6rem 0">
             <label>Programme Name</label>
             <input v-model="fromScratchName" class="prog-edit-input" placeholder="e.g. Executive MBA" />
@@ -599,7 +644,7 @@
           <div class="student-info-strip">
             <span><strong>Student:</strong> {{ editingEnrStudent?.firstName }} {{ editingEnrStudent?.lastName }}</span>
             <span><strong>Programme:</strong> {{ editingEnrollment.programme }}</span>
-            <span><strong>Major:</strong> {{ editingEnrollment.major }}</span>
+            <span><strong>Specialization:</strong> {{ editingEnrollment.specialization }}</span>
           </div>
           <div class="grade-table-wrap">
             <table class="grade-table">
@@ -759,7 +804,7 @@
           <div class="row-2">
             <div class="field">
               <label>Programme <span class="req">*</span></label>
-              <select v-model="regForm.programme" required @change="regForm.major = ''">
+              <select v-model="regForm.programme" required @change="regForm.specialization = ''">
                 <option value="">— Select —</option>
                 <optgroup label="IBSS Core Programmes">
                   <option v-for="p in corePrograms" :key="p.id" :value="p.name">{{ p.name }}</option>
@@ -774,10 +819,10 @@
               </select>
             </div>
             <div class="field">
-              <label>Major <span class="req">*</span></label>
-              <select v-model="regForm.major" required>
+              <label>Specialization <span class="req">*</span></label>
+              <select v-model="regForm.specialization" required>
                 <option value="">— Select —</option>
-                <option v-for="n in majorsForProgramme(regForm.programme)" :key="n">{{ n }}</option>
+                <option v-for="n in specializationsForProgramme(regForm.programme)" :key="n">{{ n }}</option>
               </select>
             </div>
           </div>
@@ -829,7 +874,7 @@
           <div class="drawer-actions">
             <button type="button" class="btn-cancel" @click="showReg = false">Cancel</button>
             <button type="button" class="btn-save"
-              :disabled="!regForm.firstName || !regForm.lastName || !regForm.dateOfBirth || !regForm.email || !regForm.passportId || !regForm.programme || !regForm.major || !regForm.commencementDate || !regForm.modeOfStudy"
+              :disabled="!regForm.firstName || !regForm.lastName || !regForm.dateOfBirth || !regForm.email || !regForm.passportId || !regForm.programme || !regForm.specialization || !regForm.commencementDate || !regForm.modeOfStudy"
               @click="regStep = 2">Next →</button>
           </div>
         </div>
@@ -882,7 +927,7 @@
             <h4 class="summary-title">Application Summary</h4>
             <div class="summary-row"><span class="summary-label">Name</span><span>{{ regForm.firstName }} {{ regForm.lastName }}</span></div>
             <div class="summary-row"><span class="summary-label">Programme</span><span>{{ regForm.programme }}</span></div>
-            <div class="summary-row"><span class="summary-label">Major</span><span>{{ regForm.major }}</span></div>
+            <div class="summary-row"><span class="summary-label">Specialization</span><span>{{ regForm.specialization }}</span></div>
             <div class="summary-row">
               <span class="summary-label">Pathway</span>
               <span>{{ regPathways.find(p => p.id === regPathway)?.label ?? '—' }}</span>
@@ -965,7 +1010,7 @@
               <tr><td class="ldt-label">Student ID</td><td class="ldt-val mono">{{ letterStudent.studentId }}</td></tr>
               <tr><td class="ldt-label">Full Name</td><td class="ldt-val">{{ letterStudent.firstName }} {{ letterStudent.lastName }}</td></tr>
               <tr><td class="ldt-label">Programme</td><td class="ldt-val">{{ letterEnrollment?.programme }}</td></tr>
-              <tr><td class="ldt-label">Major</td><td class="ldt-val">{{ letterEnrollment?.major }}</td></tr>
+              <tr><td class="ldt-label">Specialization</td><td class="ldt-val">{{ letterEnrollment?.specialization }}</td></tr>
               <tr><td class="ldt-label">Commencement Date</td><td class="ldt-val">{{ fmtDate(letterEnrollment?.commencementDate) }}</td></tr>
               <tr><td class="ldt-label">Mode of Study</td><td class="ldt-val">{{ letterEnrollment?.modeOfStudy }}</td></tr>
               <tr><td class="ldt-label">Partner Institution</td><td class="ldt-val">{{ letterStudent.partner }}</td></tr>
@@ -1014,7 +1059,7 @@
               <tr><td class="ldt-label">Student Name</td><td class="ldt-val">{{ certStudent.firstName }} {{ certStudent.lastName }}</td></tr>
               <tr><td class="ldt-label">Student ID</td><td class="ldt-val mono">{{ certStudent.studentId }}</td></tr>
               <tr><td class="ldt-label">Programme</td><td class="ldt-val">{{ certEnrollment?.programme }}</td></tr>
-              <tr><td class="ldt-label">Major</td><td class="ldt-val">{{ certEnrollment?.major }}</td></tr>
+              <tr><td class="ldt-label">Specialization</td><td class="ldt-val">{{ certEnrollment?.specialization }}</td></tr>
               <tr><td class="ldt-label">Partner Institution</td><td class="ldt-val">{{ certStudent.partner }}</td></tr>
               <tr><td class="ldt-label">Commencement Date</td><td class="ldt-val">{{ fmtDate(certEnrollment?.commencementDate) }}</td></tr>
             </table>
@@ -1087,7 +1132,7 @@
         <div class="drawer-form">
           <div class="field">
             <label>Programme <span class="req">*</span></label>
-            <select v-model="addEnrollForm.programme" @change="addEnrollForm.major = ''">
+            <select v-model="addEnrollForm.programme" @change="addEnrollForm.specialization = ''">
               <option value="">— Select —</option>
               <optgroup label="IBSS Core Programmes">
                 <option v-for="p in corePrograms" :key="p.id" :value="p.name">{{ p.name }}</option>
@@ -1102,10 +1147,10 @@
             </select>
           </div>
           <div class="field">
-            <label>Major <span class="req">*</span></label>
-            <select v-model="addEnrollForm.major">
+            <label>Specialization <span class="req">*</span></label>
+            <select v-model="addEnrollForm.specialization">
               <option value="">— Select —</option>
-              <option v-for="n in majorsForProgramme(addEnrollForm.programme)" :key="n">{{ n }}</option>
+              <option v-for="n in specializationsForProgramme(addEnrollForm.programme)" :key="n">{{ n }}</option>
             </select>
           </div>
           <div class="field">
@@ -1126,10 +1171,19 @@
           </div>
           <div class="drawer-actions">
             <button class="btn-cancel" @click="showAddEnroll = false">Cancel</button>
-            <button class="btn-save" :disabled="!addEnrollForm.programme || !addEnrollForm.major" @click="submitAddEnrollment">Add Enrolment</button>
+            <button class="btn-save" :disabled="!addEnrollForm.programme || !addEnrollForm.specialization" @click="submitAddEnrollment">Add Enrolment</button>
           </div>
         </div>
       </div>
+    </transition>
+
+    <!-- ══ Student Review Wizard ════════════════════════════════════════════════ -->
+    <StudentReviewWizard v-if="reviewingStudent" :student="reviewingStudent"
+      @close="closeReview" @submitted="reviewCompleted" />
+
+    <!-- ══ Review completed toast ══════════════════════════════════════════════ -->
+    <transition name="fade">
+      <div v-if="reviewToast" class="review-toast">{{ reviewToast }}</div>
     </transition>
 
   </div>
@@ -1141,6 +1195,23 @@ import { useRouter } from 'vue-router'
 import { auth } from '../store/auth.js'
 import apiClient from '../api/client.js'
 import { students, getNextId, ENROLLMENT_STATUSES, nextEnrollId } from '../mock/data.js'
+
+// Public student-signup URL for THIS partner. Shareable link the partner
+// can paste into onboarding emails / their own website. Resolves at
+// runtime from the browser's origin so dev / staging / prod each get
+// the right host without env wiring.
+const signupLink = computed(() => {
+  if (!auth.user?.partnerSlug) return ''
+  return `${window.location.origin}/#/apply?partner=${auth.user.partnerSlug}`
+})
+const signupLinkCopied = ref(false)
+async function copySignupLink() {
+  if (!signupLink.value) return
+  try { await navigator.clipboard.writeText(signupLink.value) }
+  catch { /* clipboard might be blocked — silently ignore */ }
+  signupLinkCopied.value = true
+  setTimeout(() => { signupLinkCopied.value = false }, 1800)
+}
 
 const vClickOutside = {
   mounted(el, binding) {
@@ -1159,16 +1230,31 @@ const PARTNER_REQUEST_STATUSES = [
   'Drop out',
   'Transferred',
 ]
-import { resolveSubjects, getGradeInfo, getProgrammeNames, getMajorNames, getProgramLevel, PATHWAYS, corePrograms, partnerRecords } from '../mock/programmes.js'
+import { resolveSubjects, getGradeInfo, getProgrammeNames, getSpecializationNames, getProgramLevel, PATHWAYS, corePrograms, partnerRecords } from '../mock/programmes.js'
 function uid() { return Math.random().toString(36).slice(2, 10) }
 import { gradesStore, saveGrades, isGraded } from '../store/grades.js'
 import { absences } from '../mock/absences.js'
 import { tickets } from '../mock/tickets.js'
+import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
+import PartnerUsersTab from '../components/partner/tabs/PartnerUsersTab.vue'
+import StudentReviewWizard from '../components/partner/StudentReviewWizard.vue'
 
 const router = useRouter()
 
 // ── Main tab ──────────────────────────────────────────────────────────────────
 const mainTab = ref('students')
+
+// ── Add Student modal ────────────────────────────────────────────────────────
+// Hosts the public signup wizard inside an iframe, scoped to this partner's
+// slug. Closing the modal triggers a refresh of the students table.
+const showAddStudent = ref(false)
+function closeAddStudent() {
+  showAddStudent.value = false
+  // Tell the partner students tab to reload, since the student count likely
+  // changed. The tab loads on tab switch; bumping a key forces a remount.
+  studentsRefreshKey.value++
+}
+const studentsRefreshKey = ref(0)
 
 // ── My Core Programmes (real API) ─────────────────────────────────────────────
 const coreAccessItems = ref([])
@@ -1180,9 +1266,9 @@ const coreAccessGrouped = computed(() => {
   const map = new Map()
   for (const item of coreAccessItems.value) {
     if (!map.has(item.programmeId)) {
-      map.set(item.programmeId, { programmeId: item.programmeId, programmeName: item.programmeName, majors: [] })
+      map.set(item.programmeId, { programmeId: item.programmeId, programmeName: item.programmeName, specializations: [] })
     }
-    map.get(item.programmeId).majors.push(item)
+    map.get(item.programmeId).specializations.push(item)
   }
   return [...map.values()]
 })
@@ -1200,16 +1286,16 @@ async function loadCoreAccess() {
   }
 }
 
-async function toggleMajor(item, disabled) {
-  if (coreBusy.has(item.majorId)) return
-  coreBusy.add(item.majorId)
+async function toggleSpecialization(item, disabled) {
+  if (coreBusy.has(item.specializationId)) return
+  coreBusy.add(item.specializationId)
   try {
-    await apiClient.patch(`/v1/partner/programme-access/${item.majorId}`, { disabled })
+    await apiClient.patch(`/v1/partner/programme-access/${item.specializationId}`, { disabled })
     item.disabledByPartner = disabled
   } catch (e) {
     coreAccessError.value = e.response?.data ?? e.message ?? 'Failed to toggle'
   } finally {
-    coreBusy.delete(item.majorId)
+    coreBusy.delete(item.specializationId)
   }
 }
 
@@ -1251,9 +1337,9 @@ const cloneSources = computed(() => {
   const map = new Map()
   for (const item of coreAccessItems.value) {
     if (!map.has(item.programmeId)) {
-      map.set(item.programmeId, { id: item.programmeId, name: item.programmeName, majorCount: 0 })
+      map.set(item.programmeId, { id: item.programmeId, name: item.programmeName, specializationCount: 0 })
     }
-    map.get(item.programmeId).majorCount++
+    map.get(item.programmeId).specializationCount++
   }
   return [...map.values()]
 })
@@ -1284,7 +1370,7 @@ function toLocalProg(row) {
     canDelete: !!row.canDelete,
     pathwayIds: row.pathwayIds ?? [],
     _detailLoaded: false,
-    majors: [],
+    specializations: [],
   }
 }
 
@@ -1299,8 +1385,8 @@ async function loadProgDetail(clone) {
   clone.rejectionReason = d.rejectionReason ?? null
   clone.hasEnrolments = !!d.hasEnrolments
   clone.pathwayIds = Array.isArray(d.pathwayIds) ? [...d.pathwayIds] : []
-  clone.majors = (d.majors ?? []).map(m => ({
-    id: m.majorId,
+  clone.specializations = (d.specializations ?? []).map(m => ({
+    id: m.specializationId,
     name: m.name,
     subjects: (m.subjects ?? []).map(s => ({
       id: s.subjectId,
@@ -1384,8 +1470,8 @@ async function saveProgEdit(clone) {
     await apiClient.patch(`/v1/partner/my-programs/${clone.id}`, {
       name: clone.name,
       code: clone.code,
-      majors: clone.majors.map(m => ({
-        majorId: isServerId(m.id) ? m.id : null,
+      specializations: clone.specializations.map(m => ({
+        specializationId: isServerId(m.id) ? m.id : null,
         name: m.name,
         subjects: m.subjects.map(s => ({
           subjectId: isServerId(s.id) ? s.id : null,
@@ -1457,14 +1543,14 @@ function isServerId(id) {
 }
 
 function removeMajFromClone(clone, majId) {
-  const i = clone.majors.findIndex(m => m.id === majId)
-  if (i >= 0) clone.majors.splice(i, 1)
+  const i = clone.specializations.findIndex(m => m.id === majId)
+  if (i >= 0) clone.specializations.splice(i, 1)
 }
 
 function addMajToClone(clone) {
   const name = (newMajNameForms[clone.id] ?? '').trim()
   if (!name) return
-  clone.majors.push({ id: uid(), name, subjects: [] })
+  clone.specializations.push({ id: uid(), name, subjects: [] })
   newMajNameForms[clone.id] = ''
 }
 
@@ -1497,18 +1583,18 @@ function progStatusClass(status) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const programmeNames = computed(() => getProgrammeNames())
-const majorNames     = computed(() => getMajorNames())
+const specializationNames     = computed(() => getSpecializationNames())
 
-// Returns major names for a given programme name (core or partner clone)
-function majorsForProgramme(programmeName) {
-  if (!programmeName) return getMajorNames()
+// Returns specialization names for a given programme name (core or partner clone)
+function specializationsForProgramme(programmeName) {
+  if (!programmeName) return getSpecializationNames()
   // Check partner clones first
   const partnerClone = myProgClones.value.find(c => c.name === programmeName)
-  if (partnerClone) return partnerClone.majors.map(m => m.name)
+  if (partnerClone) return partnerClone.specializations.map(m => m.name)
   // Fall back to core programme
   const coreProg = corePrograms.find(p => p.name === programmeName)
-  if (coreProg) return coreProg.majors.map(m => m.name)
-  return getMajorNames()
+  if (coreProg) return coreProg.specializations.map(m => m.name)
+  return getSpecializationNames()
 }
 
 function fmtDate(d) {
@@ -1557,7 +1643,7 @@ const availableProgs = computed(() => {
 })
 const availableMajs = computed(() => {
   const s = new Set()
-  myStudents.value.forEach(st => st.enrollments?.forEach(e => s.add(e.major)))
+  myStudents.value.forEach(st => st.enrollments?.forEach(e => s.add(e.specialization)))
   return [...s].sort()
 })
 
@@ -1566,7 +1652,7 @@ const filteredMyStudents = computed(() => {
   return myStudents.value.filter(s => {
     if (q && !fuzzy(`${s.firstName} ${s.lastName}`, q) && !fuzzy(s.studentId, q)) return false
     if (filterProgs.size && !s.enrollments?.some(e => filterProgs.has(e.programme))) return false
-    if (filterMajs.size  && !s.enrollments?.some(e => filterMajs.has(e.major)))      return false
+    if (filterMajs.size  && !s.enrollments?.some(e => filterMajs.has(e.specialization)))      return false
     return true
   })
 })
@@ -1585,6 +1671,16 @@ const STATUS_LABELS = { new: 'New', offer: 'Offer Issued', confirmed: 'Admitted'
 function statusLabel(s) { return STATUS_LABELS[displayStatus(s)] ?? displayStatus(s) }
 
 // ── Registration Wizard ───────────────────────────────────────────────────────
+// ── Review Application wizard ─────────────────────────────────────────────────
+const reviewingStudent = ref(null)
+function openReview(s) { reviewingStudent.value = s }
+function closeReview() { reviewingStudent.value = null }
+function reviewCompleted(s) {
+  reviewToast.value = `Review submitted for ${s.firstName} ${s.lastName}`
+  setTimeout(() => { reviewToast.value = '' }, 3200)
+}
+const reviewToast = ref('')
+
 const showReg   = ref(false)
 const regStep   = ref(1)
 const regSuccess = ref('')
@@ -1592,7 +1688,7 @@ const regSuccess = ref('')
 const regForm = reactive({
   firstName: '', lastName: '', dateOfBirth: '', email: '',
   passportId: '', address: '',
-  programme: '', major: '', commencementDate: '', durationOfStudy: '', modeOfStudy: '',
+  programme: '', specialization: '', commencementDate: '', durationOfStudy: '', modeOfStudy: '',
   highestDegree: '', languageResult: '', yearsWorkExperience: 0,
   docPassport: null, docDegree: null, docLanguage: null, docCV: null,
 })
@@ -1604,7 +1700,7 @@ function openAddStudent() {
   Object.assign(regForm, {
     firstName: '', lastName: '', dateOfBirth: '', email: '',
     passportId: '', address: '',
-    programme: '', major: '', commencementDate: '', durationOfStudy: '', modeOfStudy: '',
+    programme: '', specialization: '', commencementDate: '', durationOfStudy: '', modeOfStudy: '',
     highestDegree: '', languageResult: '', yearsWorkExperience: 0,
     docPassport: null, docDegree: null, docLanguage: null, docCV: null,
   })
@@ -1648,7 +1744,7 @@ function submitRegistration() {
       {
         id: nextEnrollId(),
         programme: regForm.programme,
-        major: regForm.major,
+        specialization: regForm.specialization,
         commencementDate: regForm.commencementDate,
         durationOfStudy: regForm.durationOfStudy,
         modeOfStudy: regForm.modeOfStudy,
@@ -1718,20 +1814,20 @@ function payChipClass(val) {
 // ── Add Enrollment per existing student ───────────────────────────────────────
 const showAddEnroll   = ref(false)
 const addEnrollTarget = ref(null)
-const addEnrollForm   = reactive({ programme: '', major: '', commencementDate: '', modeOfStudy: 'Distance/Online self-study', durationOfStudy: '' })
+const addEnrollForm   = reactive({ programme: '', specialization: '', commencementDate: '', modeOfStudy: 'Distance/Online self-study', durationOfStudy: '' })
 
 function openAddEnrollment(s) {
   addEnrollTarget.value = s
-  Object.assign(addEnrollForm, { programme: '', major: '', commencementDate: '', modeOfStudy: 'Distance/Online self-study', durationOfStudy: '' })
+  Object.assign(addEnrollForm, { programme: '', specialization: '', commencementDate: '', modeOfStudy: 'Distance/Online self-study', durationOfStudy: '' })
   showAddEnroll.value = true
 }
 function submitAddEnrollment() {
   const s = addEnrollTarget.value
-  if (!s || !addEnrollForm.programme || !addEnrollForm.major) return
+  if (!s || !addEnrollForm.programme || !addEnrollForm.specialization) return
   s.enrollments.push({
     id: nextEnrollId(),
     programme: addEnrollForm.programme,
-    major: addEnrollForm.major,
+    specialization: addEnrollForm.specialization,
     commencementDate: addEnrollForm.commencementDate,
     modeOfStudy: addEnrollForm.modeOfStudy,
     durationOfStudy: addEnrollForm.durationOfStudy,
@@ -1804,7 +1900,7 @@ function printLetter() {
     <tr><td>Student ID</td><td>${s.studentId}</td></tr>
     <tr><td>Full Name</td><td>${s.firstName} ${s.lastName}</td></tr>
     <tr><td>Programme</td><td>${enr?.programme ?? ''}</td></tr>
-    <tr><td>Major</td><td>${enr?.major ?? ''}</td></tr>
+    <tr><td>Specialization</td><td>${enr?.specialization ?? ''}</td></tr>
     <tr><td>Commencement Date</td><td>${fmtDate(enr?.commencementDate)}</td></tr>
     <tr><td>Mode of Study</td><td>${enr?.modeOfStudy ?? ''}</td></tr>
     <tr><td>Partner Institution</td><td>${s.partner}</td></tr>
@@ -1896,7 +1992,7 @@ function printCert() {
     <tr><td>Student Name</td><td>${s.firstName} ${s.lastName}</td></tr>
     <tr><td>Student ID</td><td>${s.studentId}</td></tr>
     <tr><td>Programme</td><td>${certEnrollment.value?.programme ?? ''}</td></tr>
-    <tr><td>Major</td><td>${certEnrollment.value?.major ?? ''}</td></tr>
+    <tr><td>Specialization</td><td>${certEnrollment.value?.specialization ?? ''}</td></tr>
     <tr><td>Partner Institution</td><td>${s.partner}</td></tr>
     <tr><td>Commencement Date</td><td>${fmtDate(certEnrollment.value?.commencementDate)}</td></tr>
   </table>
@@ -1964,7 +2060,7 @@ function openEnrEdit(student, enr) {
   dropRequest.status      = ''
   dropRequest.reason      = ''
   // Load grades
-  const modules = resolveSubjects(auth.user?.name, enr.programme, enr.major)
+  const modules = resolveSubjects(auth.user?.name, enr.programme, enr.specialization)
   const saved   = gradesStore[student.studentId] ?? {}
   gradeRows.value = modules.map(mod => {
     const ex = saved[mod.name]
@@ -2050,11 +2146,30 @@ function logout() { auth.logout(); router.push('/login') }
 <style scoped>
 .page-wrapper { min-height: 100vh; background: #f2f5f9; }
 
+/* + Add Student modal — hosts /apply wizard in an iframe */
+.btn-add-student { background: #1a5276; color: #fff; border: 0; padding: .55rem 1rem;
+  border-radius: 6px; font-weight: 600; cursor: pointer; font-size: .88rem; }
+.btn-add-student:hover:not(:disabled) { background: #133e58; }
+.btn-add-student:disabled { opacity: .5; cursor: not-allowed; }
+.add-student-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 2000; }
+.add-student-modal { position: fixed; top: 4vh; left: 50%; transform: translateX(-50%);
+  width: min(960px, 95vw); height: 92vh; background: #fff; border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3); z-index: 2001;
+  display: flex; flex-direction: column; overflow: hidden; }
+.add-student-head { display: flex; align-items: center; justify-content: space-between;
+  padding: .85rem 1.25rem; border-bottom: 1px solid #e5eaf1; background: #fafbfc; }
+.add-student-head h3 { margin: 0; color: #003366; font-size: 1rem; }
+.btn-close-modal { background: transparent; border: 1px solid #d0d7e0; border-radius: 5px;
+  padding: .3rem .65rem; cursor: pointer; font-size: .85rem; color: #555; }
+.btn-close-modal:hover { background: #f0f3f7; }
+.add-student-iframe { flex: 1; border: 0; width: 100%; }
+
 .navbar { background: #1a5276; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 2rem; }
 .brand-text { font-size: 1.05rem; font-weight: 700; }
 .nav-right { display: flex; align-items: center; gap: 1rem; }
 .btn-logout { background: transparent; border: 1.5px solid rgba(255,255,255,0.55); color: #fff; padding: 0.3rem 0.85rem; border-radius: 5px; cursor: pointer; font-size: 0.82rem; }
 .btn-logout:hover { background: rgba(255,255,255,0.13); }
+.btn-nav-link { text-decoration: none; display: inline-flex; align-items: center; }
 
 .container { max-width: 1200px; margin: 2rem auto; padding: 0 1.5rem; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.25rem; }
@@ -2076,6 +2191,14 @@ function logout() { auth.logout(); router.push('/login') }
 
 /* Absence badge on student row */
 .abs-badge { margin-left: .4rem; background: #fff3cd; color: #856404; border: 1px solid #fcd34d; padding: 1px 7px; border-radius: 10px; font-size: .7rem; font-weight: 700; }
+
+/* Review Application button + reviewed badge */
+.btn-review-app { background: #003366; color: #fff; border: none; border-radius: 5px; padding: 0.3rem 0.75rem; font-size: 0.76rem; font-weight: 600; cursor: pointer; }
+.btn-review-app:hover { background: #0055a5; }
+.reviewed-badge { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700; }
+
+/* Review-completed toast */
+.review-toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: #0d6b55; color: #fff; padding: 0.75rem 1.5rem; border-radius: 8px; font-size: 0.88rem; box-shadow: 0 4px 18px rgba(0,0,0,0.22); z-index: 500; }
 
 /* Partner sections (absences + tickets) */
 .partner-section { margin-top: 1.75rem; }
@@ -2281,7 +2404,7 @@ function logout() { auth.logout(); router.push('/login') }
 
 /* Col 1 */
 .prog-name-main { font-weight: 700; color: #1a1a2e; font-size: .88rem; line-height: 1.3; }
-.prog-major-sub { font-size: .8rem; color: #666; margin: .15rem 0 .55rem; }
+.prog-specialization-sub { font-size: .8rem; color: #666; margin: .15rem 0 .55rem; }
 .enr-actions { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .4rem; }
 
 /* Col 2 */
@@ -2412,6 +2535,26 @@ function logout() { auth.logout(); router.push('/login') }
 
 /* ── Main tab bar ──────────────────────────────────────────────────────────── */
 .main-tab-bar { background: #fff; border-bottom: 2px solid #e8edf4; display: flex; padding: 0 2rem; }
+
+/* Public signup link banner */
+.signup-link-bar {
+  display: flex; align-items: center; gap: .65rem; flex-wrap: wrap;
+  padding: .55rem 2rem; background: #eef5ff; border-bottom: 1px solid #b6d4fe;
+  font-size: .82rem; color: #084298;
+}
+.signup-link-label { font-weight: 700; }
+.signup-link-url {
+  flex: 1; min-width: 0; color: #003366; text-decoration: none;
+  font-family: ui-monospace, monospace; font-size: .8rem;
+  overflow-wrap: anywhere;
+}
+.signup-link-url:hover { text-decoration: underline; }
+.btn-copy-link {
+  background: #003366; color: #fff; border: none; padding: .25rem .85rem;
+  border-radius: 5px; font-size: .76rem; font-weight: 700; cursor: pointer;
+  white-space: nowrap;
+}
+.btn-copy-link:hover { background: #0055a5; }
 .main-tab-btn { background: none; border: none; padding: 0.85rem 1.3rem; font-size: 0.9rem; font-weight: 600; color: #888; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; display: flex; align-items: center; gap: 0.5rem; }
 .main-tab-btn.active { color: #1a5276; border-bottom-color: #1a5276; }
 
@@ -2420,11 +2563,11 @@ function logout() { auth.logout(); router.push('/login') }
 .core-group { background: #fff; border: 1px solid #e0e6ee; border-radius: 10px; overflow: hidden; }
 .core-group-head { display: flex; justify-content: space-between; padding: .8rem 1rem; background: #f6f9fd; border-bottom: 1px solid #e8edf3; }
 .core-count { font-size: .8rem; color: #5f6e85; }
-.core-major-list { display: flex; flex-direction: column; }
-.core-major-row { display: flex; justify-content: space-between; align-items: center; padding: .65rem 1rem; border-top: 1px solid #f2f5fa; }
-.core-major-row:first-child { border-top: none; }
-.core-major-row.dim { background: #fafbfd; color: #8a93a4; }
-.core-major-name { font-size: .92rem; }
+.core-specialization-list { display: flex; flex-direction: column; }
+.core-specialization-row { display: flex; justify-content: space-between; align-items: center; padding: .65rem 1rem; border-top: 1px solid #f2f5fa; }
+.core-specialization-row:first-child { border-top: none; }
+.core-specialization-row.dim { background: #fafbfd; color: #8a93a4; }
+.core-specialization-name { font-size: .92rem; }
 .toggle { display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; color: #5f6e85; cursor: pointer; }
 .err-banner { background: #fde7e5; color: #a8241e; padding: .55rem .8rem; border-radius: 6px; font-size: .88rem; margin: .4rem 0; }
 .loading-row { padding: 1rem; color: #5f6e85; font-size: .9rem; }
@@ -2487,8 +2630,8 @@ function logout() { auth.logout(); router.push('/login') }
   padding: 2px 8px; font-size: 0.78rem; font-weight: 600;
 }
 
-.prog-majors-section { margin-top: 0.25rem; }
-.prog-majors-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #999; font-weight: 700; margin-bottom: 0.6rem; }
+.prog-specializations-section { margin-top: 0.25rem; }
+.prog-specializations-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #999; font-weight: 700; margin-bottom: 0.6rem; }
 .prog-maj-block { border: 1px solid #e8edf4; border-radius: 7px; margin-bottom: 0.5rem; overflow: hidden; }
 .prog-maj-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #f7f9fb; cursor: pointer; }
 .prog-maj-header:hover { background: #eef2f8; }

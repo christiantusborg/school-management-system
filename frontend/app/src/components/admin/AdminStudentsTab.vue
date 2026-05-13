@@ -12,7 +12,7 @@
     </div>
 
     <div class="filter-row">
-      <input v-model="search" class="inp" placeholder="Search by name, username or student ID…" />
+      <input v-model="search" class="inp" placeholder="Fuzzy search — name, email, programme, partner…" />
       <select v-model="filterProgrammeId" class="inp">
         <option value="">All programmes</option>
         <option v-for="p in programmesAvailable" :key="p.programmeId" :value="p.programmeId">{{ p.name }}</option>
@@ -33,9 +33,14 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="s in filtered" :key="s.studentId" class="data-row">
+        <tr v-for="s in filtered" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
           <td class="mono">{{ s.studentNumber }}</td>
-          <td>{{ s.firstName ?? '—' }} {{ s.lastName ?? '' }}<br><small class="muted">@{{ s.username }}</small></td>
+          <td>
+            <a class="s-name-link" @click.stop="openStudentDetail(s)">
+              {{ s.firstName ?? '—' }} {{ s.lastName ?? '' }}
+            </a>
+            <br><small class="muted">@{{ s.username }}</small>
+          </td>
           <td v-if="!partnerId">{{ s.partnerName }}</td>
           <td>{{ s.email ?? '—' }}<span v-if="!s.emailVerified" class="s-badge unverified">unverified</span></td>
           <td>
@@ -49,6 +54,9 @@
               <button v-else class="btn-review-sm btn-grades-approve"
                       @click.stop="openGradeReview(s, e)">
                 Approve grades
+              </button>
+              <button class="btn-row-details btn-row-details-sm" @click.stop="openStudentDetail(s, e.studentEnrollmentId)">
+                Details
               </button>
             </div>
           </td>
@@ -80,7 +88,27 @@
             </div>
             <p v-else class="muted">No grades submitted for this enrolment.</p>
 
+            <EnrollmentActivityLog v-if="gradeModal.studentId && gradeModal.enrollmentId"
+              :api-path="`/v1/admin/students/${gradeModal.studentId}/enrollments/${gradeModal.enrollmentId}/activity`" />
+
+            <!-- Approve-side wizard: confirm preconditions before the approve
+                 button enables. Right now there's just the tuition check,
+                 but the block is there so we can drop in more pre-flight
+                 confirmations (e.g., academic integrity, attendance) later. -->
+            <div v-if="gradeModal.mode !== 'reject' && gradeModal.subjects?.length" class="approve-checks">
+              <div class="approve-checks-title">Before approving — confirm:</div>
+              <label class="approve-check">
+                <input type="checkbox" v-model="gradeModal.confirmTuitionPaid" />
+                <span>The student's tuition is fully paid (no outstanding balance).</span>
+              </label>
+            </div>
+
             <div v-if="gradeModal.mode === 'reject'" class="reject-block">
+              <label class="manage-label">Quick reasons</label>
+              <select class="reject-preset" v-model="gradeModal.rejectPreset" @change="onRejectPresetChange">
+                <option value="">— Pick a reason or write your own —</option>
+                <option v-for="p in REJECT_PRESETS" :key="p.id" :value="p.id">{{ p.label }}</option>
+              </select>
               <label class="manage-label">Rejection reason (required, min 10 characters)</label>
               <textarea v-model="gradeModal.rejectReason" rows="3" placeholder="Tell the partner what to fix…"></textarea>
               <div class="reject-meta">
@@ -101,7 +129,8 @@
                   ✕ Reject
                 </button>
                 <button class="btn-confirm-manage btn-approve-final"
-                        :disabled="!gradeModal.subjects?.length || gradeModal.submitting"
+                        :disabled="!gradeModal.subjects?.length || !gradeModal.confirmTuitionPaid || gradeModal.submitting"
+                        :title="!gradeModal.confirmTuitionPaid ? 'Tick the tuition-paid checkbox first.' : ''"
                         @click="confirmGradeApproval">
                   {{ gradeModal.submitting ? 'Approving…' : '✓ Approve' }}
                 </button>
@@ -117,6 +146,152 @@
       </div>
     </transition>
 
+    <!-- Student detail modal: 3 tabs (Details / Letters / Activity) -->
+    <transition name="fade">
+      <div v-if="detailModal" class="manage-overlay" @click.self="detailModal = null">
+        <div class="manage-modal detail-modal">
+          <div class="manage-hdr">
+            <div>
+              <h3>{{ detailModal.name || '—' }}
+                <span class="muted-sub">· {{ detailModal.studentNumber }}</span>
+              </h3>
+              <p class="manage-sub">
+                {{ detailModal.email || '—' }}
+                <span v-if="detailModal.partnerName"> · {{ detailModal.partnerName }}</span>
+              </p>
+            </div>
+            <button class="drawer-close" @click="detailModal = null">✕</button>
+          </div>
+
+          <p v-if="detailModal.error" class="err-banner">{{ detailModal.error }}</p>
+          <p v-if="detailModal.loading" class="muted detail-loading">Loading…</p>
+
+          <template v-else-if="detailModal.data">
+            <!-- Enrollment selector when there are multiple -->
+            <div v-if="detailEnrollments.length > 1" class="enr-switch">
+              <label>Enrolment:</label>
+              <select v-model="detailModal.activeEnrollmentId">
+                <option v-for="e in detailEnrollments" :key="e.studentEnrollmentId" :value="e.studentEnrollmentId">
+                  {{ e.programmeCode }} · {{ e.specializationName }} ({{ e.statusName }})
+                </option>
+              </select>
+            </div>
+
+            <div class="detail-tabs">
+              <button v-for="t in DETAIL_TABS" :key="t.id"
+                      :class="['tab-btn', { active: detailModal.activeTab === t.id }]"
+                      @click="detailModal.activeTab = t.id">{{ t.label }}</button>
+            </div>
+
+            <!-- Details tab -->
+            <div v-if="detailModal.activeTab === 'details'" class="tab-pane">
+              <div class="detail-grid">
+                <div class="detail-section">
+                  <h4>Account</h4>
+                  <dl>
+                    <dt>Username</dt><dd>@{{ detailModal.data.account?.username }}</dd>
+                    <dt>Email</dt><dd>{{ detailModal.data.account?.email ?? '—' }}<span v-if="!detailModal.data.account?.emailVerified" class="s-badge unverified">unverified</span></dd>
+                    <dt>First name</dt><dd>{{ detailModal.data.account?.firstName ?? '—' }}</dd>
+                    <dt>Last name</dt><dd>{{ detailModal.data.account?.lastName ?? '—' }}</dd>
+                  </dl>
+                  <div class="reset-pw-row">
+                    <button class="btn-row-details" :disabled="resettingStudentPw" @click="resetStudentPassword">
+                      {{ resettingStudentPw ? 'Resetting…' : '🔑 Reset student password' }}
+                    </button>
+                    <div v-if="resetStudentPwValue" class="reset-pw-reveal">
+                      <strong>New password:</strong> <code>{{ resetStudentPwValue }}</code>
+                      <button class="btn-row-details" @click="copyResetStudentPw">Copy</button>
+                      <div class="reset-pw-hint">Save this — it won't be shown again.</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="detail-section">
+                  <h4>Personal</h4>
+                  <dl>
+                    <dt>Date of birth</dt><dd>{{ formatDate(detailModal.data.personal?.dateOfBirth) || '—' }}</dd>
+                    <dt>Passport / ID</dt><dd>{{ detailModal.data.personal?.passportId || '—' }}</dd>
+                    <dt>Address</dt><dd>{{ formatAddress(detailModal.data.personal?.address) || '—' }}</dd>
+                  </dl>
+                </div>
+                <div class="detail-section">
+                  <h4>Background</h4>
+                  <dl>
+                    <dt>Highest degree</dt><dd>{{ detailModal.data.background?.highestDegree || '—' }}</dd>
+                    <dt>Years exp.</dt><dd>{{ detailModal.data.background?.yearsWorkExperience ?? '—' }}</dd>
+                  </dl>
+                </div>
+                <div class="detail-section" v-if="activeEnrollment">
+                  <h4>Enrolment</h4>
+                  <dl>
+                    <dt>Programme</dt><dd>{{ activeEnrollment.programmeName }}</dd>
+                    <dt>Specialisation</dt><dd>{{ activeEnrollment.specializationName }}</dd>
+                    <dt>Mode</dt><dd>{{ activeEnrollment.modeOfStudyName ?? '—' }}</dd>
+                    <dt>Commencement</dt><dd>{{ formatDate(activeEnrollment.commencementDate) || '—' }}</dd>
+                    <dt>Duration</dt><dd>{{ activeEnrollment.durationOfStudyMonths ?? '—' }} months</dd>
+                    <dt>Status</dt><dd><span :class="['s-badge', statusClass(activeEnrollment.statusCode)]">{{ activeEnrollment.statusName }}</span></dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+
+            <!-- Documents tab -->
+            <div v-if="detailModal.activeTab === 'documents'" class="tab-pane">
+              <p v-if="!detailModal.data.documents?.length" class="muted">No documents uploaded yet.</p>
+              <div v-else>
+                <div v-for="enr in docsByEnrollment" :key="enr.enrollmentId" class="docs-group">
+                  <div class="docs-group-head">
+                    <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
+                    <span class="docs-group-count">{{ enr.docs.length }}</span>
+                  </div>
+                  <div class="docs-list">
+                    <div v-for="d in enr.docs" :key="d.studentDocumentId" class="doc-row">
+                      <span :class="['doc-pill', docPillClass(d.status)]">{{ docPillIcon(d.status) }}</span>
+                      <div class="doc-info">
+                        <div class="doc-name">{{ d.documentTypeName }}</div>
+                        <div class="doc-sub">
+                          {{ d.fileName }} · uploaded {{ formatDate(d.uploadedAt) }} · {{ d.statusName }}
+                        </div>
+                      </div>
+                      <button class="btn-mini" @click="downloadStudentDoc(d)">Open</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Letters tab -->
+            <div v-if="detailModal.activeTab === 'letters'" class="tab-pane">
+              <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
+              <div v-else class="letters-list">
+                <div v-for="t in LETTER_TYPES" :key="t.key" class="letter-row" :class="{ disabled: !activeEnrollment.letters?.[t.key] }">
+                  <span class="letter-icon">{{ t.icon }}</span>
+                  <div class="letter-info">
+                    <div class="letter-name">{{ t.label }}</div>
+                    <div class="letter-sub">
+                      <template v-if="activeEnrollment.letters?.[t.key]">
+                        {{ activeEnrollment.letters[t.key].fileName }} · released {{ formatDate(activeEnrollment.letters[t.key].uploadedAt) }}
+                      </template>
+                      <template v-else>Not yet released</template>
+                    </div>
+                  </div>
+                  <button class="btn-mini" :disabled="!activeEnrollment.letters?.[t.key]"
+                          @click="downloadLetter(activeEnrollment.letters?.[t.key])">Download</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Activity tab -->
+            <div v-if="detailModal.activeTab === 'activity'" class="tab-pane">
+              <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
+              <EnrollmentActivityLog v-else
+                :api-path="`/v1/admin/students/${detailModal.studentId}/enrollments/${activeEnrollment.studentEnrollmentId}/activity`"
+                :default-open="true" />
+            </div>
+          </template>
+        </div>
+      </div>
+    </transition>
+
     <AdminReviewWizard v-if="reviewingStudent" :student="reviewingStudent"
       @close="closeReview" @submitted="onReviewSubmitted" />
 
@@ -128,21 +303,31 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, reactive } from 'vue'
+import Fuse from 'fuse.js'
 import api from '../../api/client.js'
 import AdminReviewWizard from './AdminReviewWizard.vue'
+import EnrollmentActivityLog from '../letters/EnrollmentActivityLog.vue'
 
 const props = defineProps({
   partnerId: { type: String, default: '' },
 })
 
+// One chip per distinct workflow stage so admin can drill into any single
+// state. "Action required" is the default landing (admin's queue) and "All"
+// is the catch-all at the end. Order: action queue → pre-admission → post-
+// admission → post-grading. Counts are derived client-side from the list.
 const STATUS_FILTERS = [
-  { id: 'pending-admission',         label: 'Pending Admission Approval',     codes: ['ApplicationAwaitingReviewByAdmission'] },   // default — what admin needs to act on
-  { id: 'awaiting-grades-approval',  label: 'Grades — Awaiting Approval',     codes: ['AwaitingGradesApproval'] },
-  { id: '',                          label: 'All',                            codes: null },
-  { id: 'submitted',                 label: 'Submitted',                      codes: ['ApplicationSubmitted', 'ApplicationAwaitingReviewByPartner'] },
-  { id: 'rejected-awaiting-student', label: 'Rejected — Awaiting Student',    codes: ['ApplicationRejectedByPartner', 'ApplicationRejectedByAdmission'] },
-  { id: 'applying',                  label: 'Applying (draft)',               codes: ['Draft'], includeNoEnrolment: true },
-  { id: 'active',                    label: 'Active',                         codes: ['AcceptOffer', 'ApplicationApprovedAdmission', 'AcceptAdmission', 'AwaitingGradesSubmit'] },
+  { id: 'action-required',           label: 'Action required',             codes: ['ApplicationAwaitingReviewByAdmission', 'AwaitingGradesApproval'] },
+  { id: 'pending-admission',         label: 'Pending Admission Approval',  codes: ['ApplicationAwaitingReviewByAdmission'] },
+  { id: 'awaiting-grades-approval',  label: 'Grades — Awaiting Approval',  codes: ['AwaitingGradesApproval'] },
+  { id: 'submitted',                 label: 'Submitted',                   codes: ['ApplicationSubmitted', 'ApplicationAwaitingReviewByPartner'] },
+  { id: 'rejected-awaiting-student', label: 'Rejected — Awaiting Student', codes: ['ApplicationRejectedByPartner', 'ApplicationRejectedByAdmission'] },
+  { id: 'applying',                  label: 'Applying (draft)',            codes: ['Draft'], includeNoEnrolment: true },
+  { id: 'awaiting-student-accept',   label: 'Awaiting Student Acceptance', codes: ['AcceptOffer'] },
+  { id: 'admitted',                  label: 'Admitted',                    codes: ['ApplicationApprovedAdmission', 'AcceptAdmission'] },
+  { id: 'awaiting-grades-submit',    label: 'Awaiting Grades Submit',      codes: ['AwaitingGradesSubmit'] },
+  { id: 'graduated',                 label: 'Graduated',                   codes: ['GradesApproved'] },
+  { id: '',                          label: 'All',                         codes: null },
 ]
 
 const list = ref([])
@@ -150,7 +335,7 @@ const loading = ref(false)
 const loadError = ref('')
 
 const search = ref('')
-const filterStatusId = ref('pending-admission')
+const filterStatusId = ref('action-required')
 const filterProgrammeId = ref('')
 const filterSpecializationId = ref('')
 
@@ -191,9 +376,179 @@ function statusClass(code) {
   }
 }
 
+// Per-student detail modal — opens when the admin clicks any row in the
+// list. Three tabs: Details (read-only profile + enrolment), Letters
+// (download released PDFs), Activity (chronological log via the shared
+// EnrollmentActivityLog component). Multi-enrolment students get a
+// dropdown to switch which enrolment the Letters/Activity tabs scope to.
+const DETAIL_TABS = [
+  { id: 'details',   label: 'Details' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'letters',   label: 'Letters' },
+  { id: 'activity',  label: 'Activity log' },
+]
+const LETTER_TYPES = [
+  { key: 'offerLetter',            label: 'Offer Letter',           icon: '📄' },
+  { key: 'admissionLetter',        label: 'Admission Letter',       icon: '📋' },
+  { key: 'transcript',             label: 'Transcript',             icon: '📑' },
+  { key: 'certificate',            label: 'Certificate',            icon: '🎓' },
+  { key: 'provisionalCertificate', label: 'Provisional Certificate', icon: '🎓' },
+]
+const detailModal = ref(null)
+const detailEnrollments = computed(() => detailModal.value?.data?.enrollments ?? [])
+const activeEnrollment = computed(() =>
+  detailEnrollments.value.find(e => e.studentEnrollmentId === detailModal.value?.activeEnrollmentId)
+  ?? detailEnrollments.value[0]
+  ?? null
+)
+
+// Reset-password state for the student detail modal. Mirrors the
+// partner-user reset pattern: prompts for an optional custom password,
+// shows the new password inline until the modal closes.
+const resettingStudentPw = ref(false)
+const resetStudentPwValue = ref('')
+
+async function resetStudentPassword() {
+  if (!detailModal.value || resettingStudentPw.value) return
+  const entered = prompt(`Reset password for ${detailModal.value.name}\n\nEnter a custom password (or leave blank for an auto-generated one):`, '')
+  if (entered === null) return
+  resettingStudentPw.value = true
+  resetStudentPwValue.value = ''
+  try {
+    const body = entered.trim() ? { password: entered.trim() } : {}
+    const res = await api.post(`/v1/admin/students/${detailModal.value.studentId}/reset-password`, body)
+    resetStudentPwValue.value = res.data.temporaryPassword
+  } catch (err) {
+    reviewToast.value = err.response?.data?.error ?? err.message ?? 'Failed to reset password'
+    setTimeout(() => { reviewToast.value = '' }, 3000)
+  } finally {
+    resettingStudentPw.value = false
+  }
+}
+function copyResetStudentPw() {
+  navigator.clipboard.writeText(resetStudentPwValue.value).catch(() => {})
+}
+
+async function openStudentDetail(s, preselectEnrollmentId = null) {
+  // Clear any reset-password reveal from a previous student so the value
+  // doesn't bleed across modals.
+  resetStudentPwValue.value = ''
+  detailModal.value = reactive({
+    studentId: s.studentId,
+    studentNumber: s.studentNumber,
+    name: `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() || '—',
+    email: s.email,
+    partnerName: s.partnerName,
+    activeTab: 'details',
+    activeEnrollmentId: preselectEnrollmentId ?? s.enrollments?.[0]?.studentEnrollmentId ?? null,
+    data: null,
+    loading: true,
+    error: '',
+  })
+  try {
+    const res = await api.get(`/v1/admin/students/${s.studentId}`)
+    detailModal.value.data = res.data
+    // Pin the active enrolment to the most-actionable / first one returned.
+    if (!detailModal.value.activeEnrollmentId && res.data.enrollments?.length) {
+      detailModal.value.activeEnrollmentId = res.data.enrollments[0].studentEnrollmentId
+    }
+  } catch (err) {
+    detailModal.value.error = err.response?.data?.error ?? err.message ?? 'Failed to load student'
+  } finally {
+    detailModal.value.loading = false
+  }
+}
+
+// Documents tab: groups uploaded docs by enrolment (so the admin sees
+// "this passport went on the BBA application, this CV went on the MBA")
+// and renders each with status badge + Open button. Reuses the existing
+// admin download endpoint that the Letters tab already uses.
+const docsByEnrollment = computed(() => {
+  const data = detailModal.value?.data
+  if (!data?.documents?.length || !data?.enrollments?.length) return []
+  return data.enrollments.map(e => ({
+    enrollmentId: e.studentEnrollmentId,
+    programmeCode: e.programmeCode,
+    programmeName: e.programmeName,
+    specializationName: e.specializationName,
+    docs: data.documents
+      .filter(d => d.enrollmentId === e.studentEnrollmentId)
+      .sort((a, b) => (a.documentTypeName || '').localeCompare(b.documentTypeName || '')),
+  })).filter(g => g.docs.length > 0)
+})
+
+function docPillClass(status) {
+  if (status === 'VerifiedByPartner' || status === 'VerifiedByEnrolment') return 'doc-pill-ok'
+  if (status === 'RejectedByPartner' || status === 'RejectedByEnrolment') return 'doc-pill-bad'
+  return 'doc-pill-pending'
+}
+function docPillIcon(status) {
+  if (status === 'VerifiedByPartner' || status === 'VerifiedByEnrolment') return '✓'
+  if (status === 'RejectedByPartner' || status === 'RejectedByEnrolment') return '✕'
+  return '·'
+}
+async function downloadStudentDoc(d) {
+  if (!d?.studentDocumentId || !detailModal.value) return
+  try {
+    const res = await api.get(
+      `/v1/admin/students/${detailModal.value.studentId}/documents/${d.studentDocumentId}/file`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (err) {
+    reviewToast.value = err.response?.status === 404
+      ? 'File not found.'
+      : (err.response?.data?.error ?? err.message ?? 'Download failed')
+    setTimeout(() => { reviewToast.value = '' }, 3000)
+  }
+}
+
+async function downloadLetter(letter) {
+  if (!letter?.studentDocumentId || !detailModal.value) return
+  try {
+    const res = await api.get(
+      `/v1/admin/students/${detailModal.value.studentId}/documents/${letter.studentDocumentId}/file`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = letter.fileName ?? 'letter.pdf'
+    a.target = '_blank'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (err) {
+    reviewToast.value = err.response?.status === 404
+      ? 'File not found.'
+      : (err.response?.data?.error ?? err.message ?? 'Download failed')
+    setTimeout(() => { reviewToast.value = '' }, 3000)
+  }
+}
+
+function formatDate(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+function formatAddress(addr) {
+  if (!addr) return ''
+  const parts = [addr.line1, addr.city, addr.stateRegion, addr.postalCode, addr.countryCode]
+    .filter(s => !!(s && s.trim?.() !== ''))
+  return parts.join(', ')
+}
+
 // Grade approval modal — admin opens it from the row, sees the partner's
 // submitted scores, then either approves (→ GradesApproved) or rejects
 // with a reason (→ AwaitingGradesSubmit, partner sees the reason).
+
+// Predefined rejection messages. Picking one fills the textarea; admin can
+// still tweak the wording before sending.
+const REJECT_PRESETS = [
+  { id: 'payment',     label: 'Tuition not fully paid', text: 'Grades cannot be approved while there is an outstanding tuition balance. Please clear the balance and resubmit.' },
+  { id: 'incomplete',  label: 'Grades incomplete',      text: 'One or more required subjects are missing a grade. Please enter every subject\'s score and resubmit.' },
+  { id: 'inconsistent',label: 'Inconsistent with records', text: 'The submitted grades do not match the academic record on file. Please verify each score against the source and resubmit.' },
+  { id: 'other',       label: 'Other (write your own)', text: '' },
+]
+
 const gradeModal = ref(null)
 async function openGradeReview(s, e) {
   gradeModal.value = reactive({
@@ -205,6 +560,8 @@ async function openGradeReview(s, e) {
     subjects: [],
     mode: 'view',          // 'view' | 'reject'
     rejectReason: '',
+    rejectPreset: '',      // pre-pickable templated reason (see REJECT_PRESETS)
+    confirmTuitionPaid: false, // Approve gate — admin must tick to confirm tuition is settled
     loading: true,
     submitting: false,
     error: '',
@@ -235,6 +592,17 @@ async function confirmGradeApproval() {
     if (gradeModal.value) gradeModal.value.submitting = false
   }
 }
+// Picks a templated rejection message and copies it into the textarea.
+// "Other" leaves the textarea untouched so admin can write freely. We
+// only overwrite when there's an actual preset body to copy in — picking
+// the placeholder "—" doesn't blank a half-typed reason.
+function onRejectPresetChange() {
+  const m = gradeModal.value
+  if (!m) return
+  const preset = REJECT_PRESETS.find(p => p.id === m.rejectPreset)
+  if (preset && preset.text) m.rejectReason = preset.text
+}
+
 async function confirmGradeRejection() {
   const m = gradeModal.value
   if (!m || m.submitting) return
@@ -292,23 +660,46 @@ const specializationsAvailable = computed(() => {
       if (!m.has(e.specializationId)) m.set(e.specializationId, { specializationId: e.specializationId, name: e.specializationName })
   return [...m.values()].sort((a, b) => a.name.localeCompare(b.name))
 })
+// Fuzzy search across every field admin might type. Rebuilt whenever the
+// list changes; Fuse's threshold tuned to allow typos but stay specific.
+const fuse = computed(() => new Fuse(list.value, {
+  keys: [
+    { name: 'studentNumber', weight: 0.9 },
+    { name: 'firstName',     weight: 0.8 },
+    { name: 'lastName',      weight: 0.8 },
+    { name: 'username',      weight: 0.6 },
+    { name: 'email',         weight: 0.6 },
+    { name: 'partnerName',   weight: 0.5 },
+    { name: 'enrollments.programmeCode', weight: 0.5 },
+    { name: 'enrollments.programmeName', weight: 0.5 },
+    { name: 'enrollments.specializationName', weight: 0.4 },
+  ],
+  threshold: 0.35,
+  ignoreLocation: true,
+  useExtendedSearch: true,
+  minMatchCharLength: 2,
+}))
+
 const filtered = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  return list.value.filter(s => {
-    if (q) {
-      const hay = `${s.firstName ?? ''} ${s.lastName ?? ''} ${s.username ?? ''} ${s.studentNumber}`.toLowerCase()
-      if (!hay.includes(q)) return false
-    }
-    if (filterProgrammeId.value && !s.enrollments.some(e => e.programmeId === filterProgrammeId.value)) return false
-    if (filterSpecializationId.value && !s.enrollments.some(e => e.specializationId === filterSpecializationId.value)) return false
-    if (filterStatusId.value !== '') {
-      const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
+  const q = search.value.trim()
+  // Start either from the fuzzy search hits or the full list.
+  let rows = !q
+    ? list.value
+    : fuse.value.search(q).map(r => r.item)
+
+  if (filterProgrammeId.value)
+    rows = rows.filter(s => s.enrollments.some(e => e.programmeId === filterProgrammeId.value))
+  if (filterSpecializationId.value)
+    rows = rows.filter(s => s.enrollments.some(e => e.specializationId === filterSpecializationId.value))
+  if (filterStatusId.value !== '') {
+    const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
+    rows = rows.filter(s => {
       const matchesNoEnrolment = f?.includeNoEnrolment && s.enrollments.length === 0
       const matchesCode = s.enrollments.some(e => f?.codes?.includes(e.statusCode))
-      if (!matchesNoEnrolment && !matchesCode) return false
-    }
-    return true
-  })
+      return matchesNoEnrolment || matchesCode
+    })
+  }
+  return rows
 })
 
 async function load() {
@@ -521,6 +912,12 @@ onMounted(load)
 .btn-reject-final:hover:not(:disabled) { background: #991b1b; }
 .grade-actions { display: flex; gap: .5rem; }
 
+.approve-checks { background: #f4f9f5; border: 1px solid #b9e1c7; border-left: 3px solid #1c7a4a; border-radius: 6px; padding: .7rem .85rem; margin-top: .85rem; }
+.approve-checks-title { font-size: .8rem; font-weight: 700; color: #1c4f33; margin-bottom: .45rem; }
+.approve-check { display: flex; align-items: flex-start; gap: .55rem; font-size: .88rem; color: #1c4f33; cursor: pointer; line-height: 1.35; }
+.approve-check input { margin-top: .15rem; transform: scale(1.1); cursor: pointer; }
+.reject-preset { width: 100%; padding: .45rem .6rem; border: 1.5px solid #fbcaca; border-radius: 6px; font-size: .85rem; background: #fff; margin-bottom: .65rem; cursor: pointer; }
+.reject-preset:focus { outline: none; border-color: #b91c1c; }
 .reject-block { background: #fff7f7; border: 1px solid #fbcaca; border-left: 3px solid #b91c1c; border-radius: 6px; padding: .7rem .85rem; margin-top: .85rem; }
 .manage-label { display: block; font-size: .8rem; font-weight: 600; color: #7f1d1d; margin-bottom: .35rem; }
 .reject-block textarea { width: 100%; padding: .55rem .7rem; border: 1.5px solid #fbcaca; border-radius: 6px; font-size: .88rem; font-family: inherit; resize: vertical; background: #fff; }
@@ -543,4 +940,60 @@ onMounted(load)
 .sc-mid  { background: #fff3cd; color: #856404; }
 .sc-bad  { background: #fee2e2; color: #991b1b; }
 .sc-none { background: #f0f3f7; color: #888; }
+
+/* Student name link in the list — visual cue that the row opens a
+   detail view. Behaves like a hyperlink. The whole row is also clickable. */
+.s-name-link { color: #1a4d8c; font-weight: 600; cursor: pointer; text-decoration: none; }
+.s-name-link:hover { text-decoration: underline; color: #143b6c; }
+.btn-row-details { padding: .25rem .65rem; border: 1px solid #1a4d8c; background: #fff; color: #1a4d8c; border-radius: 4px; font-size: .75rem; font-weight: 600; cursor: pointer; }
+.btn-row-details:hover { background: #eef3fb; }
+.btn-row-details-sm { padding: .15rem .5rem; font-size: .7rem; }
+
+/* Student detail modal (3 tabs) — fixed height so switching tabs
+   doesn't make the modal grow or shrink. Tab content scrolls within. */
+.detail-modal { width: 760px; max-width: 95vw; height: 80vh; max-height: 720px; display: flex; flex-direction: column; }
+.muted-sub { color: #6b7888; font-weight: 400; font-size: .82rem; margin-left: .25rem; }
+.detail-loading { padding: 1.5rem; }
+.enr-switch { display: flex; align-items: center; gap: .65rem; padding: .55rem 1rem; background: #f6f9fc; border-bottom: 1px solid #eef2f7; font-size: .85rem; }
+.enr-switch label { font-weight: 600; color: #4a5a72; }
+.enr-switch select { padding: .25rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .85rem; min-width: 280px; }
+.detail-tabs { display: flex; gap: .25rem; padding: .5rem 1rem 0; border-bottom: 1px solid #eef2f7; background: #fff; }
+.tab-btn { background: transparent; border: none; padding: .55rem 1.1rem; font-size: .88rem; font-weight: 600; color: #6b7888; cursor: pointer; border-bottom: 2px solid transparent; }
+.tab-btn:hover { color: #1a2d4f; }
+.tab-btn.active { color: #1a4d8c; border-bottom-color: #1a4d8c; }
+.tab-pane { padding: 1rem 1.25rem 1.25rem; overflow-y: auto; flex: 1; }
+
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.detail-section h4 { margin: 0 0 .45rem 0; font-size: .82rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #6b7888; }
+.detail-section dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: .25rem .75rem; font-size: .85rem; }
+.detail-section dt { color: #6b7888; }
+.detail-section dd { margin: 0; color: #1a2d4f; word-break: break-word; }
+.reset-pw-row { margin-top: .5rem; display: flex; flex-direction: column; gap: .35rem; }
+.reset-pw-reveal { padding: .5rem .65rem; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 6px; font-size: .8rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.reset-pw-reveal code { font-family: monospace; color: #065f46; background: #fff; padding: .1rem .4rem; border-radius: 3px; }
+.reset-pw-hint { width: 100%; font-size: .7rem; color: #047857; }
+
+.docs-group { margin-bottom: 1rem; }
+.docs-group-head { font-size: .82rem; color: #1a2d4f; padding: .35rem .5rem; background: #eef3fb; border-left: 3px solid #1a4d8c; border-radius: 4px; margin-bottom: .35rem; display: flex; align-items: center; gap: .5rem; }
+.docs-group-count { margin-left: auto; background: #fff; border: 1px solid #cfd7e3; border-radius: 10px; padding: .05rem .5rem; font-size: .7rem; font-weight: 700; color: #4a5a72; }
+.docs-list { display: flex; flex-direction: column; gap: .35rem; }
+.doc-row { display: flex; align-items: center; gap: .65rem; padding: .5rem .65rem; background: #fff; border: 1px solid #eef2f7; border-radius: 6px; }
+.doc-pill { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: .78rem; font-weight: 700; flex-shrink: 0; }
+.doc-pill-ok { background: #d1fae5; color: #065f46; }
+.doc-pill-bad { background: #fee2e2; color: #991b1b; }
+.doc-pill-pending { background: #fef3c7; color: #92400e; }
+.doc-info { flex: 1; min-width: 0; }
+.doc-name { font-size: .86rem; font-weight: 600; color: #1a2d4f; }
+.doc-sub { font-size: .72rem; color: #6b7888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.letters-list { display: flex; flex-direction: column; gap: .5rem; }
+.letter-row { display: flex; align-items: center; gap: .65rem; padding: .55rem .75rem; background: #f6f9fc; border: 1px solid #eef2f7; border-radius: 7px; }
+.letter-row.disabled { opacity: .55; }
+.letter-icon { font-size: 1.2rem; }
+.letter-info { flex: 1; min-width: 0; }
+.letter-name { font-weight: 600; font-size: .88rem; color: #1a2d4f; }
+.letter-sub { font-size: .76rem; color: #6b7888; }
+.btn-mini { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }
+.btn-mini:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }
+.btn-mini:hover:not(:disabled) { background: #143b6c; }
 </style>

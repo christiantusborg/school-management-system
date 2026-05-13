@@ -7,7 +7,7 @@ export const uid = () => `id_${_seq++}`
 export const corePrograms = reactive([
   {
     id: 'prog_mba', name: 'Master of Business Administration', code: 'MBA',
-    majors: [
+    specializations: [
       { id: 'maj_mba_ba',  name: 'Business Administration', subjects: [
         { id: 'subj_1', code: 'MBA501', name: 'Strategic Management',          ects: 15 },
         { id: 'subj_2', code: 'MBA502', name: 'International Marketing',       ects: 15 },
@@ -24,7 +24,7 @@ export const corePrograms = reactive([
   },
   {
     id: 'prog_bba', name: 'Bachelor of Business Administration', code: 'BBA',
-    majors: [
+    specializations: [
       { id: 'maj_bba_ba',  name: 'Business Administration', subjects: [
         { id: 'subj_9',  code: 'BBA301', name: 'Business Fundamentals',      ects: 15 },
         { id: 'subj_10', code: 'BBA302', name: 'Principles of Marketing',    ects: 15 },
@@ -41,7 +41,7 @@ export const corePrograms = reactive([
   },
   {
     id: 'prog_mf', name: 'Master of Finance', code: 'MF',
-    majors: [
+    specializations: [
       { id: 'maj_mf_fin', name: 'Finance', subjects: [
         { id: 'subj_17', code: 'MF501', name: 'Advanced Corporate Finance',  ects: 15 },
         { id: 'subj_18', code: 'MF502', name: 'Portfolio Management',        ects: 15 },
@@ -52,7 +52,7 @@ export const corePrograms = reactive([
   },
   {
     id: 'prog_bcs', name: 'Bachelor of Computer Science', code: 'BCS',
-    majors: [
+    specializations: [
       { id: 'maj_bcs_cs', name: 'Computer Science', subjects: [
         { id: 'subj_21', code: 'BCS301', name: 'Data Structures & Algorithms', ects: 15 },
         { id: 'subj_22', code: 'BCS302', name: 'Database Systems',             ects: 15 },
@@ -66,18 +66,18 @@ export const corePrograms = reactive([
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export const getAllCoreAccessKeys = () => {
   const keys = []
-  for (const p of corePrograms) for (const m of p.majors) keys.push(`${p.id}__${m.id}`)
+  for (const p of corePrograms) for (const m of p.specializations) keys.push(`${p.id}__${m.id}`)
   return keys
 }
 export const findCoreProgram = id => corePrograms.find(p => p.id === id) ?? null
-export const findCoreMajor   = (progId, majId) => findCoreProgram(progId)?.majors.find(m => m.id === majId) ?? null
+export const findCoreSpecialization   = (progId, majId) => findCoreProgram(progId)?.specializations.find(m => m.id === majId) ?? null
 
 // ── Partner records ───────────────────────────────────────────────────────────
-// coreAccess:       string[]  'progId__majId' — enabled core programme+major pairs
+// coreAccess:       string[]  'progId__majId' — enabled core programme+specialization pairs
 // clones:           Clone[]
-//   Clone (major):  { id, type:'major',     srcProgId, srcMajId, name, subjects[] }
+//   Clone (specialization):  { id, type:'specialization',     srcProgId, srcMajId, name, subjects[] }
 //   Clone (prog):   { id, type:'programme', srcProgId, name, code,
-//                     majors: [{ id, srcMajId, name, subjects[] }] }
+//                     specializations: [{ id, srcMajId, name, subjects[] }] }
 export const partnerRecords = reactive([
   { id:'pa', name:'Partner A', username:'partner_a', password:'partner_a', role:'partner', coreAccess: getAllCoreAccessKeys(), clones: [
     {
@@ -86,7 +86,7 @@ export const partnerRecords = reactive([
       code: 'MBA',
       status: 'approved',
       rejectionReason: null,
-      majors: [
+      specializations: [
         { id: 'clone_pa_mba_maj1', srcMajId: 'maj_mba_ba', name: 'Business Administration',
           subjects: [
             { id: 'clone_pa_s1', code: 'MBA501', name: 'Strategic Management',          ects: 15 },
@@ -109,7 +109,7 @@ export const partnerRecords = reactive([
       code: 'BBA',
       status: 'rejected',
       rejectionReason: 'Programme structure does not meet IBSS accreditation requirements. Please revise the subject credit allocation and resubmit.',
-      majors: [
+      specializations: [
         { id: 'clone_pa_bba_maj1', srcMajId: 'maj_bba_ba', name: 'Business Administration',
           subjects: [
             { id: 'clone_pa_s9',  code: 'BBA301', name: 'Business Fundamentals',    ects: 15 },
@@ -132,27 +132,27 @@ export const partnerRecords = reactive([
 ])
 
 // ── Clone helpers ─────────────────────────────────────────────────────────────
-export function getMajorClone(partner, srcProgId, srcMajId) {
-  return partner?.clones.find(c => c.type === 'major' && c.srcProgId === srcProgId && c.srcMajId === srcMajId) ?? null
+export function getSpecializationClone(partner, srcProgId, srcMajId) {
+  return partner?.clones.find(c => c.type === 'specialization' && c.srcProgId === srcProgId && c.srcMajId === srcMajId) ?? null
 }
 export function getProgrammeClone(partner, srcProgId) {
   return partner?.clones.find(c => c.type === 'programme' && c.srcProgId === srcProgId) ?? null
 }
 
-export function cloneMajorFn(partner, srcProgId, srcMajId) {
-  const maj = findCoreMajor(srcProgId, srcMajId)
+export function cloneSpecializationFn(partner, srcProgId, srcMajId) {
+  const maj = findCoreSpecialization(srcProgId, srcMajId)
   if (!maj) return
   const existingCount = partner.clones.filter(
-    c => c.type === 'major' && c.srcProgId === srcProgId && c.srcMajId === srcMajId
+    c => c.type === 'specialization' && c.srcProgId === srcProgId && c.srcMajId === srcMajId
   ).length
   const name = existingCount === 0 ? `${maj.name} (Clone)` : `${maj.name} (Clone ${existingCount + 1})`
   partner.clones.push({
-    id: uid(), type: 'major', srcProgId, srcMajId, name,
+    id: uid(), type: 'specialization', srcProgId, srcMajId, name,
     subjects: maj.subjects.map(s => ({ id: uid(), code: s.code ?? '', name: s.name, ects: s.ects ?? 15 })),
   })
 }
 
-export function createCustomMajorFn(partner, srcProgId, name) {
+export function createCustomSpecializationFn(partner, srcProgId, name) {
   if (!name.trim()) return
   partner.clones.push({
     id: uid(), type: 'custom', srcProgId,
@@ -171,7 +171,7 @@ export function cloneProgramFn(partner, srcProgId) {
     code: prog.code,
     status: 'draft',
     rejectionReason: null,
-    majors: prog.majors.map(m => ({
+    specializations: prog.specializations.map(m => ({
       id: uid(), srcMajId: m.id, name: m.name,
       subjects: m.subjects.map(s => ({ id: uid(), code: s.code ?? '', name: s.name, ects: s.ects ?? 15 })),
     })),
@@ -202,24 +202,24 @@ export function rejectProgramFn(partner, cloneId, reason) {
   }
 }
 
-// Resolve subjects for grade entry: major clone (first) → custom major → core
-export function resolveSubjects(partnerName, programmeName, majorName) {
+// Resolve subjects for grade entry: specialization clone (first) → custom specialization → core
+export function resolveSubjects(partnerName, programmeName, specializationName) {
   const partner = partnerRecords.find(p => p.name === partnerName)
   if (!partner) return []
   const cProg = corePrograms.find(p => p.name === programmeName)
-  const cMaj  = cProg?.majors.find(m => m.name === majorName)
+  const cMaj  = cProg?.specializations.find(m => m.name === specializationName)
 
-  // Major clone (take first clone of this major)
+  // Specialization clone (take first clone of this specialization)
   if (cProg && cMaj) {
     const mClone = partner.clones.find(
-      c => c.type === 'major' && c.srcProgId === cProg.id && c.srcMajId === cMaj.id
+      c => c.type === 'specialization' && c.srcProgId === cProg.id && c.srcMajId === cMaj.id
     )
     if (mClone) return mClone.subjects
   }
-  // Custom major by name under this programme
+  // Custom specialization by name under this programme
   if (cProg) {
     const custom = partner.clones.find(
-      c => c.type === 'custom' && c.srcProgId === cProg.id && c.name === majorName
+      c => c.type === 'custom' && c.srcProgId === cProg.id && c.name === specializationName
     )
     if (custom) return custom.subjects
   }
@@ -229,7 +229,7 @@ export function resolveSubjects(partnerName, programmeName, majorName) {
 
 // ── Derived dropdown lists ────────────────────────────────────────────────────
 export const getProgrammeNames = () => corePrograms.map(p => p.name)
-export const getMajorNames     = () => { const s = new Set(); for (const p of corePrograms) for (const m of p.majors) s.add(m.name); return [...s] }
+export const getSpecializationNames     = () => { const s = new Set(); for (const p of corePrograms) for (const m of p.specializations) s.add(m.name); return [...s] }
 export const getPartnerNames   = () => partnerRecords.map(p => p.name)
 
 // ── Programme level & admission pathways ──────────────────────────────────────

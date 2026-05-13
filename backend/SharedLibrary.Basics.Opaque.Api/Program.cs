@@ -46,7 +46,7 @@ using School.PathwayApi;
 using School.TuitionFeeStatusApi;
 using School.ModeOfStudyApi;
 using School.ProgrammeApi;
-using School.MajorApi;
+using School.SpecializationApi;
 using School.SubjectApi;
 using School.PartnerAdminApi;
 
@@ -79,6 +79,15 @@ Log.Logger = new LoggerConfiguration()
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
 
+// Npgsql 6+ maps `DateTime` to `timestamp with time zone` and rejects values
+// with Kind != Utc. Plenty of our DateTime fields come from user input (DOB,
+// passport expiry, contract dates) where the Kind is Unspecified. Enabling the
+// legacy behavior maps DateTime → `timestamp without time zone` regardless of
+// Kind, which matches how this codebase has always persisted dates.
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
 var markerTypes = new HashSet<Type>
 {
     typeof(AccountApiAssemblyMarker),
@@ -99,6 +108,8 @@ var markerTypes = new HashSet<Type>
     typeof(RecoveryCodesApiAssemblyMarker),
     typeof(RecoveryLoginApiAssemblyMarker),
     typeof(RegisterApiAssemblyMarker),
+    typeof(SharedLibrary.Basics.Opaque.PublicSignupApi.PublicSignupApiAssemblyMarker),
+    typeof(SharedLibrary.Basics.Opaque.StudentApi.StudentApiAssemblyMarker),
 
     typeof(DocumentTypeApiAssemblyMarker),
     typeof(EnrollmentStatusApiAssemblyMarker),
@@ -108,7 +119,7 @@ var markerTypes = new HashSet<Type>
     typeof(ModeOfStudyApiAssemblyMarker),
 
     typeof(ProgrammeApiAssemblyMarker),
-    typeof(MajorApiAssemblyMarker),
+    typeof(SpecializationApiAssemblyMarker),
     typeof(SubjectApiAssemblyMarker),
     typeof(PartnerAdminApiAssemblyMarker),
 };
@@ -125,7 +136,7 @@ Odin.Api.Base.Crypto.FieldEncryption.Configure(
 
 // Database
 builder.Services.AddDbContext<OdinDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 // Register base DbContext so TransactionPipelineBehaviour can resolve it
 builder.Services.AddScoped<DbContext>(sp => sp.GetRequiredService<OdinDbContext>());
 
@@ -167,26 +178,32 @@ builder.Services.AddScoped<IUserContactEmailRepository, UserContactEmailReposito
 builder.Services.AddScoped<IUserAddressRepository, UserAddressRepository>();
 
 builder.Services.AddScoped<Odin.Api.Base.Services.OpaqueUserCreationService>();
+builder.Services.AddScoped<Odin.Api.Base.Email.StudentEmailVerificationSender>();
+builder.Services.AddScoped<Odin.Api.Base.Authentication.WizardSessionService>();
 
-// Student domain
+// Student / Partner / Programme domain
 builder.Services.AddScoped<IPartnerRepository, PartnerRepository>();
 builder.Services.AddScoped<IProgrammeRepository, ProgrammeRepository>();
-builder.Services.AddScoped<IMajorRepository, MajorRepository>();
+builder.Services.AddScoped<ISpecializationRepository, SpecializationRepository>();
 builder.Services.AddScoped<ISubjectRepository, SubjectRepository>();
 builder.Services.AddScoped<IStudentRepository, StudentRepository>();
 builder.Services.AddScoped<IDocumentTypeRepository, DocumentTypeRepository>();
+
+// Letters (Phase 1: backend foundation for letter-template rendering).
+builder.Services.AddScoped<Odin.Api.Base.Letters.LetterTagResolver>();
+builder.Services.AddSingleton<Odin.Api.Base.Letters.LetterPdfRenderer>();
+builder.Services.AddScoped<Odin.Api.Base.Letters.LetterReleaseService>();
+
+// Per-enrollment activity log reader — used by admin/partner/student
+// activity endpoints to flatten EnrollmentStatusNote + StudentDocumentNote.
+builder.Services.AddScoped<Odin.Api.Base.Services.EnrollmentActivityLogReader>();
 builder.Services.AddScoped<IStudentDocumentRepository, StudentDocumentRepository>();
-builder.Services.AddScoped<IProgrammeDocumentRequirementRepository, ProgrammeDocumentRequirementRepository>();
-builder.Services.AddScoped<IEnrollmentDocumentRepository, EnrollmentDocumentRepository>();
-builder.Services.AddScoped<IEnrollmentStatusRepository, EnrollmentStatusRepository>();
-builder.Services.AddScoped<ITuitionFeeStatusRepository, TuitionFeeStatusRepository>();
 builder.Services.AddScoped<IModeOfStudyRepository, ModeOfStudyRepository>();
 builder.Services.AddScoped<IPathwayRepository, PathwayRepository>();
+builder.Services.AddScoped<IEducationLevelRepository, EducationLevelRepository>();
 builder.Services.AddScoped<IPathwayDocumentRequirementRepository, PathwayDocumentRequirementRepository>();
 builder.Services.AddScoped<IProgrammePathwayRepository, ProgrammePathwayRepository>();
-builder.Services.AddScoped<IStudentEnrollmentRepository, StudentEnrollmentRepository>();
-builder.Services.AddScoped<IFinalProjectStatusRepository, FinalProjectStatusRepository>();
-builder.Services.AddScoped<IFinalProjectRepository, FinalProjectRepository>();
+builder.Services.AddScoped<IEnrollmentRepository, EnrollmentRepository>();
 builder.Services.AddScoped<ISubjectGradeRepository, SubjectGradeRepository>();
 builder.Services.AddScoped<IStudentNoteRepository, StudentNoteRepository>();
 builder.Services.AddAuthentication("SessionToken")
@@ -195,11 +212,23 @@ builder.Services.AddAuthentication("SessionToken")
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("SuperAdminOnly", policy => policy.RequireRole(Odin.Api.Base.Authorization.AdminLevels.SuperAdministrator));
     options.AddPolicy("PartnerOnly", policy => policy.RequireRole("Partner"));
+    options.AddPolicy("StudentOnly", policy => policy.RequireRole("Student"));
+    options.AddPolicy("AdminOrPartner", policy => policy.RequireRole("Admin", "Partner"));
 });
+
+// File storage
+{
+    var provider = builder.Configuration["Storage:Provider"] ?? "Local";
+    if (!string.Equals(provider, "Local", StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException($"Unsupported Storage:Provider '{provider}' (only 'Local' is implemented).");
+    builder.Services.AddSingleton<Odin.Api.Base.Storage.IFileStorage, Odin.Api.Base.Storage.LocalFileStorage>();
+}
 
 // Cache
 builder.Services.AddTransientStateCache();
+builder.Services.AddMemoryCache();
 
 // Rate limiting — applied to all auth-sensitive endpoints (login, register, recovery)
 builder.Services.AddRateLimiter(options =>
@@ -278,6 +307,11 @@ app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+// Role-prefix guard. Restores the role gate that MapGroup("/").AllowAnonymous()
+// silently disables, so /v1/admin/* is genuinely Admin-only, /v1/partner/* is
+// Partner-only, /v1/student/me/* is Student-only. Public endpoints pass through.
+app.UseMiddleware<SharedLibrary.Basics.Opaque.Api.Middleware.RolePathGuardMiddleware>();
+app.UseMiddleware<SharedLibrary.Basics.Opaque.Api.Middleware.PartnerResolverMiddleware>();
 
 
 

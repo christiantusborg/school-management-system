@@ -19,8 +19,11 @@ public sealed class AdminPartnerV1EnableEndpoint : IEndpointMarker
     {
         var partner = await db.Partners.FirstOrDefaultAsync(p => p.PartnerId == id, ct);
         if (partner is null) return Results.NotFound();
+        if (partner.DeletedAt is not null) return Results.BadRequest("Partner is deleted — restore before enabling.");
 
-        partner.DeletedAt = null;
+        // Re-enable. DeletedAt is independent — it stays as is (null for a
+        // non-deleted partner, which is the only state we accept here).
+        partner.DisabledAt = null;
 
         var users = await db.Users
             .Where(u => u.PartnerId == id)

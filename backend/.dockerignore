@@ -1,0 +1,11 @@
+**/bin
+**/obj
+**/.vs
+**/node_modules
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/uploads
+**/.git
+**/appsettings.*.json
+!**/appsettings.json

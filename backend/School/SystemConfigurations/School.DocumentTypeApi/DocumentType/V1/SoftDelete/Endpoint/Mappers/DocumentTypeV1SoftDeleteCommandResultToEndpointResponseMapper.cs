@@ -1,5 +1,4 @@
 using School.DocumentTypeApi.DocumentType.V1.SoftDelete.Command;
-using School.DocumentTypeApi.DocumentType.V1.SoftDelete.Endpoint;
 
 namespace School.DocumentTypeApi.DocumentType.V1.SoftDelete.Endpoint.Mappers;
 

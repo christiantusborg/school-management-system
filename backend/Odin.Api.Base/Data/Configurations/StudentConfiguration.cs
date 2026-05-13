@@ -15,9 +15,15 @@ public class StudentConfiguration : IEntityTypeConfiguration<Student>
             .WithMany()
             .HasForeignKey(e => e.UserId)
             .OnDelete(DeleteBehavior.Cascade);
-        builder.HasOne(e => e.Partner)
+        builder.HasOne(e => e.Nationality)
             .WithMany()
-            .HasForeignKey(e => e.PartnerId)
+            .HasForeignKey(e => e.NationalityId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Domain quirk: Student.Languages is `ICollection<UserLanguage>`, but
+        // UserLanguage.UserId is `Guid` while Student.UserId is `string` — EF
+        // cannot wire the FK. Ignore the navigation; queries must hit the
+        // UserLanguages DbSet directly.
+        builder.Ignore(e => e.Languages);
     }
 }

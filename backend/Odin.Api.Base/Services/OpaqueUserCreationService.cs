@@ -86,12 +86,15 @@ public class OpaqueUserCreationService(
         string email,
         string role,
         Guid? partnerId = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? customPassword = null)
     {
         if (await userManager.FindByNameAsync(username) is not null)
             throw new InvalidOperationException($"Username '{username}' is already taken.");
 
-        var password    = GeneratePassword();
+        // Use admin-supplied password if provided; otherwise generate one.
+        // Trim to defend against whitespace mistakes from the wizard input.
+        var password    = string.IsNullOrWhiteSpace(customPassword) ? GeneratePassword() : customPassword.Trim();
         var credentials = await ComputeCredentials(password);
 
         var user = new ApplicationUser
@@ -136,9 +139,9 @@ public class OpaqueUserCreationService(
     /// the existing credential / KEM rows before invoking.
     /// Returns the plaintext password for one-time display to the admin.
     /// </summary>
-    public async Task<string> RegenerateCredentialsAsync(ApplicationUser user, CancellationToken ct = default)
+    public async Task<string> RegenerateCredentialsAsync(ApplicationUser user, CancellationToken ct = default, string? customPassword = null)
     {
-        var password    = GeneratePassword();
+        var password    = string.IsNullOrWhiteSpace(customPassword) ? GeneratePassword() : customPassword.Trim();
         var credentials = await ComputeCredentials(password);
 
         dbContext.OpaqueCredentials.Add(new OpaqueCredential

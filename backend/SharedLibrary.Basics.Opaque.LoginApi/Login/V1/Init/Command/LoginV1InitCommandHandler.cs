@@ -19,28 +19,27 @@ public sealed class LoginV1InitCommandHandler(
     public async Task<SuccessOrFailure<LoginV1InitCommandResult>> HandleAsync(
         LoginV1InitCommand command, CancellationToken cancellationToken)
     {
-        byte[] blindedElement;
+        byte[]? blindedElement = null;
         try
         {
             blindedElement = Convert.FromBase64String(command.BlindedElement);
-            if (blindedElement.Length != 32)
-                return TimingSafeFakeResult();
+            if (blindedElement.Length != 32) blindedElement = null;
         }
-        catch
-        {
-            return TimingSafeFakeResult();
-        }
+        catch { /* leave null */ }
+
+        if (blindedElement is null)
+            return TimingSafeFakeResult(null);
 
         var user = await userManager.FindByNameAsync(command.Username);
-        if (user is null || !user.IsEnabled)
-            return TimingSafeFakeResult();
+        if (user is null || !user.IsEnabled || !user.EmailConfirmed || user.DeletedAt is not null)
+            return TimingSafeFakeResult(blindedElement);
 
         var spec = new Specification<OpaqueCredential>()
             .AddWhere(x => x.UserId == user.Id);
 
         var credential = await opaqueCredentialRepository.GetAsync(spec, cancellationToken).ConfigureAwait(false);
         if (credential is null)
-            return TimingSafeFakeResult();
+            return TimingSafeFakeResult(blindedElement);
 
         var evaluatedElement = opaqueServer.BlindEvaluate(credential.OprfSeed, blindedElement);
         var challenge = opaqueServer.GenerateChallenge();
@@ -64,9 +63,26 @@ public sealed class LoginV1InitCommandHandler(
         });
     }
 
-    private SuccessOrFailure<LoginV1InitCommandResult> TimingSafeFakeResult()
+    private SuccessOrFailure<LoginV1InitCommandResult> TimingSafeFakeResult(byte[]? blindedElement)
     {
-        var fakeEvaluated = opaqueServer.GenerateChallenge();
+        // Produce a syntactically-valid Ristretto255 evaluated element so the client
+        // doesn't get a decode error (which would distinguish unknown-username from
+        // wrong-password). When the client's blinded element is itself malformed, we
+        // can't compute a real point and fall back to random bytes — that path already
+        // implies a broken request, and the user will only see the generic
+        // "invalid credentials" error from the finish step.
+        byte[] fakeEvaluated;
+        try
+        {
+            if (blindedElement is null) throw new InvalidOperationException("no blinded element");
+            var fakeSeed = opaqueServer.GenerateOprfSeed();
+            fakeEvaluated = opaqueServer.BlindEvaluate(fakeSeed, blindedElement);
+        }
+        catch
+        {
+            fakeEvaluated = opaqueServer.GenerateChallenge();
+        }
+
         var fakeChallenge = opaqueServer.GenerateChallenge();
         var fakeLoginId = guidProvider.NewId();
 

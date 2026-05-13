@@ -1,5 +1,4 @@
 using School.DocumentTypeApi.DocumentType.V1.Create.Command;
-using School.DocumentTypeApi.DocumentType.V1.Create.Endpoint.Mappers;
 
 namespace School.DocumentTypeApi.DocumentType.V1.Create.Endpoint;
 

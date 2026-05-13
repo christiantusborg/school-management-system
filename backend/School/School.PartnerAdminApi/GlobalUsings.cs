@@ -21,6 +21,8 @@ global using QuVian.SharedLibrary.Basics.SuccessOrFailures.Extensions;
 global using QuVian.SharedLibrary.Basics.SuccessOrFailures.Helpers;
 global using QuVian.SharedLibrary.Validations;
 global using SharedLibrary.Basics.Opaque.Domains;
+global using SharedLibrary.Basics.Opaque.Domains.Partners;
+global using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 global using SharedLibrary.Basics.Opaque.MessageQueues;
 global using Odin.Api.Base.Authentication;
 global using Odin.Api.Base.Services;

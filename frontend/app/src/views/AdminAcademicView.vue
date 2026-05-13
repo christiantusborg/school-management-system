@@ -50,6 +50,13 @@
           </div>
         </div>
         <div class="field" style="margin-top:0.85rem">
+          <label>Awards on completion</label>
+          <select v-model="newProg.awardEducationLevelId">
+            <option :value="null">— none —</option>
+            <option v-for="el in educationLevels" :key="el.educationLevelId" :value="el.educationLevelId">{{ el.name }}</option>
+          </select>
+        </div>
+        <div class="field" style="margin-top:0.85rem">
           <label>Pathways</label>
           <div class="pathway-grid">
             <label v-for="p in pathways" :key="p.pathwayId" class="pathway-row">
@@ -78,7 +85,8 @@
           <div class="prog-header-left">
             <strong class="prog-name">{{ prog.name }}</strong>
             <span class="badge-code">{{ prog.code }}</span>
-            <span class="badge-count">{{ majorsFor(prog.programmeId).length }} major{{ majorsFor(prog.programmeId).length !== 1 ? 's' : '' }}</span>
+            <span class="badge-count">{{ specializationsFor(prog.programmeId).length }} specialization{{ specializationsFor(prog.programmeId).length !== 1 ? 's' : '' }}</span>
+            <span v-if="awardNameFor(progAward[prog.programmeId])" class="badge-count">awards {{ awardNameFor(progAward[prog.programmeId]) }}</span>
           </div>
           <div class="prog-header-right">
             <button class="btn-del" @click="softDeleteProgramme(prog)">Delete</button>
@@ -108,43 +116,69 @@
             <div v-if="pathwayErr[prog.programmeId]" class="form-error">{{ pathwayErr[prog.programmeId] }}</div>
           </div>
 
-          <div class="section-label">MAJORS &amp; SUBJECTS</div>
+          <div class="section-label">AWARD ON COMPLETION</div>
+          <div class="pathway-edit-block">
+            <select :value="progAward[prog.programmeId] ?? ''"
+                    @change="setAwardForProg(prog, $event.target.value || null)">
+              <option value="">— none —</option>
+              <option v-for="el in educationLevels" :key="el.educationLevelId" :value="el.educationLevelId">{{ el.name }}</option>
+            </select>
+            <div v-if="awardBusy[prog.programmeId]" class="form-error-inline">Saving…</div>
+            <div v-if="awardErr[prog.programmeId]" class="form-error">{{ awardErr[prog.programmeId] }}</div>
+          </div>
 
-          <div v-for="maj in majorsFor(prog.programmeId)" :key="maj.majorId" class="maj-card">
-            <div class="maj-row" @click="toggleMaj(maj.majorId)">
-              <span class="maj-arrow">{{ xMaj === maj.majorId ? '▼' : '▶' }}</span>
+          <div class="section-label">LETTERS</div>
+          <div class="pathway-edit-block">
+            <LetterButtonsRow :programme-id="prog.programmeId" :programme-name="prog.name" />
+          </div>
+
+          <div class="section-label">SPECIALIZATIONS &amp; SUBJECTS</div>
+
+          <div v-for="maj in specializationsFor(prog.programmeId)" :key="maj.specializationId" class="maj-card">
+            <div class="maj-row" @click="toggleMaj(maj.specializationId)">
+              <span class="maj-arrow">{{ xMaj === maj.specializationId ? '▼' : '▶' }}</span>
               <strong class="maj-name">{{ maj.name }}</strong>
-              <span class="maj-count">{{ subjectsFor(maj.majorId).length }} subject{{ subjectsFor(maj.majorId).length !== 1 ? 's' : '' }}</span>
-              <button class="btn-del-sm" @click.stop="softDeleteMajor(maj)">Remove</button>
+              <span class="maj-count">{{ subjectsFor(maj.specializationId).length }} subject{{ subjectsFor(maj.specializationId).length !== 1 ? 's' : '' }}</span>
+              <input
+                class="inp-lang-inline"
+                :value="maj.instructionLanguage || ''"
+                placeholder="instruction language"
+                @click.stop
+                @blur="updateSpecializationLanguage(maj, $event.target.value)"
+                @keyup.enter="$event.target.blur()"
+                title="Instruction language"
+              />
+              <button class="btn-del-sm" @click.stop="softDeleteSpecialization(maj)">Remove</button>
             </div>
 
-            <div v-if="xMaj === maj.majorId" class="subj-table">
+            <div v-if="xMaj === maj.specializationId" class="subj-table">
               <div class="subj-col-header">
                 <span class="col-code">Module Code</span>
                 <span class="col-name">Module Name</span>
                 <span class="col-ects">ECTS</span>
                 <span class="col-act"></span>
               </div>
-              <div v-if="subjectsFor(maj.majorId).length === 0" class="subj-empty">No modules yet.</div>
-              <div v-for="s in subjectsFor(maj.majorId)" :key="s.subjectId" class="subj-row">
+              <div v-if="subjectsFor(maj.specializationId).length === 0" class="subj-empty">No modules yet.</div>
+              <div v-for="s in subjectsFor(maj.specializationId)" :key="s.subjectId" class="subj-row">
                 <span class="col-code scode">{{ s.code || '—' }}</span>
                 <span class="col-name">{{ s.name }}</span>
                 <span class="col-ects ects-val">{{ s.ects }}</span>
                 <span class="col-act"><button class="btn-x" @click="softDeleteSubject(s)">✕</button></span>
               </div>
               <div class="add-subj-row">
-                <input v-model="sf[maj.majorId + '_code']" class="inp-code col-code" placeholder="Code" />
-                <input v-model="sf[maj.majorId + '_n']" class="inp-name col-name" placeholder="Module name" @keyup.enter="addSubject(maj.majorId)" />
-                <input v-model.number="sf[maj.majorId + '_e']" class="inp-ects col-ects" type="number" min="1" placeholder="15" />
-                <span class="col-act"><button class="btn-add" @click="addSubject(maj.majorId)">+ Add</button></span>
+                <input v-model="sf[maj.specializationId + '_code']" class="inp-code col-code" placeholder="Code" />
+                <input v-model="sf[maj.specializationId + '_n']" class="inp-name col-name" placeholder="Module name" @keyup.enter="addSubject(maj.specializationId)" />
+                <input v-model.number="sf[maj.specializationId + '_e']" class="inp-ects col-ects" type="number" min="1" placeholder="15" />
+                <span class="col-act"><button class="btn-add" @click="addSubject(maj.specializationId)">+ Add</button></span>
               </div>
-              <p v-if="sf[maj.majorId + '_err']" class="form-error">{{ sf[maj.majorId + '_err'] }}</p>
+              <p v-if="sf[maj.specializationId + '_err']" class="form-error">{{ sf[maj.specializationId + '_err'] }}</p>
             </div>
           </div>
 
           <div class="add-maj-row">
-            <input v-model="mf[prog.programmeId]" class="inp-maj" placeholder="New major name…" @keyup.enter="addMajor(prog.programmeId)" />
-            <button class="btn-primary-sm" @click="addMajor(prog.programmeId)">+ Add Major</button>
+            <input v-model="mf[prog.programmeId]" class="inp-maj" placeholder="New specialization name…" @keyup.enter="addSpecialization(prog.programmeId)" />
+            <input v-model="mfLang[prog.programmeId]" class="inp-lang" placeholder="Instruction language (e.g. English)" />
+            <button class="btn-primary-sm" @click="addSpecialization(prog.programmeId)">+ Add Specialization</button>
             <span v-if="mfErr[prog.programmeId]" class="form-error-inline">{{ mfErr[prog.programmeId] }}</span>
           </div>
         </div>
@@ -159,7 +193,7 @@
         <div class="deleted-section-header">
           <span>🗑 Soft-Deleted Items</span>
           <span v-if="loadingDeleted" class="deleting-hint">Loading…</span>
-          <span v-else class="deleting-hint">Permanent delete cascades — deleting a programme removes all its majors and subjects.</span>
+          <span v-else class="deleting-hint">Permanent delete cascades — deleting a programme removes all its specializations and subjects.</span>
         </div>
 
         <!-- ── Group 1: Deleted Programmes + their deleted children ── -->
@@ -184,8 +218,8 @@
             </div>
           </div>
 
-          <!-- Deleted majors under this deleted programme -->
-          <template v-for="maj in deletedMajors.filter(m => m.programmeId === prog.programmeId)" :key="maj.majorId">
+          <!-- Deleted specializations under this deleted programme -->
+          <template v-for="maj in deletedSpecializations.filter(m => m.programmeId === prog.programmeId)" :key="maj.specializationId">
             <div class="del-card del-card-child">
               <div class="del-card-header">
                 <div class="del-card-title">
@@ -195,15 +229,15 @@
                 </div>
                 <div class="del-card-actions">
                   <button class="btn-restore" disabled title="Restore the parent programme first">Restore</button>
-                  <button class="btn-perm-del" :disabled="!!deleting[maj.majorId]" @click="permanentDeleteMajor(maj)">
-                    {{ deleting[maj.majorId] === 'delete' ? 'Deleting…' : 'Permanent Delete' }}
+                  <button class="btn-perm-del" :disabled="!!deleting[maj.specializationId]" @click="permanentDeleteSpecialization(maj)">
+                    {{ deleting[maj.specializationId] === 'delete' ? 'Deleting…' : 'Permanent Delete' }}
                   </button>
                 </div>
               </div>
             </div>
 
-            <!-- Deleted subjects under this deleted major -->
-            <div v-for="subj in deletedSubjects.filter(s => s.majorId === maj.majorId)" :key="subj.subjectId" class="del-card del-card-grandchild">
+            <!-- Deleted subjects under this deleted specialization -->
+            <div v-for="subj in deletedSubjects.filter(s => s.specializationId === maj.specializationId)" :key="subj.subjectId" class="del-card del-card-grandchild">
               <div class="del-card-header">
                 <div class="del-card-title">
                   <span class="del-icon">📄</span>
@@ -213,7 +247,7 @@
                   <span class="del-date">Deleted {{ fmtDate(subj.deletedAt) }}</span>
                 </div>
                 <div class="del-card-actions">
-                  <button class="btn-restore" disabled title="Restore the parent major first">Restore</button>
+                  <button class="btn-restore" disabled title="Restore the parent specialization first">Restore</button>
                   <button class="btn-perm-del" :disabled="!!deleting[subj.subjectId]" @click="permanentDeleteSubject(subj)">
                     {{ deleting[subj.subjectId] === 'delete' ? 'Deleting…' : 'Permanent Delete' }}
                   </button>
@@ -222,11 +256,11 @@
             </div>
           </template>
 
-          <!-- Deleted subjects whose major is active but programme is deleted -->
-          <template v-for="subj in deletedSubjects.filter(s => !deletedMajors.find(m => m.majorId === s.majorId) && majorProgrammeId(s.majorId) === prog.programmeId)" :key="subj.subjectId">
+          <!-- Deleted subjects whose specialization is active but programme is deleted -->
+          <template v-for="subj in deletedSubjects.filter(s => !deletedSpecializations.find(m => m.specializationId === s.specializationId) && specializationProgrammeId(s.specializationId) === prog.programmeId)" :key="subj.subjectId">
             <div class="del-card del-card-child">
               <div class="del-breadcrumb">
-                <span class="bc-item bc-active">📂 {{ majorNameFor(subj.majorId) }}</span>
+                <span class="bc-item bc-active">📂 {{ specializationNameFor(subj.specializationId) }}</span>
               </div>
               <div class="del-card-header">
                 <div class="del-card-title">
@@ -247,13 +281,13 @@
           </template>
         </template>
 
-        <!-- ── Group 2: Deleted Majors whose Programme is ACTIVE ── -->
-        <template v-for="maj in deletedMajors.filter(m => !deletedProgrammes.find(p => p.programmeId === m.programmeId))" :key="maj.majorId">
+        <!-- ── Group 2: Deleted Specializations whose Programme is ACTIVE ── -->
+        <template v-for="maj in deletedSpecializations.filter(m => !deletedProgrammes.find(p => p.programmeId === m.programmeId))" :key="maj.specializationId">
           <!-- Grayed parent context -->
           <div class="del-breadcrumb-row">
             <span class="bc-item bc-active">📁 {{ progNameFor(maj.programmeId) }}</span>
           </div>
-          <!-- Deleted major -->
+          <!-- Deleted specialization -->
           <div class="del-card del-card-child">
             <div class="del-card-header">
               <div class="del-card-title">
@@ -262,18 +296,18 @@
                 <span class="del-date">Deleted {{ fmtDate(maj.deletedAt) }}</span>
               </div>
               <div class="del-card-actions">
-                <button class="btn-restore" :disabled="!!deleting[maj.majorId]" @click="restoreMajor(maj)">
-                  {{ deleting[maj.majorId] === 'restore' ? 'Restoring…' : 'Restore' }}
+                <button class="btn-restore" :disabled="!!deleting[maj.specializationId]" @click="restoreSpecialization(maj)">
+                  {{ deleting[maj.specializationId] === 'restore' ? 'Restoring…' : 'Restore' }}
                 </button>
-                <button class="btn-perm-del" :disabled="!!deleting[maj.majorId]" @click="permanentDeleteMajor(maj)">
-                  {{ deleting[maj.majorId] === 'delete' ? 'Deleting…' : 'Permanent Delete' }}
+                <button class="btn-perm-del" :disabled="!!deleting[maj.specializationId]" @click="permanentDeleteSpecialization(maj)">
+                  {{ deleting[maj.specializationId] === 'delete' ? 'Deleting…' : 'Permanent Delete' }}
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Deleted subjects under this deleted major -->
-          <div v-for="subj in deletedSubjects.filter(s => s.majorId === maj.majorId)" :key="subj.subjectId" class="del-card del-card-grandchild">
+          <!-- Deleted subjects under this deleted specialization -->
+          <div v-for="subj in deletedSubjects.filter(s => s.specializationId === maj.specializationId)" :key="subj.subjectId" class="del-card del-card-grandchild">
             <div class="del-card-header">
               <div class="del-card-title">
                 <span class="del-icon">📄</span>
@@ -283,7 +317,7 @@
                 <span class="del-date">Deleted {{ fmtDate(subj.deletedAt) }}</span>
               </div>
               <div class="del-card-actions">
-                <button class="btn-restore" disabled title="Restore the parent major first">Restore</button>
+                <button class="btn-restore" disabled title="Restore the parent specialization first">Restore</button>
                 <button class="btn-perm-del" :disabled="!!deleting[subj.subjectId]" @click="permanentDeleteSubject(subj)">
                   {{ deleting[subj.subjectId] === 'delete' ? 'Deleting…' : 'Permanent Delete' }}
                 </button>
@@ -292,12 +326,12 @@
           </div>
         </template>
 
-        <!-- ── Group 3: Deleted Subjects whose Major AND Programme are both ACTIVE ── -->
-        <template v-for="subj in deletedSubjects.filter(s => !deletedMajors.find(m => m.majorId === s.majorId) && !deletedProgrammes.find(p => p.programmeId === majorProgrammeId(s.majorId)))" :key="subj.subjectId">
+        <!-- ── Group 3: Deleted Subjects whose Specialization AND Programme are both ACTIVE ── -->
+        <template v-for="subj in deletedSubjects.filter(s => !deletedSpecializations.find(m => m.specializationId === s.specializationId) && !deletedProgrammes.find(p => p.programmeId === specializationProgrammeId(s.specializationId)))" :key="subj.subjectId">
           <div class="del-breadcrumb-row">
-            <span class="bc-item bc-active">📁 {{ progNameFor(majorProgrammeId(subj.majorId)) }}</span>
+            <span class="bc-item bc-active">📁 {{ progNameFor(specializationProgrammeId(subj.specializationId)) }}</span>
             <span class="bc-sep">›</span>
-            <span class="bc-item bc-active">📂 {{ majorNameFor(subj.majorId) }}</span>
+            <span class="bc-item bc-active">📂 {{ specializationNameFor(subj.specializationId) }}</span>
           </div>
           <div class="del-card del-card-grandchild">
             <div class="del-card-header">
@@ -320,7 +354,7 @@
           </div>
         </template>
 
-        <div v-if="!loadingDeleted && deletedProgrammes.length === 0 && deletedMajors.length === 0 && deletedSubjects.length === 0"
+        <div v-if="!loadingDeleted && deletedProgrammes.length === 0 && deletedSpecializations.length === 0 && deletedSubjects.length === 0"
              class="del-empty">No soft-deleted items.</div>
       </template>
 
@@ -333,6 +367,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { auth } from '../store/auth.js'
 import api from '../api/client.js'
+import LetterButtonsRow from '../components/letters/LetterButtonsRow.vue'
 
 const router = useRouter()
 function logout() { auth.logout(); router.push('/login') }
@@ -341,14 +376,14 @@ function logout() { auth.logout(); router.push('/login') }
 const loading    = ref(true)
 const loadError  = ref('')
 const programmes = ref([])
-const majors     = ref([])
+const specializations     = ref([])
 const subjects   = ref([])
 
 // ── Deleted data ───────────────────────────────────────────────────────────────
 const showDeleted      = ref(false)
 const loadingDeleted   = ref(false)
 const deletedProgrammes = ref([])
-const deletedMajors     = ref([])
+const deletedSpecializations     = ref([])
 const deletedSubjects   = ref([])
 const deleting = reactive({}) // id → bool
 
@@ -361,7 +396,11 @@ function togglePathwaySection(id) { xPathway.value = xPathway.value === id ? nul
 
 // ── Forms ──────────────────────────────────────────────────────────────────────
 const showAddProg = ref(false)
-const newProg = reactive({ name: '', code: '', saving: false, error: '', pathwayIds: [] })
+const newProg = reactive({ name: '', code: '', saving: false, error: '', pathwayIds: [], awardEducationLevelId: null })
+const educationLevels = ref([])
+const progAward = reactive({})       // programmeId → awardEducationLevelId | null
+const awardBusy = reactive({})       // programmeId → bool
+const awardErr = reactive({})        // programmeId → string
 
 // ── Pathways ───────────────────────────────────────────────────────────────────
 const pathways = ref([])
@@ -370,6 +409,7 @@ const pathwayBusy = reactive({})   // programmeId → bool
 const pathwayErr = reactive({})    // programmeId → string
 const mf    = reactive({})
 const mfErr = reactive({})
+const mfLang = reactive({})  // programmeId → instruction language string
 const sf    = reactive({})
 
 // ── Load active ────────────────────────────────────────────────────────────────
@@ -377,18 +417,21 @@ async function loadAll() {
   loading.value = true
   loadError.value = ''
   try {
-    const [pRes, mRes, sRes, pathRes] = await Promise.all([
+    const [pRes, mRes, sRes, pathRes, elRes] = await Promise.all([
       api.get('/v1/school/programmes?ownership=core'),
-      api.get('/v1/school/majors'),
+      api.get('/v1/school/specializations'),
       api.get('/v1/school/subjects'),
       api.get('/v1/school/system-config/pathways'),
+      api.get('/v1/school/system-config/education-levels'),
     ])
     programmes.value = pRes.data.items ?? []
-    majors.value     = mRes.data.items ?? []
+    specializations.value     = mRes.data.items ?? []
     subjects.value   = sRes.data.items ?? []
     pathways.value   = pathRes.data.items ?? []
+    educationLevels.value = elRes.data.items ?? []
     for (const p of programmes.value) {
       progPathways[p.programmeId] = p.pathwayIds ?? []
+      progAward[p.programmeId] = p.awardEducationLevelId ?? null
     }
   } catch (e) {
     loadError.value = e.response?.data?.message ?? e.message ?? 'Failed to load'
@@ -403,11 +446,11 @@ async function loadDeleted() {
   try {
     const [pRes, mRes, sRes] = await Promise.all([
       api.get('/v1/school/programmes?deleted=true'),
-      api.get('/v1/school/majors?deleted=true'),
+      api.get('/v1/school/specializations?deleted=true'),
       api.get('/v1/school/subjects?deleted=true'),
     ])
     deletedProgrammes.value = pRes.data.items ?? []
-    deletedMajors.value     = mRes.data.items ?? []
+    deletedSpecializations.value     = mRes.data.items ?? []
     deletedSubjects.value   = sRes.data.items ?? []
   } catch (e) {
     loadError.value = e.response?.data?.message ?? e.message ?? 'Failed to load deleted items'
@@ -424,21 +467,22 @@ function toggleShowDeleted() {
 onMounted(loadAll)
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-const majorsFor   = progId  => majors.value.filter(m => m.programmeId === progId)
-const subjectsFor = majorId => subjects.value.filter(s => s.majorId === majorId)
+const awardNameFor = id => id ? (educationLevels.value.find(e => e.educationLevelId === id)?.name ?? null) : null
+const specializationsFor   = progId  => specializations.value.filter(m => m.programmeId === progId)
+const subjectsFor = specializationId => subjects.value.filter(s => s.specializationId === specializationId)
 const progNameFor = progId  => {
   return programmes.value.find(p => p.programmeId === progId)?.name
       ?? deletedProgrammes.value.find(p => p.programmeId === progId)?.name
       ?? '(unknown)'
 }
-const majorNameFor = majorId => {
-  return majors.value.find(m => m.majorId === majorId)?.name
-      ?? deletedMajors.value.find(m => m.majorId === majorId)?.name
+const specializationNameFor = specializationId => {
+  return specializations.value.find(m => m.specializationId === specializationId)?.name
+      ?? deletedSpecializations.value.find(m => m.specializationId === specializationId)?.name
       ?? '(unknown)'
 }
-const majorProgrammeId = majorId => {
-  return majors.value.find(m => m.majorId === majorId)?.programmeId
-      ?? deletedMajors.value.find(m => m.majorId === majorId)?.programmeId
+const specializationProgrammeId = specializationId => {
+  return specializations.value.find(m => m.specializationId === specializationId)?.programmeId
+      ?? deletedSpecializations.value.find(m => m.specializationId === specializationId)?.programmeId
       ?? null
 }
 
@@ -451,6 +495,7 @@ function cancelAddProg() {
   showAddProg.value = false
   newProg.name = ''; newProg.code = ''; newProg.error = ''
   newProg.pathwayIds = []
+  newProg.awardEducationLevelId = null
 }
 
 function toggleNewPathway(id) {
@@ -467,11 +512,13 @@ async function addProgramme() {
       name: newProg.name.trim(),
       code: newProg.code.trim().toUpperCase(),
       pathwayIds: [...newProg.pathwayIds],
+      awardEducationLevelId: newProg.awardEducationLevelId,
     })
     const created = await api.get(`/v1/school/programmes/${res.data.programmeId}`)
     programmes.value.push(created.data)
     progPathways[created.data.programmeId] = created.data.pathwayIds ?? []
-    newProg.name = ''; newProg.code = ''; newProg.pathwayIds = []
+    progAward[created.data.programmeId] = created.data.awardEducationLevelId ?? null
+    newProg.name = ''; newProg.code = ''; newProg.pathwayIds = []; newProg.awardEducationLevelId = null
     showAddProg.value = false
   } catch (e) {
     newProg.error = e.response?.data?.message ?? e.message ?? 'Failed to save'
@@ -494,12 +541,32 @@ async function togglePathwayForProg(prog, pathwayId) {
       name: prog.name,
       code: prog.code,
       pathwayIds: current,
+      awardEducationLevelId: progAward[id] ?? prog.awardEducationLevelId ?? null,
     })
     progPathways[id] = current
   } catch (e) {
     pathwayErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save pathways'
   } finally {
     pathwayBusy[id] = false
+  }
+}
+
+async function setAwardForProg(prog, awardEducationLevelId) {
+  const id = prog.programmeId
+  awardBusy[id] = true
+  awardErr[id] = ''
+  try {
+    await api.put(`/v1/school/programmes/${id}`, {
+      name: prog.name,
+      code: prog.code,
+      awardEducationLevelId,
+    })
+    progAward[id] = awardEducationLevelId
+    prog.awardEducationLevelId = awardEducationLevelId
+  } catch (e) {
+    awardErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save award'
+  } finally {
+    awardBusy[id] = false
   }
 }
 
@@ -512,39 +579,57 @@ async function softDeleteProgramme(prog) {
   } catch (e) { loadError.value = e.response?.data?.message ?? e.message ?? 'Delete failed' }
 }
 
-async function addMajor(progId) {
+async function addSpecialization(progId) {
   const name = (mf[progId] ?? '').trim()
-  if (!name) { mfErr[progId] = 'Major name is required.'; return }
+  if (!name) { mfErr[progId] = 'Specialization name is required.'; return }
   mfErr[progId] = ''
   try {
-    const res = await api.post('/v1/school/majors', { programmeId: progId, name })
-    const created = await api.get(`/v1/school/majors/${res.data.majorId}`)
-    majors.value.push(created.data)
+    // OfferAcceptanceMode UI was dropped (single workflow now: student
+    // always accepts the offer). Send the legacy default so the column
+    // doesn't drift on new rows.
+    const instructionLanguage = (mfLang[progId] ?? '').trim() || null
+    const res = await api.post('/v1/school/specializations', { programmeId: progId, name, offerAcceptanceMode: 'StudentAccept', instructionLanguage })
+    const created = await api.get(`/v1/school/specializations/${res.data.specializationId}`)
+    specializations.value.push(created.data)
     mf[progId] = ''
+    mfLang[progId] = ''
   } catch (e) { mfErr[progId] = e.response?.data?.message ?? e.message ?? 'Failed to save' }
 }
 
-async function softDeleteMajor(maj) {
+async function updateSpecializationLanguage(maj, raw) {
+  const next = (raw ?? '').trim()
+  const previous = maj.instructionLanguage ?? ''
+  if (next === previous) return
+  maj.instructionLanguage = next || null
   try {
-    await api.delete(`/v1/school/majors/${maj.majorId}`)
-    majors.value = majors.value.filter(m => m.majorId !== maj.majorId)
-    if (xMaj.value === maj.majorId) xMaj.value = null
+    await api.put(`/v1/school/specializations/${maj.specializationId}`, { instructionLanguage: next })
+  } catch (e) {
+    maj.instructionLanguage = previous || null
+    loadError.value = e.response?.data?.message ?? e.message ?? 'Failed to update instruction language'
+  }
+}
+
+async function softDeleteSpecialization(maj) {
+  try {
+    await api.delete(`/v1/school/specializations/${maj.specializationId}`)
+    specializations.value = specializations.value.filter(m => m.specializationId !== maj.specializationId)
+    if (xMaj.value === maj.specializationId) xMaj.value = null
     if (showDeleted.value) await loadDeleted()
   } catch (e) { loadError.value = e.response?.data?.message ?? e.message ?? 'Delete failed' }
 }
 
-async function addSubject(majorId) {
-  const errKey = majorId + '_err'
-  const name = (sf[majorId + '_n'] ?? '').trim()
-  const code = (sf[majorId + '_code'] ?? '').trim()
-  const ects = Number(sf[majorId + '_e']) || 15
+async function addSubject(specializationId) {
+  const errKey = specializationId + '_err'
+  const name = (sf[specializationId + '_n'] ?? '').trim()
+  const code = (sf[specializationId + '_code'] ?? '').trim()
+  const ects = Number(sf[specializationId + '_e']) || 15
   if (!name) { sf[errKey] = 'Module name is required.'; return }
   sf[errKey] = ''
   try {
-    const res = await api.post('/v1/school/subjects', { majorId, code, name, ects })
+    const res = await api.post('/v1/school/subjects', { specializationId, code, name, ects })
     const created = await api.get(`/v1/school/subjects/${res.data.subjectId}`)
     subjects.value.push(created.data)
-    sf[majorId + '_code'] = ''; sf[majorId + '_n'] = ''; sf[majorId + '_e'] = 15
+    sf[specializationId + '_code'] = ''; sf[specializationId + '_n'] = ''; sf[specializationId + '_e'] = 15
   } catch (e) { sf[errKey] = e.response?.data?.message ?? e.message ?? 'Failed to save' }
 }
 
@@ -567,14 +652,14 @@ async function restoreSubject(subj) {
   finally { delete deleting[subj.subjectId] }
 }
 
-async function restoreMajor(maj) {
-  deleting[maj.majorId] = 'restore'
+async function restoreSpecialization(maj) {
+  deleting[maj.specializationId] = 'restore'
   try {
-    await api.post(`/v1/school/majors/${maj.majorId}/restore`)
-    deletedMajors.value = deletedMajors.value.filter(m => m.majorId !== maj.majorId)
+    await api.post(`/v1/school/specializations/${maj.specializationId}/restore`)
+    deletedSpecializations.value = deletedSpecializations.value.filter(m => m.specializationId !== maj.specializationId)
     await loadAll()
   } catch (e) { loadError.value = e.response?.data?.message ?? e.message ?? 'Restore failed' }
-  finally { delete deleting[maj.majorId] }
+  finally { delete deleting[maj.specializationId] }
 }
 
 async function restoreProgramme(prog) {
@@ -597,39 +682,39 @@ async function permanentDeleteSubject(subj) {
   finally { delete deleting[subj.subjectId] }
 }
 
-async function permanentDeleteMajor(maj) {
-  deleting[maj.majorId] = 'delete'
+async function permanentDeleteSpecialization(maj) {
+  deleting[maj.specializationId] = 'delete'
   try {
-    const allSubjects = [...subjects.value, ...deletedSubjects.value].filter(s => s.majorId === maj.majorId)
+    const allSubjects = [...subjects.value, ...deletedSubjects.value].filter(s => s.specializationId === maj.specializationId)
     for (const s of allSubjects) {
       await api.delete(`/v1/school/subjects/${s.subjectId}/permanent`)
     }
-    await api.delete(`/v1/school/majors/${maj.majorId}/permanent`)
-    subjects.value        = subjects.value.filter(s => s.majorId !== maj.majorId)
-    deletedSubjects.value = deletedSubjects.value.filter(s => s.majorId !== maj.majorId)
-    deletedMajors.value   = deletedMajors.value.filter(m => m.majorId !== maj.majorId)
+    await api.delete(`/v1/school/specializations/${maj.specializationId}/permanent`)
+    subjects.value        = subjects.value.filter(s => s.specializationId !== maj.specializationId)
+    deletedSubjects.value = deletedSubjects.value.filter(s => s.specializationId !== maj.specializationId)
+    deletedSpecializations.value   = deletedSpecializations.value.filter(m => m.specializationId !== maj.specializationId)
   } catch (e) { loadError.value = e.response?.data?.message ?? e.message ?? 'Permanent delete failed' }
-  finally { delete deleting[maj.majorId] }
+  finally { delete deleting[maj.specializationId] }
 }
 
 async function permanentDeleteProgramme(prog) {
   deleting[prog.programmeId] = 'delete'
   try {
-    const allMajors = [...majors.value, ...deletedMajors.value].filter(m => m.programmeId === prog.programmeId)
-    for (const maj of allMajors) {
-      const allSubjects = [...subjects.value, ...deletedSubjects.value].filter(s => s.majorId === maj.majorId)
+    const allSpecializations = [...specializations.value, ...deletedSpecializations.value].filter(m => m.programmeId === prog.programmeId)
+    for (const maj of allSpecializations) {
+      const allSubjects = [...subjects.value, ...deletedSubjects.value].filter(s => s.specializationId === maj.specializationId)
       for (const s of allSubjects) {
         await api.delete(`/v1/school/subjects/${s.subjectId}/permanent`)
       }
-      await api.delete(`/v1/school/majors/${maj.majorId}/permanent`)
+      await api.delete(`/v1/school/specializations/${maj.specializationId}/permanent`)
     }
     await api.delete(`/v1/school/programmes/${prog.programmeId}/permanent`)
     const progId = prog.programmeId
-    const majorIds = allMajors.map(m => m.majorId)
-    subjects.value          = subjects.value.filter(s => !majorIds.includes(s.majorId))
-    deletedSubjects.value   = deletedSubjects.value.filter(s => !majorIds.includes(s.majorId))
-    majors.value            = majors.value.filter(m => m.programmeId !== progId)
-    deletedMajors.value     = deletedMajors.value.filter(m => m.programmeId !== progId)
+    const specializationIds = allSpecializations.map(m => m.specializationId)
+    subjects.value          = subjects.value.filter(s => !specializationIds.includes(s.specializationId))
+    deletedSubjects.value   = deletedSubjects.value.filter(s => !specializationIds.includes(s.specializationId))
+    specializations.value            = specializations.value.filter(m => m.programmeId !== progId)
+    deletedSpecializations.value     = deletedSpecializations.value.filter(m => m.programmeId !== progId)
     programmes.value        = programmes.value.filter(p => p.programmeId !== progId)
     deletedProgrammes.value = deletedProgrammes.value.filter(p => p.programmeId !== progId)
   } catch (e) { loadError.value = e.response?.data?.message ?? e.message ?? 'Permanent delete failed' }
@@ -710,7 +795,7 @@ async function permanentDeleteProgramme(prog) {
 .prog-body { border-top: 1.5px solid #e8edf4; padding: 0 0 0.75rem; }
 .section-label { font-size: 0.69rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #999; padding: 0.75rem 1.4rem 0.4rem; }
 
-/* Major */
+/* Specialization */
 .maj-card { border-top: 1px solid #edf1f7; }
 .maj-card:first-of-type { border-top: none; }
 .maj-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 1.4rem; cursor: pointer; user-select: none; }
@@ -742,6 +827,13 @@ async function permanentDeleteProgramme(prog) {
 .add-maj-row { display: flex; align-items: center; gap: 0.55rem; margin: 0.65rem 1.4rem 0; padding-top: 0.65rem; border-top: 1px dashed #dde6f0; }
 .inp-maj { flex: 1; padding: 0.42rem 0.75rem; border: 1.5px solid #ccc; border-radius: 6px; font-size: 0.87rem; outline: none; }
 .inp-maj:focus { border-color: #003366; }
+.inp-lang { padding: 0.42rem 0.6rem; border: 1.5px solid #ccc; border-radius: 6px; font-size: 0.82rem; background: #fff; outline: none; min-width: 12rem; }
+.inp-lang:focus { border-color: #003366; }
+.inp-lang-inline { font-size: 0.72rem; border: 1px solid #cbd5e0; background: #fff; border-radius: 4px; padding: 2px 6px; min-width: 10rem; outline: none; color: #1a2d4f; }
+.inp-lang-inline:focus { border-color: #003366; }
+.badge-mode { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+.badge-mode-student { background: #eef3fb; color: #1a4d8c; }
+.badge-mode-auto { background: #eaf6ec; color: #226c3b; }
 
 /* Deleted section */
 .deleted-section-header {

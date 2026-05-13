@@ -1,185 +1,171 @@
+using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
+using School.PartnerAdminApi.Partner.V1.MyUsers;
+
 namespace School.PartnerAdminApi.Partner.V1.MyPrograms.Endpoint;
 
-[Route("/v1/partner/my-programs/{id:guid}")]
+[Route("/v1/partner/my-programs/{programmeId:guid}")]
 [EndpointTag("Partner.MyPrograms")]
 public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
 {
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
-        app.MapPatch(Route, EndpointHandlerAsync)
-            .RequireAuthorization("PartnerOnly");
+        app.MapPatch("/v1/partner/my-programs/{programmeId:guid}", HandleAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
-    private static async Task<IResult> EndpointHandlerAsync(
-        Guid id,
-        [FromBody] PartnerV1MyProgramsUpdateRequest request,
-        [FromServices] OdinDbContext db,
-        HttpContext httpContext,
-        CancellationToken ct)
+    public sealed class SubjectInput
     {
-        var (_, partnerIdOrNull) = await MyProgramsHelpers.ResolvePartnerAsync(httpContext, db, ct);
-        if (partnerIdOrNull is null) return Results.Forbid();
-        var partnerId = partnerIdOrNull.Value;
+        public Guid? SubjectId { get; init; }
+        public string? Code { get; init; }
+        public string? Name { get; init; }
+        public int Ects { get; init; }
+    }
+
+    public sealed class SpecializationInput
+    {
+        public Guid? SpecializationId { get; init; }
+        public string? Name { get; init; }
+        public List<SubjectInput>? Subjects { get; init; }
+    }
+
+    public sealed class UpdateRequest
+    {
+        public string? Name { get; init; }
+        public string? Code { get; init; }
+        public List<SpecializationInput>? Specializations { get; init; }
+        public List<Guid>? PathwayIds { get; init; }
+    }
+
+    private static async Task<IResult> HandleAsync(
+        Guid programmeId, [FromBody] UpdateRequest body,
+        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
 
         var programme = await db.Programmes
-            .FirstOrDefaultAsync(p => p.ProgrammeId == id
-                                   && p.PartnerId == partnerId
-                                   && p.DeletedAt == null, ct);
+            .FirstOrDefaultAsync(p => p.ProgrammeId == programmeId && p.OwnerId == partnerId && p.DeletedAt == null, ct);
         if (programme is null) return Results.NotFound();
 
-        if (programme.IsDisabledByAdmin)
-            return Results.Conflict(new { error = "disabled_by_admin" });
+        var status = await db.PartnerProgrammeStatuses
+            .FirstOrDefaultAsync(s => s.ProgrammeId == programmeId, ct);
+        if (status is null) return Results.NotFound();
 
-        if (await MyProgramsHelpers.HasEnrolmentsEverAsync(db, id, ct))
-            return Results.Conflict(new { error = "locked_has_enrolments" });
+        if (status.IsDisabledByAdmin)
+            return Results.BadRequest(new { error = "Programme is disabled by admin and cannot be edited." });
+        if (await MyProgramsHelpers.HasEnrolmentsAsync(db, programmeId, ct))
+            return Results.BadRequest(new { error = "Programme has enrolled students and cannot be edited." });
+        if (status.Status is MyProgramsHelpers.StatusPending)
+            return Results.BadRequest(new { error = "Programme is pending approval and cannot be edited." });
 
-        if (programme.Status == ProgrammeStatus.Pending)
-            return Results.Conflict(new { error = "locked_awaiting_approval" });
+        if (!string.IsNullOrWhiteSpace(body.Name)) programme.Name = body.Name.Trim();
+        if (!string.IsNullOrWhiteSpace(body.Code)) programme.Code = body.Code.Trim();
 
-        var newName = (request.Name ?? string.Empty).Trim();
-        var newCode = (request.Code ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(newName)) return Results.BadRequest(new { error = "name_required" });
-        if (string.IsNullOrWhiteSpace(newCode)) return Results.BadRequest(new { error = "code_required" });
-
-        if (newCode != programme.Code)
+        // Sync specializations + subjects (server is the truth: rows not in the
+        // payload get soft-deleted, missing IDs are treated as new).
+        if (body.Specializations is not null)
         {
-            var codeTaken = await db.Programmes.AnyAsync(
-                p => p.Code == newCode && p.ProgrammeId != id, ct);
-            if (codeTaken) return Results.Conflict(new { error = "code_not_unique" });
-        }
-
-        var requestedPathwayIds = request.PathwayIds is null
-            ? null
-            : request.PathwayIds.Where(pid => pid > 0).Distinct().ToList();
-        if (requestedPathwayIds is { Count: > 0 } &&
-            !await MyProgramsHelpers.ValidatePathwayIdsAsync(db, requestedPathwayIds, ct))
-        {
-            return Results.BadRequest(new { error = "invalid_pathway_ids" });
-        }
-
-        programme.Name = newName;
-        programme.Code = newCode;
-
-        if (programme.Status == ProgrammeStatus.Approved)
-        {
-            programme.Status = ProgrammeStatus.Pending;
-            programme.ApprovedAt = null;
-            programme.SubmittedAt = DateTime.UtcNow;
-        }
-        else if (programme.Status == ProgrammeStatus.Rejected)
-        {
-            programme.RejectionReason = null;
-        }
-
-        var existingMajors = await db.Majors
-            .Where(m => m.ProgrammeId == id && m.DeletedAt == null)
-            .Include(m => m.Subjects.Where(s => s.DeletedAt == null))
-            .ToListAsync(ct);
-
-        var incomingMajorIds = request.Majors
-            .Where(m => m.MajorId is not null)
-            .Select(m => m.MajorId!.Value)
-            .ToHashSet();
-
-        var now = DateTime.UtcNow;
-        foreach (var existing in existingMajors.Where(m => !incomingMajorIds.Contains(m.MajorId)))
-        {
-            existing.DeletedAt = now;
-            foreach (var s in existing.Subjects) s.DeletedAt = now;
-        }
-
-        foreach (var incomingMajor in request.Majors)
-        {
-            var name = (incomingMajor.Name ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(name)) continue;
-
-            Major major;
-            if (incomingMajor.MajorId is Guid existingMajorId
-                && existingMajors.FirstOrDefault(m => m.MajorId == existingMajorId) is { } match)
-            {
-                match.Name = name;
-                major = match;
-            }
-            else
-            {
-                major = new Major
-                {
-                    MajorId = Guid.NewGuid(),
-                    ProgrammeId = id,
-                    Name = name,
-                };
-                db.Majors.Add(major);
-            }
-
-            var incomingSubjectIds = incomingMajor.Subjects
-                .Where(s => s.SubjectId is not null)
-                .Select(s => s.SubjectId!.Value)
+            var existingSpecs = await db.Specializations
+                .Where(s => s.ProgrammeId == programmeId && s.DeletedAt == null)
+                .ToListAsync(ct);
+            var keepSpecIds = body.Specializations
+                .Where(s => s.SpecializationId is not null)
+                .Select(s => s.SpecializationId!.Value)
                 .ToHashSet();
+            foreach (var existing in existingSpecs.Where(e => !keepSpecIds.Contains(e.SpecializationId)))
+                existing.DeletedAt = DateTime.UtcNow;
 
-            foreach (var s in major.Subjects.Where(s => !incomingSubjectIds.Contains(s.SubjectId)))
+            foreach (var input in body.Specializations)
             {
-                s.DeletedAt = now;
-            }
+                var name = (input.Name ?? string.Empty).Trim();
+                if (string.IsNullOrEmpty(name)) continue;
 
-            foreach (var incomingSubject in incomingMajor.Subjects)
-            {
-                var subjectCode = (incomingSubject.Code ?? string.Empty).Trim();
-                var subjectName = (incomingSubject.Name ?? string.Empty).Trim();
-                if (string.IsNullOrWhiteSpace(subjectCode) && string.IsNullOrWhiteSpace(subjectName)) continue;
-
-                if (incomingSubject.SubjectId is Guid existingSubjectId
-                    && major.Subjects.FirstOrDefault(s => s.SubjectId == existingSubjectId) is { } subjectMatch)
+                Specialization spec;
+                if (input.SpecializationId is { } sid && existingSpecs.FirstOrDefault(e => e.SpecializationId == sid) is { } existing)
                 {
-                    subjectMatch.Code = subjectCode;
-                    subjectMatch.Name = subjectName;
-                    subjectMatch.Ects = incomingSubject.Ects;
+                    spec = existing;
+                    spec.Name = name;
                 }
                 else
                 {
-                    db.Subjects.Add(new Subject
+                    spec = new Specialization
                     {
-                        SubjectId = Guid.NewGuid(),
-                        MajorId = major.MajorId,
-                        Code = subjectCode,
-                        Name = subjectName,
-                        Ects = incomingSubject.Ects,
-                    });
+                        SpecializationId = Guid.NewGuid(),
+                        ProgrammeId = programmeId,
+                        Name = name,
+                        Code = $"S-{Guid.NewGuid().ToString()[..8]}",
+                        Description = string.Empty,
+                    };
+                    db.Specializations.Add(spec);
+                }
+
+                if (input.Subjects is null) continue;
+                var existingSubs = await db.Subjects
+                    .Where(s => s.SpecializationId == spec.SpecializationId && s.DeletedAt == null)
+                    .ToListAsync(ct);
+                var keepSubIds = input.Subjects
+                    .Where(s => s.SubjectId is not null)
+                    .Select(s => s.SubjectId!.Value)
+                    .ToHashSet();
+                foreach (var dropped in existingSubs.Where(s => !keepSubIds.Contains(s.SubjectId)))
+                    dropped.DeletedAt = DateTime.UtcNow;
+
+                foreach (var subInput in input.Subjects)
+                {
+                    var subName = (subInput.Name ?? string.Empty).Trim();
+                    if (string.IsNullOrEmpty(subName)) continue;
+                    if (subInput.SubjectId is { } subId && existingSubs.FirstOrDefault(s => s.SubjectId == subId) is { } existingSub)
+                    {
+                        existingSub.Code = (subInput.Code ?? string.Empty).Trim();
+                        existingSub.Name = subName;
+                        existingSub.Ects = subInput.Ects;
+                    }
+                    else
+                    {
+                        db.Subjects.Add(new Subject
+                        {
+                            SubjectId = Guid.NewGuid(),
+                            SpecializationId = spec.SpecializationId,
+                            Code = (subInput.Code ?? string.Empty).Trim(),
+                            Name = subName,
+                            Description = string.Empty,
+                            Ects = subInput.Ects,
+                        });
+                    }
                 }
             }
         }
 
-        if (requestedPathwayIds is not null)
+        // Sync pathways
+        if (body.PathwayIds is not null)
         {
-            await MyProgramsHelpers.SyncProgrammePathwaysAsync(db, id, requestedPathwayIds, ct);
+            var requested = body.PathwayIds.Distinct().ToHashSet();
+            var existing = await db.ProgrammePathways
+                .Where(pp => pp.ProgrammeId == programmeId && pp.DeletedAt == null)
+                .ToListAsync(ct);
+            foreach (var pp in existing.Where(p => !requested.Contains(p.PathwayId)))
+                pp.DeletedAt = DateTime.UtcNow;
+            var existingIds = existing.Where(p => p.DeletedAt == null).Select(p => p.PathwayId).ToHashSet();
+            foreach (var pid in requested.Where(p => !existingIds.Contains(p)))
+            {
+                db.ProgrammePathways.Add(new ProgrammePathway
+                {
+                    ProgrammePathwayId = Guid.NewGuid(),
+                    ProgrammeId = programmeId,
+                    PathwayId = pid,
+                });
+            }
         }
 
+        // Editing an Approved programme flips it back to Pending review.
+        if (status.Status == MyProgramsHelpers.StatusApproved)
+        {
+            status.Status = MyProgramsHelpers.StatusPending;
+            status.IsActive = false;
+        }
+        status.UpdatedAt = DateTime.UtcNow;
+
         await db.SaveChangesAsync(ct);
-        return Results.NoContent();
+        return Results.Ok(new { programmeId });
     }
-
-    private const string Route = "/v1/partner/my-programs/{id:guid}";
-}
-
-public sealed class PartnerV1MyProgramsUpdateRequest
-{
-    public required string Name { get; init; }
-    public required string Code { get; init; }
-    public required IReadOnlyList<PartnerV1MyProgramsUpdateMajor> Majors { get; init; }
-    public IReadOnlyList<int>? PathwayIds { get; init; }
-}
-
-public sealed class PartnerV1MyProgramsUpdateMajor
-{
-    public Guid? MajorId { get; init; }
-    public required string Name { get; init; }
-    public required IReadOnlyList<PartnerV1MyProgramsUpdateSubject> Subjects { get; init; }
-}
-
-public sealed class PartnerV1MyProgramsUpdateSubject
-{
-    public Guid? SubjectId { get; init; }
-    public required string Code { get; init; }
-    public required string Name { get; init; }
-    public required int Ects { get; init; }
 }

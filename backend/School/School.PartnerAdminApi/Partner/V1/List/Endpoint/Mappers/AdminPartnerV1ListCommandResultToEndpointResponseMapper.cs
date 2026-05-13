@@ -12,11 +12,13 @@ public sealed class AdminPartnerV1ListCommandResultToEndpointResponseMapper(IHtt
         {
             Items = input.Items.Select(x => new AdminPartnerV1ListEndpointResponseItem
             {
-                PartnerId = x.PartnerId,
-                Name      = x.Name,
-                UserCount = x.UserCount,
-                IsEnabled = x.IsEnabled,
-                DeletedAt = x.DeletedAt,
+                PartnerId  = x.PartnerId,
+                Name       = x.Name,
+                Slug       = x.Slug,
+                UserCount  = x.UserCount,
+                IsEnabled  = x.IsEnabled,
+                DisabledAt = x.DisabledAt,
+                DeletedAt  = x.DeletedAt,
             }).ToList(),
             Total = input.Total,
             Links = []

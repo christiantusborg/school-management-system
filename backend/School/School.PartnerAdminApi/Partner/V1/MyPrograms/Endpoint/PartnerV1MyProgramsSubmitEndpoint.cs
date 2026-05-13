@@ -1,45 +1,39 @@
+using School.PartnerAdminApi.Partner.V1.MyUsers;
+
 namespace School.PartnerAdminApi.Partner.V1.MyPrograms.Endpoint;
 
-[Route("/v1/partner/my-programs/{id:guid}/submit")]
+[Route("/v1/partner/my-programs/{programmeId:guid}/submit")]
 [EndpointTag("Partner.MyPrograms")]
 public sealed class PartnerV1MyProgramsSubmitEndpoint : IEndpointMarker
 {
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
-        app.MapPost(Route, EndpointHandlerAsync)
-            .RequireAuthorization("PartnerOnly");
+        app.MapPost("/v1/partner/my-programs/{programmeId:guid}/submit", HandleAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
-    private static async Task<IResult> EndpointHandlerAsync(
-        Guid id,
-        [FromServices] OdinDbContext db,
-        HttpContext httpContext,
-        CancellationToken ct)
+    private static async Task<IResult> HandleAsync(
+        Guid programmeId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
     {
-        var (_, partnerIdOrNull) = await MyProgramsHelpers.ResolvePartnerAsync(httpContext, db, ct);
-        if (partnerIdOrNull is null) return Results.Forbid();
-        var partnerId = partnerIdOrNull.Value;
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
 
-        var programme = await db.Programmes
-            .FirstOrDefaultAsync(p => p.ProgrammeId == id
-                                   && p.PartnerId == partnerId
-                                   && p.DeletedAt == null, ct);
-        if (programme is null) return Results.NotFound();
+        var owns = await db.Programmes
+            .AnyAsync(p => p.ProgrammeId == programmeId && p.OwnerId == partnerId && p.DeletedAt == null, ct);
+        if (!owns) return Results.NotFound();
 
-        if (programme.IsDisabledByAdmin)
-            return Results.Conflict(new { error = "disabled_by_admin" });
+        var status = await db.PartnerProgrammeStatuses.FirstOrDefaultAsync(s => s.ProgrammeId == programmeId, ct);
+        if (status is null) return Results.NotFound();
 
-        if (programme.Status is not (ProgrammeStatus.Draft or ProgrammeStatus.Rejected))
-            return Results.Conflict(new { error = "invalid_status" });
+        if (status.IsDisabledByAdmin)
+            return Results.BadRequest(new { error = "Programme is disabled by admin." });
+        if (status.Status is not (MyProgramsHelpers.StatusDraft or MyProgramsHelpers.StatusRejected))
+            return Results.BadRequest(new { error = "Programme can only be submitted from Draft or Rejected." });
 
-        programme.Status = ProgrammeStatus.Pending;
-        programme.SubmittedAt = DateTime.UtcNow;
-        programme.RejectionReason = null;
-
+        status.Status = MyProgramsHelpers.StatusPending;
+        status.RejectionReason = null;
+        status.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return Results.NoContent();
+        return Results.Ok(new { programmeId, status = MyProgramsHelpers.StatusLabel(status.Status) });
     }
-
-    private const string Route = "/v1/partner/my-programs/{id:guid}/submit";
 }

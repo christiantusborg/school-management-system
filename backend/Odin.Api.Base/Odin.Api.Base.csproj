@@ -5,19 +5,32 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>Library</OutputType>
   </PropertyGroup>
+  <!-- `dotnet publish` on .NET 10 sets EnableDefaultEmbeddedResourceItems=false
+       globally, but the Web/Razor SDK still injects a literal
+       <EmbeddedResource Include="**/*.resx"/> that fails with MSB3552 when no
+       resx files exist. Removing that glob is the minimal targeted fix. -->
+  <ItemGroup>
+    <EmbeddedResource Remove="**/*.resx" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Letters/SeedAssets/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.5" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.5">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.5" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageReference Include="Sodium.Core" Version="1.4.0" />
     <PackageReference Include="Fido2" Version="4.*" />
     <PackageReference Include="Otp.NET" Version="1.*" />
+    <PackageReference Include="QuestPDF" Version="2024.10.*" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.*" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SharedLibrary.Basics\QuVian.SharedLibrary.Basics.csproj" />
     <ProjectReference Include="..\SharedLibrary.Basics.Opaque.Domains\SharedLibrary.Basics.Opaque.Domains.csproj" />
+    <ProjectReference Include="..\SharedLibrary.Basics.TransientStateCache\SharedLibrary.Basics.TransientStateCache.csproj" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,4 @@
 using School.PathwayApi.Pathway.V1.Update.Command;
-using School.PathwayApi.Pathway.V1.Update.Endpoint;
 
 namespace School.PathwayApi.Pathway.V1.Update.Endpoint.Mappers;
 

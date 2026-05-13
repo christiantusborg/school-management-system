@@ -17,9 +17,20 @@ public class StudentDocumentConfiguration : IEntityTypeConfiguration<StudentDocu
             .WithMany()
             .HasForeignKey(e => e.DocumentTypeId)
             .OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(e => e.VerifiedBy)
+        builder.HasOne(e => e.CurrentStatus)
             .WithMany()
-            .HasForeignKey(e => e.VerifiedByUserId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .HasForeignKey(e => e.CurrentStatusId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(e => e.Enrollment)
+            .WithMany()
+            .HasForeignKey(e => e.EnrollmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // One active row per (Enrollment, DocumentType). Filtered to
+        // non-deleted rows that have completed wizard attribution
+        // (EnrollmentId IS NOT NULL) so wizard-pending uploads don't trip it.
+        builder.HasIndex(e => new { e.EnrollmentId, e.DocumentTypeId })
+            .IsUnique()
+            .HasFilter("\"EnrollmentId\" IS NOT NULL AND \"DeletedAt\" IS NULL");
     }
 }

@@ -21,7 +21,7 @@
           <div class="info-item"><span class="label">Passport / ID No.</span><span>{{ auth.user?.passportId }}</span></div>
           <div class="info-item info-full"><span class="label">Address</span><span>{{ auth.user?.address }}</span></div>
           <div class="info-item"><span class="label">Programme</span><span>{{ auth.user?.programme }}</span></div>
-          <div class="info-item"><span class="label">Major</span><span>{{ auth.user?.major }}</span></div>
+          <div class="info-item"><span class="label">Specialization</span><span>{{ auth.user?.specialization }}</span></div>
           <div class="info-item"><span class="label">Student ID</span><span>{{ auth.user?.studentId }}</span></div>
           <div class="info-item"><span class="label">Commencement Date</span><span>{{ auth.user?.commencementDate }}</span></div>
           <div class="info-item"><span class="label">Expected Completion</span><span>{{ auth.user?.expectedCompletion }}</span></div>

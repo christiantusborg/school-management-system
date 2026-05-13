@@ -1,44 +1,42 @@
 namespace School.PathwayApi.Pathway.V1.Create.Command;
 
 [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
-public sealed class PathwayV1CreateCommandHandler(IPathwayRepository repository, OdinDbContext db)
+public sealed class PathwayV1CreateCommandHandler(OdinDbContext db)
     : ICommandHandler<PathwayV1CreateCommand, PathwayV1CreateCommandResult,
         SharedLibrary.Basics.Opaque.Domains.Pathway, IPathwayRepository>
 {
-    public async Task<SuccessOrFailure<PathwayV1CreateCommandResult>> HandleAsync(
+    public Task<SuccessOrFailure<PathwayV1CreateCommandResult>> HandleAsync(
         PathwayV1CreateCommand command, CancellationToken cancellationToken)
     {
-        var distinctIds = command.DocumentTypeIds.Where(id => id > 0).Distinct().ToList();
-        if (distinctIds.Count > 0)
-        {
-            var existingCount = await db.DocumentTypes
-                .CountAsync(dt => distinctIds.Contains(dt.DocumentTypeId) && dt.DeletedAt == null,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (existingCount != distinctIds.Count)
-                return SuccessOrFailureHelper<PathwayV1CreateCommandResult>.Create("Invalid_DocumentTypeIds");
-        }
-
-        var nextId = (await db.Pathways.MaxAsync(p => (int?)p.PathwayId, cancellationToken)
-                          .ConfigureAwait(false) ?? 0) + 1;
-
         var entity = new SharedLibrary.Basics.Opaque.Domains.Pathway
         {
-            PathwayId = nextId,
+            PathwayId = Guid.NewGuid(),
             Name = command.Name,
+            Description = command.Description ?? string.Empty,
+            MinimumYearsWorkExperience = command.MinimumYearsWorkExperience,
         };
-        repository.Add(entity);
+        db.Pathways.Add(entity);
 
-        foreach (var documentTypeId in distinctIds)
+        foreach (var docId in command.DocumentTypeIds.Distinct())
         {
             db.PathwayDocumentRequirements.Add(new PathwayDocumentRequirement
             {
-                PathwayId = nextId,
-                DocumentTypeId = documentTypeId,
+                PathwayDocumentRequirementId = Guid.NewGuid(),
+                PathwayId = entity.PathwayId,
+                DocumentTypeId = docId,
             });
         }
 
-        return new SuccessOrFailure<PathwayV1CreateCommandResult>(
-            new PathwayV1CreateCommandResult { PathwayId = entity.PathwayId });
+        foreach (var levelId in command.AcceptedEducationLevelIds.Distinct())
+        {
+            db.PathwayAcceptedEducationLevels.Add(new PathwayAcceptedEducationLevel
+            {
+                PathwayId = entity.PathwayId,
+                EducationLevelId = levelId,
+            });
+        }
+
+        return Task.FromResult(new SuccessOrFailure<PathwayV1CreateCommandResult>(
+            new PathwayV1CreateCommandResult { PathwayId = entity.PathwayId }));
     }
 }

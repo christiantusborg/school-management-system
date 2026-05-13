@@ -1,5 +1,4 @@
 using School.PathwayApi.Pathway.V1.Create.Command;
-using School.PathwayApi.Pathway.V1.Create.Endpoint;
 
 namespace School.PathwayApi.Pathway.V1.Create.Endpoint.Mappers;
 

@@ -5,6 +5,13 @@
     <template v-else-if="profile">
       <div v-if="!editing" class="view-grid">
         <div class="grid-row"><span>Name</span><strong>{{ profile.name }}</strong></div>
+        <div class="grid-row">
+          <span>Slug</span>
+          <strong>
+            <code class="slug-code">{{ profile.slug }}</code>
+            <span class="slug-url">student signup URL: <code>{{ signupUrl }}</code></span>
+          </strong>
+        </div>
         <div class="grid-row"><span>Contact</span><strong>{{ contactSummary || '—' }}</strong></div>
         <div class="grid-row"><span>Address</span><strong>{{ addressSummary || '—' }}</strong></div>
         <div class="grid-row"><span>Website</span><strong>{{ profile.website || '—' }}</strong></div>
@@ -18,7 +25,15 @@
       </div>
 
       <div v-else class="edit-form">
-        <div class="field"><label>Name</label><input v-model="form.name" /></div>
+        <div class="row-2">
+          <div class="field"><label>Name</label><input v-model="form.name" /></div>
+          <div class="field">
+            <label>Slug (student signup URL)</label>
+            <input v-model="form.slug" placeholder="e.g. bloom-business-school" />
+            <p v-if="slugError" class="field-error">{{ slugError }}</p>
+            <p v-else class="field-hint">2–40 chars · lowercase letters, digits, hyphens · must be unique</p>
+          </div>
+        </div>
         <div class="row-2">
           <div class="field"><label>Contact person name</label><input v-model="form.contactPersonName" /></div>
           <div class="field"><label>Title</label><input v-model="form.contactPersonTitle" /></div>
@@ -57,7 +72,7 @@
         <div v-if="saveError" class="err-banner">{{ saveError }}</div>
         <div class="actions">
           <button class="btn-sm" @click="editing = false">Cancel</button>
-          <button class="btn-primary-sm" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
+          <button class="btn-primary-sm" :disabled="saving || !!slugError" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
         </div>
       </div>
     </template>
@@ -79,11 +94,25 @@ const editing = ref(false)
 const saving = ref(false)
 const saveError = ref('')
 const form = reactive({
-  name: '',
+  name: '', slug: '',
   contactPersonName: '', contactPersonTitle: '', contactPersonEmail: '', contactPersonPhone: '',
   addressLine1: '', addressLine2: '', city: '', stateRegion: '', postalCode: '', country: '',
   website: '', registrationNumber: '', taxId: '',
   contractStart: '', contractEnd: '', tier: '', internalNotes: '',
+})
+
+// Student signup links use `?partner=<slug>` — surface the URL so changing the
+// slug clearly shows what students will need to type.
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
+const signupUrl = computed(() => profile.value?.slug
+  ? `${window.location.origin}/#/apply?partner=${profile.value.slug}`
+  : '—')
+const slugError = computed(() => {
+  const s = form.slug?.trim()
+  if (!s) return 'Slug is required'
+  if (s.length < 2 || s.length > 40) return 'Must be 2–40 characters'
+  if (!SLUG_RE.test(s)) return 'Only lowercase letters, digits, and hyphens'
+  return ''
 })
 
 const contactSummary = computed(() => {
@@ -122,6 +151,7 @@ function startEdit() {
   const p = profile.value
   Object.assign(form, {
     name: p.name ?? '',
+    slug: p.slug ?? '',
     contactPersonName: p.contactPersonName ?? '',
     contactPersonTitle: p.contactPersonTitle ?? '',
     contactPersonEmail: p.contactPersonEmail ?? '',
@@ -145,10 +175,11 @@ function startEdit() {
 }
 
 async function save() {
+  if (slugError.value) { saveError.value = slugError.value; return }
   saving.value = true
   saveError.value = ''
   try {
-    const body = { ...form }
+    const body = { ...form, slug: form.slug.trim().toLowerCase() }
     if (!body.contractStart) delete body.contractStart
     if (!body.contractEnd) delete body.contractEnd
     await apiClient.patch(`/v1/admin/school/partners/${props.partnerId}`, body)
@@ -156,7 +187,10 @@ async function save() {
     await load()
     emit('updated')
   } catch (e) {
-    saveError.value = e.response?.data ?? e.message ?? 'Failed to save'
+    const err = e.response?.data?.error ?? e.response?.data ?? e.message ?? 'Failed to save'
+    saveError.value = err === 'slug_not_unique' ? 'That slug is already taken by another partner.'
+                    : err === 'invalid_slug'    ? 'Slug format is invalid.'
+                    : err
   } finally {
     saving.value = false
   }
@@ -181,4 +215,9 @@ watch(() => props.partnerId, load)
 .field input, .field select, .field textarea { padding: .5rem .65rem; border: 1px solid #cfd7e3; border-radius: 6px; font-size: .9rem; font-family: inherit; }
 .err-banner { background: #fde7e5; color: #a8241e; padding: .55rem .8rem; border-radius: 6px; font-size: .88rem; margin: .5rem 0; }
 .loading-row { padding: 1rem; color: #5f6e85; font-size: .9rem; }
+.slug-code { background: #eef2f9; padding: 1px 8px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: .85rem; }
+.slug-url { display: block; color: #5f6e85; font-size: .78rem; font-weight: 400; margin-top: .2rem; }
+.slug-url code { font-family: ui-monospace, monospace; }
+.field-hint  { font-size: .72rem; color: #5f6e85; margin: .2rem 0 0; }
+.field-error { font-size: .72rem; color: #b91c1c; margin: .2rem 0 0; }
 </style>

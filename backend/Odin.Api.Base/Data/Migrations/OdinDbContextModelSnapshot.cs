@@ -3380,6 +3380,9 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("DisabledAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)

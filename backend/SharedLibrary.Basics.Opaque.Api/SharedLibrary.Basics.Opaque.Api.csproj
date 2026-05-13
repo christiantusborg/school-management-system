@@ -14,7 +14,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.5" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
@@ -46,6 +46,8 @@
     <ProjectReference Include="..\SharedLibrary.Basics.Opaque.RecoveryCodesApi\SharedLibrary.Basics.Opaque.RecoveryCodesApi.csproj" />
     <ProjectReference Include="..\SharedLibrary.Basics.Opaque.ChangePasswordApi\SharedLibrary.Basics.Opaque.ChangePasswordApi.csproj" />
     <ProjectReference Include="..\Api\RegisterApi\SharedLibrary.Basics.Opaque.RegisterApi\SharedLibrary.Basics.Opaque.RegisterApi.csproj" />
+    <ProjectReference Include="..\Api\PublicSignupApi\SharedLibrary.Basics.Opaque.PublicSignupApi\SharedLibrary.Basics.Opaque.PublicSignupApi.csproj" />
+    <ProjectReference Include="..\Api\StudentApi\SharedLibrary.Basics.Opaque.StudentApi\SharedLibrary.Basics.Opaque.StudentApi.csproj" />
     <ProjectReference Include="..\School\SystemConfigurations\School.DocumentTypeApi\School.DocumentTypeApi.csproj" />
     <ProjectReference Include="..\School\SystemConfigurations\School.EnrollmentStatusApi\School.EnrollmentStatusApi.csproj" />
     <ProjectReference Include="..\School\SystemConfigurations\School.FinalProjectStatusApi\School.FinalProjectStatusApi.csproj" />
@@ -53,7 +55,7 @@
     <ProjectReference Include="..\School\SystemConfigurations\School.TuitionFeeStatusApi\School.TuitionFeeStatusApi.csproj" />
     <ProjectReference Include="..\School\SystemConfigurations\School.ModeOfStudyApi\School.ModeOfStudyApi.csproj" />
     <ProjectReference Include="..\School\School.ProgrammeApi\School.ProgrammeApi.csproj" />
-    <ProjectReference Include="..\School\School.MajorApi\School.MajorApi.csproj" />
+    <ProjectReference Include="..\School\School.SpecializationApi\School.SpecializationApi.csproj" />
     <ProjectReference Include="..\School\School.SubjectApi\School.SubjectApi.csproj" />
     <ProjectReference Include="..\School\School.PartnerAdminApi\School.PartnerAdminApi.csproj" />
   </ItemGroup>

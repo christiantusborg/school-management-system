@@ -91,6 +91,22 @@ export const auth = reactive({
     return this._roleToRoute()
   },
 
+  async verifyEmail(userId, token) {
+    this.error = null
+    this.loading = true
+    try {
+      const res = await api.post('/v1/public/student-signup/verify-email', { userId, token })
+      localStorage.setItem('adminToken', res.data.token)
+      await this.fetchUser()
+      return this._roleToRoute()
+    } catch (e) {
+      this.error = e.response?.data?.error ?? e.message ?? 'Verification failed'
+      return null
+    } finally {
+      this.loading = false
+    }
+  },
+
   async fetchUser() {
     try {
       const res = await api.get('/v1/me')
@@ -98,6 +114,7 @@ export const auth = reactive({
       this.user = {
         ...data,
         displayName: data.username,
+        partnerSlug: data.partnerSlug ?? null,
         role: data.roles?.includes('Admin') ? 'employee'
             : data.roles?.includes('Partner') ? 'partner'
             : data.roles?.includes('Student') ? 'student'
@@ -125,9 +142,15 @@ export const auth = reactive({
     localStorage.removeItem('adminToken')
   },
 
-  get isEmployee() { return this.user?.role === 'employee' },
-  get isPartner()  { return this.user?.role === 'partner'  },
-  get isStudent()  { return this.user?.role === 'student'  },
+  get isEmployee()   { return this.user?.role === 'employee' },
+  get isPartner()    { return this.user?.role === 'partner'  },
+  get isStudent()    { return this.user?.role === 'student'  },
+  get isSuperAdmin() { return !!this.user?.roles?.includes('SuperAdministrator') },
+  get adminLevel()   {
+    const roles = this.user?.roles ?? []
+    const levels = ['SuperAdministrator', 'Administrator', 'Manager', 'Editor', 'Viewer']
+    return levels.find(l => roles.includes(l)) ?? null
+  },
 })
 
 // Restore session on page load

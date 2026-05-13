@@ -1,145 +1,153 @@
-using System.Security.Claims;
+using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
+using School.PartnerAdminApi.Partner.V1.MyUsers;
 
 namespace School.PartnerAdminApi.Partner.V1.MyPrograms.Endpoint;
 
+/// <summary>
+/// Create a new partner-owned programme. If <c>SourceProgrammeId</c> is set,
+/// the source programme (which must be granted to the caller) is deep-cloned
+/// — Specializations and their Subjects are duplicated. Otherwise an empty
+/// programme is created with the provided <c>Name</c>.
+/// </summary>
 [Route("/v1/partner/my-programs")]
 [EndpointTag("Partner.MyPrograms")]
 public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
 {
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
-        app.MapPost(Route, EndpointHandlerAsync)
-            .RequireAuthorization("PartnerOnly");
+        app.MapPost("/v1/partner/my-programs", HandleAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
-    private static async Task<IResult> EndpointHandlerAsync(
-        [FromBody] PartnerV1MyProgramsCreateRequest request,
-        [FromServices] OdinDbContext db,
-        HttpContext httpContext,
-        CancellationToken ct)
+    public sealed class CreateRequest
     {
-        var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+        public Guid? SourceProgrammeId { get; init; }
+        public string? Name { get; init; }
+    }
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
-        if (user?.PartnerId is null) return Results.Forbid();
-        var partnerId = user.PartnerId.Value;
+    private static async Task<IResult> HandleAsync(
+        [FromBody] CreateRequest body, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
 
-        var partner = await db.Partners.FirstOrDefaultAsync(p => p.PartnerId == partnerId, ct);
-        if (partner is null) return Results.Forbid();
-
-        var prefix = MyProgramsHelpers.BuildPartnerPrefix(partner.Name);
         var newProgrammeId = Guid.NewGuid();
 
-        var requestedPathwayIds = request.PathwayIds is null
-            ? null
-            : request.PathwayIds.Where(id => id > 0).Distinct().ToList();
-        if (requestedPathwayIds is { Count: > 0 } &&
-            !await MyProgramsHelpers.ValidatePathwayIdsAsync(db, requestedPathwayIds, ct))
+        if (body.SourceProgrammeId is { } sourceId)
         {
-            return Results.BadRequest(new { error = "invalid_pathway_ids" });
-        }
+            var granted = await db.ProgrammePartners
+                .AnyAsync(pp => pp.PartnerId == partnerId && pp.ProgrammeId == sourceId && pp.IsActive != null, ct);
+            if (!granted) return Results.BadRequest(new { error = "Source programme is not granted to your partner." });
 
-        if (request.SourceProgrammeId is Guid sourceId)
-        {
             var source = await db.Programmes
-                .FirstOrDefaultAsync(p => p.ProgrammeId == sourceId
-                                       && p.PartnerId == null
-                                       && p.DeletedAt == null, ct);
-            if (source is null) return Results.BadRequest(new { error = "source_programme_not_found" });
+                .Where(p => p.ProgrammeId == sourceId && p.DeletedAt == null)
+                .Select(p => new { p.Name, p.Code, p.Description, p.AwardEducationLevelId })
+                .FirstOrDefaultAsync(ct);
+            if (source is null) return Results.BadRequest(new { error = "Source programme not found." });
 
-            var hasAnyAccess = await db.PartnerProgrammeAccesses
-                .AnyAsync(a => a.PartnerId == partnerId
-                            && a.ProgrammeId == sourceId
-                            && a.DeletedAt == null, ct);
-            if (!hasAnyAccess) return Results.Forbid();
-
-            var sourceMajors = await db.Majors
-                .Where(m => m.ProgrammeId == sourceId && m.DeletedAt == null)
-                .Include(m => m.Subjects.Where(s => s.DeletedAt == null))
-                .ToListAsync(ct);
-
-            var code = await MyProgramsHelpers.GenerateUniqueCodeAsync(db, prefix, source.Code, ct);
-
-            var clone = new Programme
+            db.Programmes.Add(new Programme
             {
                 ProgrammeId = newProgrammeId,
+                OwnerId = partnerId,
                 Name = source.Name,
-                Code = code,
-                PartnerId = partnerId,
-                ClonedFromProgrammeId = sourceId,
-                Status = ProgrammeStatus.Draft,
-                IsActive = false,
-                CreatedByUserId = userId,
-                Majors = sourceMajors.Select(m => new Major
+                Code = $"{source.Code}-{newProgrammeId.ToString()[..8]}",
+                Description = source.Description,
+                AwardEducationLevelId = source.AwardEducationLevelId,
+            });
+
+            var sourceSpecs = await db.Specializations
+                .Where(s => s.ProgrammeId == sourceId && s.DeletedAt == null)
+                .Select(s => new
                 {
-                    MajorId = Guid.NewGuid(),
-                    Name = m.Name,
-                    Subjects = m.Subjects.Select(s => new Subject
+                    s.SpecializationId,
+                    s.Name,
+                    s.Code,
+                    s.Description,
+                    s.DurationOfStudyMonths,
+                    Subjects = db.Subjects
+                        .Where(sub => sub.SpecializationId == s.SpecializationId && sub.DeletedAt == null)
+                        .Select(sub => new { sub.Name, sub.Code, sub.Description, sub.Ects })
+                        .ToList(),
+                })
+                .ToListAsync(ct);
+
+            // Letter templates are programme-scoped; clone them so the new
+            // partner-owned programme starts with the IBSS-authored letters.
+            // Admin can edit them afterwards from the partner manage drawer.
+            var sourceLetters = await db.LetterTemplates
+                .Where(t => t.ProgrammeId == sourceId && t.DeletedAt == null)
+                .Select(t => new
+                {
+                    t.LetterType,
+                    t.BodyHtml,
+                    t.CertificateBackgroundPath,
+                    t.CertificateLayoutJson,
+                })
+                .ToListAsync(ct);
+            foreach (var l in sourceLetters)
+            {
+                db.LetterTemplates.Add(new LetterTemplate
+                {
+                    LetterTemplateId = Guid.NewGuid(),
+                    ProgrammeId = newProgrammeId,
+                    LetterType = l.LetterType,
+                    BodyHtml = l.BodyHtml,
+                    CertificateBackgroundPath = l.CertificateBackgroundPath,
+                    CertificateLayoutJson = l.CertificateLayoutJson,
+                    UpdatedAt = DateTime.UtcNow,
+                });
+            }
+
+            foreach (var s in sourceSpecs)
+            {
+                var newSpecId = Guid.NewGuid();
+                db.Specializations.Add(new Specialization
+                {
+                    SpecializationId = newSpecId,
+                    ProgrammeId = newProgrammeId,
+                    Name = s.Name,
+                    Code = $"{s.Code}-{newSpecId.ToString()[..8]}",
+                    Description = s.Description,
+                    DurationOfStudyMonths = s.DurationOfStudyMonths,
+                });
+                foreach (var sub in s.Subjects)
+                {
+                    db.Subjects.Add(new Subject
                     {
                         SubjectId = Guid.NewGuid(),
-                        Code = s.Code,
-                        Name = s.Name,
-                        Ects = s.Ects,
-                    }).ToList(),
-                }).ToList(),
-            };
-            db.Programmes.Add(clone);
-
-            var pathwayIdsForClone = requestedPathwayIds
-                ?? await MyProgramsHelpers.GetCurrentPathwayIdsAsync(db, sourceId, ct);
-            foreach (var pathwayId in pathwayIdsForClone)
-            {
-                db.ProgrammePathways.Add(new ProgrammePathway
-                {
-                    ProgrammeId = newProgrammeId,
-                    PathwayId = pathwayId,
-                });
+                        SpecializationId = newSpecId,
+                        Name = sub.Name,
+                        Code = sub.Code,
+                        Description = sub.Description,
+                        Ects = sub.Ects,
+                    });
+                }
             }
         }
         else
         {
-            var name = (request.Name ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(name))
-                return Results.BadRequest(new { error = "name_required" });
-
-            var baseCode = $"NEW-{DateTime.UtcNow:yyyyMMddHHmmss}";
-            var code = await MyProgramsHelpers.GenerateUniqueCodeAsync(db, prefix, baseCode, ct);
-
-            var fresh = new Programme
+            var name = body.Name?.Trim();
+            if (string.IsNullOrEmpty(name)) return Results.BadRequest(new { error = "Name is required." });
+            db.Programmes.Add(new Programme
             {
                 ProgrammeId = newProgrammeId,
+                OwnerId = partnerId,
                 Name = name,
-                Code = code,
-                PartnerId = partnerId,
-                ClonedFromProgrammeId = null,
-                Status = ProgrammeStatus.Draft,
-                IsActive = false,
-                CreatedByUserId = userId,
-            };
-            db.Programmes.Add(fresh);
-
-            foreach (var pathwayId in requestedPathwayIds ?? [])
-            {
-                db.ProgrammePathways.Add(new ProgrammePathway
-                {
-                    ProgrammeId = newProgrammeId,
-                    PathwayId = pathwayId,
-                });
-            }
+                Code = $"P-{newProgrammeId.ToString()[..8]}",
+                Description = string.Empty,
+            });
         }
 
+        db.PartnerProgrammeStatuses.Add(new PartnerProgrammeStatus
+        {
+            ProgrammeId = newProgrammeId,
+            Status = MyProgramsHelpers.StatusDraft,
+            IsActive = false,
+            IsDisabledByAdmin = false,
+            UpdatedAt = DateTime.UtcNow,
+        });
+
         await db.SaveChangesAsync(ct);
-        return Results.Created($"/v1/partner/my-programs/{newProgrammeId}", new { programmeId = newProgrammeId });
+        return Results.Ok(new { programmeId = newProgrammeId });
     }
-
-    private const string Route = "/v1/partner/my-programs";
-}
-
-public sealed class PartnerV1MyProgramsCreateRequest
-{
-    public Guid? SourceProgrammeId { get; init; }
-    public string? Name { get; init; }
-    public IReadOnlyList<int>? PathwayIds { get; init; }
 }

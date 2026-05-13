@@ -14,7 +14,7 @@ public sealed class PathwayV1OptionEndpoint : IEndpointMarker
 {
     private static readonly JsonNode PathIdParam = new JsonObject
     {
-        ["id"] = new JsonObject { ["type"] = "integer", ["in"] = "path" }
+        ["id"] = new JsonObject { ["type"] = "string", ["format"] = "uuid", ["in"] = "path" }
     };
 
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
@@ -52,16 +52,6 @@ public sealed class PathwayV1OptionEndpoint : IEndpointMarker
                 Result = DtoJsonSchemaGenerator.Generate(typeof(PathwayV1UpdateEndpointResponse)),
             },
             SoftDelete = new PathwayV1OptionInnerEndpointResponse
-            {
-                Request = PathIdParam.DeepClone(),
-                Result = null,
-            },
-            Restore = new PathwayV1OptionInnerEndpointResponse
-            {
-                Request = PathIdParam.DeepClone(),
-                Result = null,
-            },
-            PermanentDelete = new PathwayV1OptionInnerEndpointResponse
             {
                 Request = PathIdParam.DeepClone(),
                 Result = null,

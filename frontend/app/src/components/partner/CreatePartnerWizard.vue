@@ -74,7 +74,7 @@
 
       <!-- Step 2: Core Programmes -->
       <div v-else-if="step === 2" class="step-body">
-        <p class="step-hint">Select which IBSS Core Programmes and Majors this partner can enrol students into. You can change this later.</p>
+        <p class="step-hint">Select which IBSS Core Programmes and Specializations this partner can enrol students into. You can change this later.</p>
 
         <div v-if="programmesLoading" class="loading-row">Loading programmes…</div>
         <div v-else-if="programmesError" class="err-banner">{{ programmesError }}</div>
@@ -88,19 +88,19 @@
                 <span class="mono-code">{{ p.code }}</span>
               </div>
               <div>
-                <span class="prog-count">{{ selectedInProg(p.programmeId) }} / {{ majorsByProg(p.programmeId).length }}</span>
+                <span class="prog-count">{{ selectedInProg(p.programmeId) }} / {{ specializationsByProg(p.programmeId).length }}</span>
                 <button class="btn-xs" @click.stop="toggleAllInProg(p.programmeId)">
                   {{ allSelectedInProg(p.programmeId) ? 'Clear' : 'Select all' }}
                 </button>
                 <span class="caret">{{ openProgs.has(p.programmeId) ? '▾' : '▸' }}</span>
               </div>
             </div>
-            <div v-if="openProgs.has(p.programmeId)" class="major-list">
-              <label v-for="m in majorsByProg(p.programmeId)" :key="m.majorId" class="major-row">
-                <input type="checkbox" :checked="selectedMajorIds.has(m.majorId)" @change="toggleMajor(m.majorId)" />
+            <div v-if="openProgs.has(p.programmeId)" class="specialization-list">
+              <label v-for="m in specializationsByProg(p.programmeId)" :key="m.specializationId" class="specialization-row">
+                <input type="checkbox" :checked="selectedSpecializationIds.has(m.specializationId)" @change="toggleSpecialization(m.specializationId)" />
                 <span>{{ m.name }}</span>
               </label>
-              <p v-if="majorsByProg(p.programmeId).length === 0" class="empty-note">No majors defined for this programme.</p>
+              <p v-if="specializationsByProg(p.programmeId).length === 0" class="empty-note">No specializations defined for this programme.</p>
             </div>
           </div>
         </div>
@@ -124,10 +124,17 @@
             <label>Email (optional)</label>
             <input v-model="u.email" type="email" />
           </div>
+          <div class="field field-pw">
+            <label>Password (optional)</label>
+            <div class="pw-row">
+              <input v-model="u.password" type="text" placeholder="Leave blank to auto-generate" />
+              <button type="button" class="btn-link btn-gen" @click="u.password = genPassword()">🎲 Generate</button>
+            </div>
+          </div>
           <button v-if="form.users.length > 1" class="btn-icon-x" @click="form.users.splice(i, 1)" title="Remove">✕</button>
         </div>
 
-        <button class="btn-link" @click="form.users.push({ username: '', email: '' })">+ Add another user</button>
+        <button class="btn-link" @click="form.users.push({ username: '', email: '', password: '' })">+ Add another user</button>
 
         <div class="step-nav">
           <button class="btn-back" @click="step = 2">← Back</button>
@@ -151,8 +158,8 @@
           <div class="review-row" v-if="form.contractStart || form.contractEnd"><span>Contract</span><strong>{{ [form.contractStart, form.contractEnd].filter(Boolean).join(' → ') || '—' }}</strong></div>
 
           <div class="review-row"><span>Core programme access</span>
-            <strong v-if="selectedMajorIds.size === 0">None (can grant later)</strong>
-            <strong v-else>{{ selectedMajorIds.size }} major{{ selectedMajorIds.size === 1 ? '' : 's' }} across {{ selectedProgCount }} programme{{ selectedProgCount === 1 ? '' : 's' }}</strong>
+            <strong v-if="selectedSpecializationIds.size === 0">None (can grant later)</strong>
+            <strong v-else>{{ selectedSpecializationIds.size }} specialization{{ selectedSpecializationIds.size === 1 ? '' : 's' }} across {{ selectedProgCount }} programme{{ selectedProgCount === 1 ? '' : 's' }}</strong>
           </div>
           <div class="review-row"><span>Users</span>
             <strong>{{ form.users.filter(u => u.username.trim()).map(u => u.username.trim()).join(', ') }}</strong>
@@ -206,34 +213,34 @@ const form = reactive({
   addressLine1: '', addressLine2: '', city: '', stateRegion: '', postalCode: '', country: '',
   website: '', registrationNumber: '', taxId: '',
   contractStart: '', contractEnd: '', tier: '', internalNotes: '',
-  users: [{ username: '', email: '' }],
+  users: [{ username: '', email: '', password: '' }],
 })
 
 // Core programmes
 const programmes = ref([])
-const majors = ref([])
+const specializations = ref([])
 const programmesLoading = ref(false)
 const programmesError = ref('')
 const openProgs = reactive(new Set())
-const selectedMajorIds = reactive(new Set())
+const selectedSpecializationIds = reactive(new Set())
 
-function majorsByProg(progId) { return majors.value.filter(m => m.programmeId === progId && !m.deletedAt) }
-function selectedInProg(progId) { return majorsByProg(progId).filter(m => selectedMajorIds.has(m.majorId)).length }
+function specializationsByProg(progId) { return specializations.value.filter(m => m.programmeId === progId && !m.deletedAt) }
+function selectedInProg(progId) { return specializationsByProg(progId).filter(m => selectedSpecializationIds.has(m.specializationId)).length }
 function allSelectedInProg(progId) {
-  const ms = majorsByProg(progId)
-  return ms.length > 0 && ms.every(m => selectedMajorIds.has(m.majorId))
+  const ms = specializationsByProg(progId)
+  return ms.length > 0 && ms.every(m => selectedSpecializationIds.has(m.specializationId))
 }
 function toggleProg(progId) { openProgs.has(progId) ? openProgs.delete(progId) : openProgs.add(progId) }
-function toggleMajor(majorId) { selectedMajorIds.has(majorId) ? selectedMajorIds.delete(majorId) : selectedMajorIds.add(majorId) }
+function toggleSpecialization(specializationId) { selectedSpecializationIds.has(specializationId) ? selectedSpecializationIds.delete(specializationId) : selectedSpecializationIds.add(specializationId) }
 function toggleAllInProg(progId) {
-  const ms = majorsByProg(progId)
-  if (allSelectedInProg(progId)) ms.forEach(m => selectedMajorIds.delete(m.majorId))
-  else ms.forEach(m => selectedMajorIds.add(m.majorId))
+  const ms = specializationsByProg(progId)
+  if (allSelectedInProg(progId)) ms.forEach(m => selectedSpecializationIds.delete(m.specializationId))
+  else ms.forEach(m => selectedSpecializationIds.add(m.specializationId))
 }
 
 const selectedProgCount = computed(() => {
   const progs = new Set()
-  majors.value.forEach(m => { if (selectedMajorIds.has(m.majorId)) progs.add(m.programmeId) })
+  specializations.value.forEach(m => { if (selectedSpecializationIds.has(m.specializationId)) progs.add(m.programmeId) })
   return progs.size
 })
 
@@ -253,6 +260,31 @@ const createdPasswords = ref([])
 
 function nn(v) { const t = (v ?? '').trim(); return t === '' ? undefined : t }
 
+// Strong random password generator — same shape the backend produces so
+// admin can copy a hint into the field. Mirrors the server's character
+// alphabet (mixed case, digits, symbols).
+function genPassword() {
+  const upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+  const lower   = 'abcdefghjkmnpqrstuvwxyz'
+  const digits  = '23456789'
+  const special = '!@#$%&*'
+  const all = upper + lower + digits + special
+  const rng = new Uint8Array(16)
+  crypto.getRandomValues(rng)
+  const chars = new Array(16)
+  chars[0] = upper[rng[0] % upper.length]
+  chars[1] = lower[rng[1] % lower.length]
+  chars[2] = digits[rng[2] % digits.length]
+  chars[3] = special[rng[3] % special.length]
+  for (let i = 4; i < 16; i++) chars[i] = all[rng[i] % all.length]
+  crypto.getRandomValues(rng)
+  for (let i = 15; i > 0; i--) {
+    const j = rng[i] % (i + 1)
+    ;[chars[i], chars[j]] = [chars[j], chars[i]]
+  }
+  return chars.join('')
+}
+
 async function handleSubmit() {
   submitting.value = true
   submitError.value = ''
@@ -263,6 +295,7 @@ async function handleSubmit() {
       name: form.name.trim(),
       username: firstUser.username.trim(),
       email: nn(firstUser.email),
+      password: nn(firstUser.password),
       contactPersonName:  nn(form.contactPersonName),
       contactPersonTitle: nn(form.contactPersonTitle),
       contactPersonEmail: nn(form.contactPersonEmail),
@@ -294,6 +327,7 @@ async function handleSubmit() {
         const r = await apiClient.post(`/v1/admin/school/partners/${partnerId}/users`, {
           username: u.username.trim(),
           email: nn(u.email),
+          password: nn(u.password),
         })
         createdPasswords.value.push({ username: u.username.trim(), password: r.data.temporaryPassword })
       } catch (e) {
@@ -302,10 +336,10 @@ async function handleSubmit() {
     }
 
     // Programme access
-    if (selectedMajorIds.size > 0) {
+    if (selectedSpecializationIds.size > 0) {
       try {
         await apiClient.post(`/v1/admin/school/partners/${partnerId}/programme-access`, {
-          majorIds: [...selectedMajorIds],
+          specializationIds: [...selectedSpecializationIds],
         })
       } catch (e) {
         submitError.value = `Partner created but programme access failed: ${e.response?.data ?? e.message}`
@@ -322,16 +356,16 @@ async function handleSubmit() {
 
 function copy(v) { navigator.clipboard.writeText(v).catch(() => {}) }
 
-async function loadProgrammesAndMajors() {
+async function loadProgrammesAndSpecializations() {
   programmesLoading.value = true
   programmesError.value = ''
   try {
     const [pRes, mRes] = await Promise.all([
       apiClient.get('/v1/school/programmes?ownership=core'),
-      apiClient.get('/v1/school/majors'),
+      apiClient.get('/v1/school/specializations'),
     ])
     programmes.value = (pRes.data.items ?? []).filter(p => !p.deletedAt)
-    majors.value = mRes.data.items ?? []
+    specializations.value = mRes.data.items ?? []
     programmes.value.forEach(p => openProgs.add(p.programmeId))
   } catch (e) {
     programmesError.value = e.response?.data?.message ?? e.message ?? 'Failed to load programmes'
@@ -340,7 +374,7 @@ async function loadProgrammesAndMajors() {
   }
 }
 
-onMounted(loadProgrammesAndMajors)
+onMounted(loadProgrammesAndSpecializations)
 </script>
 
 <style scoped>
@@ -402,15 +436,20 @@ onMounted(loadProgrammesAndMajors)
 .prog-count { font-size: .78rem; color: #5f6e85; }
 .caret { font-size: .85rem; color: #6b7888; }
 .btn-xs { padding: 2px 8px; font-size: .75rem; border: 1px solid #cfd7e3; background: #fff; border-radius: 5px; cursor: pointer; }
-.major-list { padding: .5rem .9rem; display: flex; flex-direction: column; gap: .3rem; border-top: 1px solid #e8edf3; }
-.major-row { display: flex; align-items: center; gap: .5rem; font-size: .9rem; cursor: pointer; }
+.specialization-list { padding: .5rem .9rem; display: flex; flex-direction: column; gap: .3rem; border-top: 1px solid #e8edf3; }
+.specialization-row { display: flex; align-items: center; gap: .5rem; font-size: .9rem; cursor: pointer; }
 .empty-note { font-size: .82rem; color: #8a93a4; margin: 0; }
 .loading-row { padding: 1rem; color: #5f6e85; font-size: .9rem; }
 .err-banner { background: #fde7e5; color: #a8241e; padding: .6rem .9rem; border-radius: 6px; margin: .4rem 0; font-size: .88rem; }
 .empty-state-card { padding: 1rem; background: #f6f9fd; color: #5f6e85; border-radius: 8px; text-align: center; }
 
 /* Users */
-.user-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: .7rem; align-items: end; margin-bottom: .4rem; }
+.user-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: .7rem; align-items: end; margin-bottom: .4rem; }
+.field-pw { min-width: 0; }
+.pw-row { display: flex; gap: .35rem; align-items: stretch; }
+.pw-row input { flex: 1; min-width: 0; }
+.btn-gen { padding: 0 .55rem; white-space: nowrap; font-size: .8rem; border: 1px solid #cfd7e3; border-radius: 5px; background: #f6f9fc; cursor: pointer; }
+.btn-gen:hover { background: #eef3fb; }
 .btn-icon-x { padding: .5rem .7rem; border: none; background: #fbe7e5; color: #a8241e; border-radius: 6px; cursor: pointer; }
 .btn-link { background: none; border: none; color: #0a5aad; font-weight: 600; cursor: pointer; padding: .3rem 0; }
 

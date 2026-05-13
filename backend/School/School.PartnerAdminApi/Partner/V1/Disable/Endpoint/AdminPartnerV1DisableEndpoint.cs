@@ -19,8 +19,11 @@ public sealed class AdminPartnerV1DisableEndpoint : IEndpointMarker
     {
         var partner = await db.Partners.FirstOrDefaultAsync(p => p.PartnerId == id, ct);
         if (partner is null) return Results.NotFound();
+        if (partner.DeletedAt is not null) return Results.BadRequest("Partner is deleted — restore before disabling.");
 
-        partner.DeletedAt = DateTime.UtcNow;
+        // Disable (not delete). The Delete button is what the admin clicks
+        // afterwards to soft-delete. Users get locked out either way.
+        partner.DisabledAt = DateTime.UtcNow;
 
         var users = await db.Users
             .Where(u => u.PartnerId == id)

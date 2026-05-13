@@ -14,7 +14,7 @@
 
     <!-- Search + secondary filters -->
     <div class="filter-row">
-      <input v-model="search" class="inp" placeholder="Search by name, username or student ID…" />
+      <input v-model="search" class="inp" placeholder="Fuzzy search — name, email, programme, student #…" />
       <select v-model="filterProgrammeId" class="inp">
         <option value="">All programmes</option>
         <option v-for="p in programmesAvailable" :key="p.programmeId" :value="p.programmeId">{{ p.name }}</option>
@@ -30,9 +30,14 @@
     <table v-else-if="!loading" class="data-table">
       <thead><tr><th>Student #</th><th>Name</th><th>Email</th><th>Enrolments</th><th>Status</th><th></th></tr></thead>
       <tbody>
-        <tr v-for="s in filtered" :key="s.studentId" class="data-row" @click="openDetail(s.studentId)">
+        <tr v-for="s in filtered" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
           <td class="mono">{{ s.studentNumber }}</td>
-          <td>{{ s.firstName ?? '—' }} {{ s.lastName ?? '' }}<br><small class="muted">@{{ s.username }}</small></td>
+          <td>
+            <a class="s-name-link" @click.stop="openStudentDetail(s)">
+              {{ s.firstName ?? '—' }} {{ s.lastName ?? '' }}
+            </a>
+            <br><small class="muted">@{{ s.username }}</small>
+          </td>
           <td>{{ s.email ?? '—' }}<span v-if="!s.emailVerified" class="s-badge unverified">unverified</span></td>
           <td>
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
@@ -59,10 +64,13 @@
                       class="btn-manage-sub" @click.stop="openManage(s, e)">
                 {{ flowState(s, e).kind === 'active-sub' ? 'Change' : 'Manage' }}
               </button>
+              <button class="btn-row-details btn-row-details-sm" @click.stop="openStudentDetail(s, e.studentEnrollmentId)">
+                Details
+              </button>
             </div>
           </td>
           <td class="td-actions">
-            <button class="btn-link">Edit →</button>
+            <button class="btn-link" @click.stop="openDetail(s.studentId)">Edit →</button>
           </td>
         </tr>
       </tbody>
@@ -85,6 +93,25 @@
                   {{ confirmingEmail ? 'Confirming…' : 'Confirm on behalf of student' }}
                 </button>
               </template>
+              <button class="btn-confirm-email"
+                      :disabled="resettingStudentPw"
+                      @click="resetStudentPassword">
+                {{ resettingStudentPw ? 'Resetting…' : '🔑 Reset password' }}
+              </button>
+            </p>
+            <p v-if="resetStudentPwValue" class="sub reset-pw-reveal-row">
+              <strong>New password:</strong> <code>{{ resetStudentPwValue }}</code>
+              <button class="btn-confirm-email" @click="copyResetStudentPw">Copy</button>
+              <span class="muted">Save this — it won't be shown again.</span>
+            </p>
+            <p v-for="e in awaitingOfferAcceptance" :key="e.studentEnrollmentId" class="sub">
+              <button class="btn-confirm-email"
+                      :disabled="acceptingOfferId === e.studentEnrollmentId"
+                      @click="acceptOfferOnBehalf(e)">
+                {{ acceptingOfferId === e.studentEnrollmentId
+                    ? 'Accepting…'
+                    : `Accept ${e.programmeCode || 'offer'} on behalf of student` }}
+              </button>
             </p>
           </div>
           <button class="drawer-close" @click="detail = null">✕</button>
@@ -145,6 +172,10 @@
             <button class="drawer-close" @click="manageModal = null">✕</button>
           </div>
           <p class="manage-sub">{{ manageModal.studentName }} · {{ manageModal.enrollmentLabel }}</p>
+
+          <div class="manage-body manage-activity">
+            <EnrollmentActivityLog :api-path="`/v1/partner/my-students/${manageModal.studentId}/enrollments/${manageModal.enrollmentId}/activity`" />
+          </div>
 
           <div v-if="manageModal.step === 'choose'" class="manage-body">
             <p class="muted manage-hint">Select an action to apply to this enrolment.</p>
@@ -209,6 +240,134 @@
       </div>
     </transition>
 
+    <!-- Quick-view student detail modal: 3 tabs (Details / Letters / Activity) -->
+    <transition name="fade">
+      <div v-if="detailModal" class="manage-overlay" @click.self="detailModal = null">
+        <div class="manage-modal detail-modal">
+          <div class="manage-hdr">
+            <div>
+              <h3>{{ detailModal.name || '—' }}
+                <span class="muted-sub">· {{ detailModal.studentNumber }}</span>
+              </h3>
+              <p class="manage-sub">{{ detailModal.email || '—' }}</p>
+            </div>
+            <button class="drawer-close" @click="detailModal = null">✕</button>
+          </div>
+
+          <p v-if="detailModal.error" class="err-banner">{{ detailModal.error }}</p>
+          <p v-if="detailModal.loading" class="muted detail-loading">Loading…</p>
+
+          <template v-else-if="detailModal.data">
+            <div v-if="detailEnrollments.length > 1" class="enr-switch">
+              <label>Enrolment:</label>
+              <select v-model="detailModal.activeEnrollmentId">
+                <option v-for="e in detailEnrollments" :key="e.studentEnrollmentId" :value="e.studentEnrollmentId">
+                  {{ e.programmeCode }} · {{ e.specializationName }} ({{ e.statusName }})
+                </option>
+              </select>
+            </div>
+
+            <div class="detail-tabs">
+              <button v-for="t in DETAIL_TABS" :key="t.id"
+                      :class="['tab-btn', { active: detailModal.activeTab === t.id }]"
+                      @click="detailModal.activeTab = t.id">{{ t.label }}</button>
+            </div>
+
+            <div v-if="detailModal.activeTab === 'details'" class="tab-pane">
+              <div class="detail-grid">
+                <div class="detail-section">
+                  <h4>Account</h4>
+                  <dl>
+                    <dt>Username</dt><dd>@{{ detailModal.data.account?.username }}</dd>
+                    <dt>Email</dt><dd>{{ detailModal.data.account?.email ?? '—' }}<span v-if="!detailModal.data.account?.emailVerified" class="s-badge unverified">unverified</span></dd>
+                    <dt>First name</dt><dd>{{ detailModal.data.account?.firstName ?? '—' }}</dd>
+                    <dt>Last name</dt><dd>{{ detailModal.data.account?.lastName ?? '—' }}</dd>
+                  </dl>
+                </div>
+                <div class="detail-section">
+                  <h4>Personal</h4>
+                  <dl>
+                    <dt>Date of birth</dt><dd>{{ formatDateD(detailModal.data.personal?.dateOfBirth) || '—' }}</dd>
+                    <dt>Passport / ID</dt><dd>{{ detailModal.data.personal?.passportId || '—' }}</dd>
+                    <dt>Address</dt><dd>{{ formatAddressD(detailModal.data.personal?.address) || '—' }}</dd>
+                  </dl>
+                </div>
+                <div class="detail-section">
+                  <h4>Background</h4>
+                  <dl>
+                    <dt>Highest degree</dt><dd>{{ detailModal.data.background?.highestDegree || '—' }}</dd>
+                    <dt>Years exp.</dt><dd>{{ detailModal.data.background?.yearsWorkExperience ?? '—' }}</dd>
+                  </dl>
+                </div>
+                <div class="detail-section" v-if="activeEnrollment">
+                  <h4>Enrolment</h4>
+                  <dl>
+                    <dt>Programme</dt><dd>{{ activeEnrollment.programmeName }}</dd>
+                    <dt>Specialisation</dt><dd>{{ activeEnrollment.specializationName }}</dd>
+                    <dt>Mode</dt><dd>{{ activeEnrollment.modeOfStudyName ?? '—' }}</dd>
+                    <dt>Commencement</dt><dd>{{ formatDateD(activeEnrollment.commencementDate) || '—' }}</dd>
+                    <dt>Duration</dt><dd>{{ activeEnrollment.durationOfStudyMonths ?? '—' }} months</dd>
+                    <dt>Status</dt><dd>{{ activeEnrollment.statusName }}</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="detailModal.activeTab === 'documents'" class="tab-pane">
+              <p v-if="!detailModal.data.documents?.length" class="muted">No documents uploaded yet.</p>
+              <div v-else>
+                <div v-for="enr in docsByEnrollment" :key="enr.enrollmentId" class="docs-group">
+                  <div class="docs-group-head">
+                    <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
+                    <span class="docs-group-count">{{ enr.docs.length }}</span>
+                  </div>
+                  <div class="docs-list">
+                    <div v-for="d in enr.docs" :key="d.studentDocumentId" class="doc-row">
+                      <span :class="['doc-pill', docPillClass(d.status)]">{{ docPillIcon(d.status) }}</span>
+                      <div class="doc-info">
+                        <div class="doc-name">{{ d.documentTypeName }}</div>
+                        <div class="doc-sub">
+                          {{ d.fileName }} · uploaded {{ formatDateD(d.uploadedAt) }} · {{ d.statusName }}
+                        </div>
+                      </div>
+                      <button class="btn-mini-d" @click="downloadStudentDocPartner(d)">Open</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="detailModal.activeTab === 'letters'" class="tab-pane">
+              <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
+              <div v-else class="letters-list">
+                <div v-for="t in LETTER_TYPES" :key="t.key" class="letter-row" :class="{ disabled: !activeEnrollment.letters?.[t.key] }">
+                  <span class="letter-icon">{{ t.icon }}</span>
+                  <div class="letter-info">
+                    <div class="letter-name">{{ t.label }}</div>
+                    <div class="letter-sub">
+                      <template v-if="activeEnrollment.letters?.[t.key]">
+                        {{ activeEnrollment.letters[t.key].fileName }} · released {{ formatDateD(activeEnrollment.letters[t.key].uploadedAt) }}
+                      </template>
+                      <template v-else>Not yet released</template>
+                    </div>
+                  </div>
+                  <button class="btn-mini-d" :disabled="!activeEnrollment.letters?.[t.key]"
+                          @click="downloadLetterPartner(activeEnrollment.letters?.[t.key])">Download</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="detailModal.activeTab === 'activity'" class="tab-pane">
+              <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
+              <EnrollmentActivityLog v-else
+                :api-path="`/v1/partner/my-students/${detailModal.studentId}/enrollments/${activeEnrollment.studentEnrollmentId}/activity`"
+                :default-open="true" />
+            </div>
+          </template>
+        </div>
+      </div>
+    </transition>
+
     <!-- Student Review Wizard -->
     <StudentReviewWizard v-if="reviewingStudent" :student="reviewingStudent"
       @close="closeReview" @submitted="onReviewSubmitted" />
@@ -221,8 +380,10 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import Fuse from 'fuse.js'
 import api from '../../../api/client.js'
 import StudentReviewWizard from '../StudentReviewWizard.vue'
+import EnrollmentActivityLog from '../../letters/EnrollmentActivityLog.vue'
 import {
   partnerReviewState,
   getSubStatus,
@@ -231,16 +392,21 @@ import {
   SUB_STATUS_OPTIONS,
 } from '../../../store/partnerReviewState.js'
 
+// One chip per distinct workflow stage. Default landing is "Action required"
+// (partner's queue). "All" sits at the end. Statuses that don't require
+// partner action are also represented so the partner can browse any state.
 const STATUS_FILTERS = [
-  { id: '',                          label: 'All',                            codes: null },
-  { id: 'submitted',                 label: 'Submitted',                      codes: ['ApplicationSubmitted', 'ApplicationAwaitingReviewByPartner'] },
-  { id: 'rejected-awaiting-student', label: 'Rejected — Awaiting Student',    codes: ['ApplicationRejectedByPartner', 'ApplicationRejectedByAdmission'] },
-  { id: 'pending-admission',         label: 'Pending Admission Approval',     codes: ['ApplicationAwaitingReviewByAdmission'] },
-  { id: 'applying',                  label: 'Applying (draft)',               codes: ['Draft'], includeNoEnrolment: true },
-  { id: 'active',                    label: 'Active',                         codes: ['AcceptOffer', 'ApplicationApprovedAdmission', 'AcceptAdmission'] },
-  { id: 'admitted-grading',          label: 'Admitted — Grading',             codes: ['AwaitingGradesSubmit'] },
-  { id: 'awaiting-grades-approval',  label: 'Awaiting Grades Approval',       codes: ['AwaitingGradesApproval'] },
-  { id: 'graduated',                 label: 'Graduated',                      codes: ['GradesApproved'] },
+  { id: 'action-required',           label: 'Action required',             codes: ['ApplicationSubmitted', 'ApplicationAwaitingReviewByPartner', 'AwaitingGradesSubmit'] },
+  { id: 'submitted',                 label: 'Submitted',                   codes: ['ApplicationSubmitted', 'ApplicationAwaitingReviewByPartner'] },
+  { id: 'rejected-awaiting-student', label: 'Rejected — Awaiting Student', codes: ['ApplicationRejectedByPartner', 'ApplicationRejectedByAdmission'] },
+  { id: 'pending-admission',         label: 'Pending Admission Approval',  codes: ['ApplicationAwaitingReviewByAdmission'] },
+  { id: 'applying',                  label: 'Applying (draft)',            codes: ['Draft'], includeNoEnrolment: true },
+  { id: 'awaiting-student-accept',   label: 'Awaiting Student Acceptance', codes: ['AcceptOffer'] },
+  { id: 'admitted',                  label: 'Admitted',                    codes: ['ApplicationApprovedAdmission', 'AcceptAdmission'] },
+  { id: 'admitted-grading',          label: 'Admitted — Grading',          codes: ['AwaitingGradesSubmit'] },
+  { id: 'awaiting-grades-approval',  label: 'Awaiting Grades Approval',    codes: ['AwaitingGradesApproval'] },
+  { id: 'graduated',                 label: 'Graduated',                   codes: ['GradesApproved'] },
+  { id: '',                          label: 'All',                         codes: null },
 ]
 const MODES = [
   { id: 1, label: 'Distance / Online self-study' },
@@ -259,7 +425,7 @@ const loading = ref(false)
 const loadError = ref('')
 
 const search = ref('')
-const filterStatusId = ref('')
+const filterStatusId = ref('action-required')
 const filterProgrammeId = ref('')
 const filterSpecializationId = ref('')
 
@@ -267,6 +433,30 @@ const detail = ref(null)
 const saving = ref(false)
 const detailError = ref('')
 const confirmingEmail = ref(false)
+const acceptingOfferId = ref(null)
+const resettingStudentPw = ref(false)
+const resetStudentPwValue = ref('')
+
+async function resetStudentPassword() {
+  if (!detail.value || resettingStudentPw.value) return
+  const studentName = `${detail.value.account.firstName ?? ''} ${detail.value.account.lastName ?? ''}`.trim() || 'this student'
+  const entered = prompt(`Reset password for ${studentName}\n\nEnter a custom password (or leave blank for an auto-generated one):`, '')
+  if (entered === null) return
+  resettingStudentPw.value = true
+  resetStudentPwValue.value = ''
+  try {
+    const body = entered.trim() ? { password: entered.trim() } : {}
+    const res = await api.post(`/v1/partner/my-students/${detail.value.studentId}/reset-password`, body)
+    resetStudentPwValue.value = res.data.temporaryPassword
+  } catch (e) {
+    detailError.value = e.response?.data?.error ?? e.message ?? 'Failed to reset password'
+  } finally {
+    resettingStudentPw.value = false
+  }
+}
+function copyResetStudentPw() {
+  navigator.clipboard.writeText(resetStudentPwValue.value).catch(() => {})
+}
 
 // Partner manually confirms a student's email — useful when the student
 // has lost the verification email or signed up in person. Skips the OPAQUE
@@ -283,6 +473,29 @@ async function confirmEmailOnBehalf() {
     detailError.value = e.response?.data?.error ?? e.message ?? 'Failed to confirm email'
   } finally {
     confirmingEmail.value = false
+  }
+}
+
+// Enrolments currently waiting on the student's offer acceptance. The
+// partner can click to accept on their behalf; the backend writes a note
+// "Partner accepted offer on behalf of student." so the audit log shows
+// who actually did it.
+const awaitingOfferAcceptance = computed(() =>
+  (detail.value?.enrollments ?? []).filter(e => e.statusCode === 'AcceptOffer'))
+
+async function acceptOfferOnBehalf(enr) {
+  if (!detail.value || acceptingOfferId.value) return
+  acceptingOfferId.value = enr.studentEnrollmentId
+  detailError.value = ''
+  try {
+    await api.post(`/v1/partner/my-students/${detail.value.studentId}/enrollments/${enr.studentEnrollmentId}/accept-offer-on-behalf`)
+    // Reload both list (chip counts shift) and detail (enrolment status flips).
+    await load()
+    await openDetail(detail.value.studentId)
+  } catch (e) {
+    detailError.value = e.response?.data?.error ?? e.message ?? 'Failed to accept offer'
+  } finally {
+    acceptingOfferId.value = null
   }
 }
 
@@ -338,23 +551,43 @@ const specializationsAvailable = computed(() => {
   return [...m.values()].sort((a, b) => a.name.localeCompare(b.name))
 })
 
+// Fuzzy search across every field — name, email, programme, specialization.
+const fuse = computed(() => new Fuse(list.value, {
+  keys: [
+    { name: 'studentNumber', weight: 0.9 },
+    { name: 'firstName',     weight: 0.8 },
+    { name: 'lastName',      weight: 0.8 },
+    { name: 'username',      weight: 0.6 },
+    { name: 'email',         weight: 0.6 },
+    { name: 'enrollments.programmeCode', weight: 0.5 },
+    { name: 'enrollments.programmeName', weight: 0.5 },
+    { name: 'enrollments.specializationName', weight: 0.4 },
+  ],
+  threshold: 0.35,
+  ignoreLocation: true,
+  useExtendedSearch: true,
+  minMatchCharLength: 2,
+}))
+
 const filtered = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  return list.value.filter(s => {
-    if (q) {
-      const hay = `${s.firstName ?? ''} ${s.lastName ?? ''} ${s.username ?? ''} ${s.studentNumber}`.toLowerCase()
-      if (!hay.includes(q)) return false
-    }
-    if (filterProgrammeId.value && !s.enrollments.some(e => e.programmeId === filterProgrammeId.value)) return false
-    if (filterSpecializationId.value && !s.enrollments.some(e => e.specializationId === filterSpecializationId.value)) return false
-    if (filterStatusId.value !== '') {
-      const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
+  const q = search.value.trim()
+  let rows = !q
+    ? list.value
+    : fuse.value.search(q).map(r => r.item)
+
+  if (filterProgrammeId.value)
+    rows = rows.filter(s => s.enrollments.some(e => e.programmeId === filterProgrammeId.value))
+  if (filterSpecializationId.value)
+    rows = rows.filter(s => s.enrollments.some(e => e.specializationId === filterSpecializationId.value))
+  if (filterStatusId.value !== '') {
+    const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
+    rows = rows.filter(s => {
       const matchesNoEnrolment = f?.includeNoEnrolment && s.enrollments.length === 0
       const matchesCode = s.enrollments.some(e => f?.codes?.includes(e.statusCode))
-      if (!matchesNoEnrolment && !matchesCode) return false
-    }
-    return true
-  })
+      return matchesNoEnrolment || matchesCode
+    })
+  }
+  return rows
 })
 
 async function load() {
@@ -373,9 +606,138 @@ async function load() {
   }
 }
 
+// Quick-view detail modal (3 tabs: Details / Letters / Activity log).
+// Sits alongside the existing big edit drawer (openDetail) — row click +
+// blue name + "Details" button now go here for read-only browsing; the
+// "Edit →" button still opens the editable drawer for deeper changes.
+const DETAIL_TABS = [
+  { id: 'details',   label: 'Details' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'letters',   label: 'Letters' },
+  { id: 'activity',  label: 'Activity log' },
+]
+const LETTER_TYPES = [
+  { key: 'offerLetter',            label: 'Offer Letter',            icon: '📄' },
+  { key: 'admissionLetter',        label: 'Admission Letter',        icon: '📋' },
+  { key: 'transcript',             label: 'Transcript',              icon: '📑' },
+  { key: 'certificate',            label: 'Certificate',             icon: '🎓' },
+  { key: 'provisionalCertificate', label: 'Provisional Certificate', icon: '🎓' },
+]
+const detailModal = ref(null)
+const detailEnrollments = computed(() => detailModal.value?.data?.enrollments ?? [])
+const activeEnrollment = computed(() =>
+  detailEnrollments.value.find(e => e.studentEnrollmentId === detailModal.value?.activeEnrollmentId)
+  ?? detailEnrollments.value[0]
+  ?? null
+)
+
+// Opens the quick-view modal. Optional `preselectEnrollmentId` lets the
+// caller open the modal directly on a specific enrolment — used by the
+// per-enrolment "Details" buttons on the row so a student with multiple
+// programmes lands on the right one without an extra dropdown click.
+async function openStudentDetail(s, preselectEnrollmentId = null) {
+  detailModal.value = reactive({
+    studentId: s.studentId,
+    studentNumber: s.studentNumber,
+    name: `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() || '—',
+    email: s.email,
+    activeTab: 'details',
+    activeEnrollmentId: preselectEnrollmentId ?? s.enrollments?.[0]?.studentEnrollmentId ?? null,
+    data: null,
+    loading: true,
+    error: '',
+  })
+  try {
+    const res = await api.get(`/v1/partner/my-students/${s.studentId}`)
+    detailModal.value.data = res.data
+    if (!detailModal.value.activeEnrollmentId && res.data.enrollments?.length) {
+      detailModal.value.activeEnrollmentId = res.data.enrollments[0].studentEnrollmentId
+    }
+  } catch (err) {
+    detailModal.value.error = err.response?.data?.error ?? err.message ?? 'Failed to load student'
+  } finally {
+    detailModal.value.loading = false
+  }
+}
+
+// Documents tab support: groups uploaded docs by the enrolment they were
+// attached to so the partner sees which docs went on which application.
+const docsByEnrollment = computed(() => {
+  const data = detailModal.value?.data
+  if (!data?.documents?.length || !data?.enrollments?.length) return []
+  return data.enrollments.map(e => ({
+    enrollmentId: e.studentEnrollmentId,
+    programmeCode: e.programmeCode,
+    programmeName: e.programmeName,
+    specializationName: e.specializationName,
+    docs: data.documents
+      .filter(d => d.enrollmentId === e.studentEnrollmentId)
+      .sort((a, b) => (a.documentTypeName || '').localeCompare(b.documentTypeName || '')),
+  })).filter(g => g.docs.length > 0)
+})
+function docPillClass(status) {
+  if (status === 'VerifiedByPartner' || status === 'VerifiedByEnrolment') return 'doc-pill-ok'
+  if (status === 'RejectedByPartner' || status === 'RejectedByEnrolment') return 'doc-pill-bad'
+  return 'doc-pill-pending'
+}
+function docPillIcon(status) {
+  if (status === 'VerifiedByPartner' || status === 'VerifiedByEnrolment') return '✓'
+  if (status === 'RejectedByPartner' || status === 'RejectedByEnrolment') return '✕'
+  return '·'
+}
+async function downloadStudentDocPartner(d) {
+  if (!d?.studentDocumentId || !detailModal.value) return
+  try {
+    const res = await api.get(
+      `/v1/partner/my-students/${detailModal.value.studentId}/documents/${d.studentDocumentId}/file`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (err) {
+    reviewToast.value = err.response?.status === 404
+      ? 'File not found.'
+      : (err.response?.data?.error ?? err.message ?? 'Download failed')
+    setTimeout(() => { reviewToast.value = '' }, 3000)
+  }
+}
+
+async function downloadLetterPartner(letter) {
+  if (!letter?.studentDocumentId || !detailModal.value) return
+  try {
+    const res = await api.get(
+      `/v1/partner/my-students/${detailModal.value.studentId}/documents/${letter.studentDocumentId}/file`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = letter.fileName ?? 'letter.pdf'
+    a.target = '_blank'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (err) {
+    reviewToast.value = err.response?.status === 404
+      ? 'File not found.'
+      : (err.response?.data?.error ?? err.message ?? 'Download failed')
+    setTimeout(() => { reviewToast.value = '' }, 3000)
+  }
+}
+
+function formatDateD(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+function formatAddressD(addr) {
+  if (!addr) return ''
+  const parts = [addr.line1, addr.city, addr.stateRegion, addr.postalCode, addr.countryCode]
+    .filter(s => !!(s && s.trim?.() !== ''))
+  return parts.join(', ')
+}
+
 async function openDetail(studentId) {
   detail.value = null
   detailError.value = ''
+  resetStudentPwValue.value = '' // don't bleed across students
   try {
     const [s, langs, nats] = await Promise.all([
       api.get(`/v1/partner/my-students/${studentId}`),
@@ -852,6 +1214,8 @@ function confirmSubStatus() {
 }
 .btn-confirm-email:hover:not(:disabled) { background: #f0f6ff; border-color: #a0c0e0; }
 .btn-confirm-email:disabled { opacity: .55; cursor: not-allowed; }
+.reset-pw-reveal-row { background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 6px; padding: .4rem .65rem; margin-top: .4rem; font-size: .82rem; }
+.reset-pw-reveal-row code { font-family: monospace; color: #065f46; background: #fff; padding: .1rem .4rem; border-radius: 3px; }
 
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 60; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 540px; max-width: 100vw; background: #fff; z-index: 61; box-shadow: -4px 0 16px rgba(0,0,0,0.15); display: flex; flex-direction: column; }
@@ -972,4 +1336,55 @@ function confirmSubStatus() {
 .grade-reject-title { color: #b91c1c; font-weight: 700; font-size: .9rem; }
 .grade-reject-meta { color: #7f1d1d; font-size: .78rem; margin-top: .15rem; }
 .grade-reject-note { margin: .45rem 0 0; font-family: inherit; font-size: .85rem; color: #444; white-space: pre-wrap; background: #fff; border: 1px solid #fbcaca; border-radius: 5px; padding: .5rem .65rem; }
+
+/* Quick-view detail modal — mirrors the admin tab's modal so partner +
+   admin views feel the same. Names are blue, modal is fixed height,
+   tab content scrolls inside. */
+.s-name-link { color: #1a4d8c; font-weight: 600; cursor: pointer; text-decoration: none; }
+.s-name-link:hover { text-decoration: underline; color: #143b6c; }
+.btn-row-details { padding: .25rem .65rem; border: 1px solid #1a4d8c; background: #fff; color: #1a4d8c; border-radius: 4px; font-size: .75rem; font-weight: 600; cursor: pointer; margin-right: .35rem; }
+.btn-row-details:hover { background: #eef3fb; }
+.btn-row-details-sm { padding: .15rem .5rem; font-size: .7rem; margin-right: 0; }
+
+.detail-modal { width: 760px; max-width: 95vw; height: 80vh; max-height: 720px; display: flex; flex-direction: column; }
+.muted-sub { color: #6b7888; font-weight: 400; font-size: .82rem; margin-left: .25rem; }
+.detail-loading { padding: 1.5rem; }
+.enr-switch { display: flex; align-items: center; gap: .65rem; padding: .55rem 1rem; background: #f6f9fc; border-bottom: 1px solid #eef2f7; font-size: .85rem; }
+.enr-switch label { font-weight: 600; color: #4a5a72; }
+.enr-switch select { padding: .25rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .85rem; min-width: 280px; }
+.detail-tabs { display: flex; gap: .25rem; padding: .5rem 1rem 0; border-bottom: 1px solid #eef2f7; background: #fff; }
+.tab-btn { background: transparent; border: none; padding: .55rem 1.1rem; font-size: .88rem; font-weight: 600; color: #6b7888; cursor: pointer; border-bottom: 2px solid transparent; }
+.tab-btn:hover { color: #1a2d4f; }
+.tab-btn.active { color: #1a4d8c; border-bottom-color: #1a4d8c; }
+.tab-pane { padding: 1rem 1.25rem 1.25rem; overflow-y: auto; flex: 1; }
+
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.detail-section h4 { margin: 0 0 .45rem 0; font-size: .82rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #6b7888; }
+.detail-section dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: .25rem .75rem; font-size: .85rem; }
+.detail-section dt { color: #6b7888; }
+.detail-section dd { margin: 0; color: #1a2d4f; word-break: break-word; }
+
+.docs-group { margin-bottom: 1rem; }
+.docs-group-head { font-size: .82rem; color: #1a2d4f; padding: .35rem .5rem; background: #eef3fb; border-left: 3px solid #1a4d8c; border-radius: 4px; margin-bottom: .35rem; display: flex; align-items: center; gap: .5rem; }
+.docs-group-count { margin-left: auto; background: #fff; border: 1px solid #cfd7e3; border-radius: 10px; padding: .05rem .5rem; font-size: .7rem; font-weight: 700; color: #4a5a72; }
+.docs-list { display: flex; flex-direction: column; gap: .35rem; }
+.doc-row { display: flex; align-items: center; gap: .65rem; padding: .5rem .65rem; background: #fff; border: 1px solid #eef2f7; border-radius: 6px; }
+.doc-pill { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: .78rem; font-weight: 700; flex-shrink: 0; }
+.doc-pill-ok { background: #d1fae5; color: #065f46; }
+.doc-pill-bad { background: #fee2e2; color: #991b1b; }
+.doc-pill-pending { background: #fef3c7; color: #92400e; }
+.doc-info { flex: 1; min-width: 0; }
+.doc-name { font-size: .86rem; font-weight: 600; color: #1a2d4f; }
+.doc-sub { font-size: .72rem; color: #6b7888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.letters-list { display: flex; flex-direction: column; gap: .5rem; }
+.letter-row { display: flex; align-items: center; gap: .65rem; padding: .55rem .75rem; background: #f6f9fc; border: 1px solid #eef2f7; border-radius: 7px; }
+.letter-row.disabled { opacity: .55; }
+.letter-icon { font-size: 1.2rem; }
+.letter-info { flex: 1; min-width: 0; }
+.letter-name { font-weight: 600; font-size: .88rem; color: #1a2d4f; }
+.letter-sub { font-size: .76rem; color: #6b7888; }
+.btn-mini-d { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }
+.btn-mini-d:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }
+.btn-mini-d:hover:not(:disabled) { background: #143b6c; }
 </style>

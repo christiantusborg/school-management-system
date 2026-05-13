@@ -9,7 +9,7 @@ public sealed class PathwayV1ListEndpoint : IEndpointMarker
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
         app.MapGet<PathwayV1ListCommand, BaseGetAllResponse<PathwayV1ListEndpointResponseItem>>(this, EndpointHandlerAsync)
-            .RequireAuthorization("AdminOnly");
+            .RequireAuthorization("AdminOrPartner");
         return app;
     }
 

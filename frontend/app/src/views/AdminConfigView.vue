@@ -48,12 +48,10 @@ function logout() {
 }
 
 const entities = [
-  { key: 'documentTypes',      label: 'Document Types',      config: { title: 'Document Types',      endpoint: '/v1/school/system-config/document-types' } },
-  { key: 'enrollmentStatuses', label: 'Enrollment Statuses', config: { title: 'Enrollment Statuses', endpoint: '/v1/school/system-config/enrollment-statuses' } },
-  { key: 'modesOfStudy',       label: 'Modes of Study',      config: { title: 'Modes of Study',      endpoint: '/v1/school/system-config/modes-of-study' } },
-  { key: 'pathways',           label: 'Pathways',            config: { title: 'Pathways',            endpoint: '/v1/school/system-config/pathways' } },
-  { key: 'tuitionFeeStatuses', label: 'Tuition Fee Statuses',config: { title: 'Tuition Fee Statuses',endpoint: '/v1/school/system-config/tuition-fee-statuses' } },
-  { key: 'finalProjectStatuses', label: 'Final Project Statuses', config: { title: 'Final Project Statuses', endpoint: '/v1/school/system-config/final-project-statuses' } },
+  { key: 'documentTypes',   label: 'Document Types',   config: { title: 'Document Types',   endpoint: '/v1/school/system-config/document-types' } },
+  { key: 'educationLevels', label: 'Education Levels', config: { title: 'Education Levels', endpoint: '/v1/school/system-config/education-levels' } },
+  { key: 'modesOfStudy',    label: 'Modes of Study',   config: { title: 'Modes of Study',   endpoint: '/v1/school/system-config/modes-of-study' } },
+  { key: 'pathways',        label: 'Pathways',         config: { title: 'Pathways',         endpoint: '/v1/school/system-config/pathways' } },
 ]
 
 const activeTab = ref(entities[0].key)

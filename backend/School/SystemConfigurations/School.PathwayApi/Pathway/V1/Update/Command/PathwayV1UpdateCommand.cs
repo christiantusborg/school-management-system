@@ -6,7 +6,10 @@ public sealed record PathwayV1UpdateCommand : IHandleableCommand<
     PathwayV1UpdateCommandHandler,
     PathwayV1UpdateCommandResult>
 {
-    public required int PathwayId { get; init; }
+    public required Guid PathwayId { get; init; }
     public required string Name { get; init; }
-    public IReadOnlyList<int> DocumentTypeIds { get; init; } = [];
+    public string? Description { get; init; }
+    public required int MinimumYearsWorkExperience { get; init; }
+    public required IReadOnlyList<Guid> DocumentTypeIds { get; init; }
+    public required IReadOnlyList<Guid> AcceptedEducationLevelIds { get; init; }
 }

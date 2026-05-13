@@ -13,7 +13,6 @@ public sealed class PathwayV1SoftDeleteCommandHandler(IPathwayRepository reposit
             .AddWhere(x => x.DeletedAt == null);
 
         var entity = await repository.GetAsync(spec, cancellationToken).ConfigureAwait(false);
-
         if (entity is null)
             return SuccessOrFailureHelper<PathwayV1SoftDeleteCommandResult>.EntityNotFound(typeof(PathwayV1SoftDeleteCommand));
 

@@ -68,7 +68,7 @@
             <table class="enr-table">
               <thead>
                 <tr>
-                  <th class="th-prog">Programme &amp; Major</th>
+                  <th class="th-prog">Programme &amp; Specialization</th>
                   <th class="th-status">Status</th>
                   <th class="th-acad">Academic Progress</th>
                   <th class="th-pay">Payment</th>
@@ -79,10 +79,10 @@
               <tbody>
                 <tr v-for="enr in student.enrollments" :key="enr.id" class="enr-row">
 
-                  <!-- Col 1: Programme & Major + doc links -->
+                  <!-- Col 1: Programme & Specialization + doc links -->
                   <td class="td-prog">
                     <div class="prog-name-main">{{ enr.programme }}</div>
-                    <div class="prog-major-sub">{{ enr.major }}</div>
+                    <div class="prog-specialization-sub">{{ enr.specialization }}</div>
                     <div class="doc-list">
                       <a class="doc-row" :class="enr.offerType ? 'doc-avail' : 'doc-disabled'" href="#"
                          @click.prevent="enr.offerType && printOfferLetter(student, enr, 'offer')">
@@ -223,7 +223,7 @@
               <div v-else class="doc-verified-badge doc-unverified">Unverified</div>
             </div>
             <div class="doc-actions">
-              <button v-if="student[doc.field]" class="btn-view" @click="mockView(doc.label, student[doc.field])">View</button>
+              <button v-if="student[doc.field]" class="btn-review" @click="openReview(doc)">Review</button>
               <label class="btn-upload-doc">
                 {{ student[doc.field] ? 'Replace' : 'Upload' }}
                 <input type="file" class="file-hidden-input" :accept="doc.accept" @change="handleAdminUpload(doc.field, $event)" />
@@ -416,7 +416,7 @@
           <div class="student-info-strip">
             <span><strong>Student:</strong> {{ student?.firstName }} {{ student?.lastName }}</span>
             <span><strong>Programme:</strong> {{ editingEnrollment.programme }}</span>
-            <span><strong>Major:</strong> {{ editingEnrollment.major }}</span>
+            <span><strong>Specialization:</strong> {{ editingEnrollment.specialization }}</span>
           </div>
           <div class="grade-table-wrap">
             <table class="grade-table">
@@ -568,6 +568,39 @@
       </div>
     </transition>
 
+    <!-- ── Document Review Modal ── -->
+    <transition name="fade">
+      <div v-if="reviewDoc" class="modal-overlay" @click.self="closeReview">
+        <div class="review-modal">
+          <div class="modal-hdr">
+            <div>
+              <h3>Review: {{ reviewDoc.label }}</h3>
+              <p class="review-sub">{{ student?.[reviewDoc.field] }}</p>
+            </div>
+            <button class="btn-modal-close" @click="closeReview">✕</button>
+          </div>
+          <div class="review-actions">
+            <button class="btn-reject" @click="rejectDoc">✕ Reject</button>
+            <button class="btn-approve" @click="approveDoc">✓ Approve</button>
+          </div>
+          <div class="review-preview">
+            <template v-if="reviewPreview.kind === 'image'">
+              <img :src="reviewPreview.src" :alt="reviewDoc.label" class="preview-img" />
+            </template>
+            <template v-else-if="reviewPreview.kind === 'pdf'">
+              <iframe :src="reviewPreview.src" class="preview-pdf" :title="reviewDoc.label"></iframe>
+            </template>
+            <div v-else class="preview-unsupported">
+              <div class="preview-unsupported-icon">⚠</div>
+              <div><strong>Preview not supported.</strong></div>
+              <div class="preview-unsupported-sub">Only PNG, JPG, and PDF files can be previewed here.</div>
+              <div class="preview-unsupported-file">{{ student?.[reviewDoc.field] }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- ── Add Enrolment Modal ── -->
     <transition name="fade">
       <div v-if="showAddEnrol" class="modal-overlay" @click.self="showAddEnrol = false">
@@ -580,16 +613,16 @@
             <div class="row-2">
               <div class="field">
                 <label>Programme <span class="req">*</span></label>
-                <select v-model="addEnrForm.programme" @change="addEnrForm.major = ''">
+                <select v-model="addEnrForm.programme" @change="addEnrForm.specialization = ''">
                   <option value="">— Select —</option>
                   <option v-for="p in programmeNames" :key="p">{{ p }}</option>
                 </select>
               </div>
               <div class="field">
-                <label>Major <span class="req">*</span></label>
-                <select v-model="addEnrForm.major">
+                <label>Specialization <span class="req">*</span></label>
+                <select v-model="addEnrForm.specialization">
                   <option value="">— Select —</option>
-                  <option v-for="m in majorsForProgramme(addEnrForm.programme)" :key="m">{{ m }}</option>
+                  <option v-for="m in specializationsForProgramme(addEnrForm.programme)" :key="m">{{ m }}</option>
                 </select>
               </div>
             </div>
@@ -608,7 +641,7 @@
           </div>
           <div class="drawer-actions" style="border-top:1px solid #e8edf4;padding:1rem 1.5rem">
             <button class="btn-cancel" @click="showAddEnrol = false">Cancel</button>
-            <button class="btn-save" :disabled="!addEnrForm.programme || !addEnrForm.major" @click="submitAddEnrolment">Add Enrolment</button>
+            <button class="btn-save" :disabled="!addEnrForm.programme || !addEnrForm.specialization" @click="submitAddEnrolment">Add Enrolment</button>
           </div>
         </div>
       </div>
@@ -623,12 +656,12 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { auth } from '../store/auth.js'
 import { students, ENROLLMENT_STATUSES, nextEnrollId } from '../mock/data.js'
 import { gradesStore, saveGrades, isGraded } from '../store/grades.js'
-import { resolveSubjects, getGradeInfo, getProgrammeNames, getMajorNames, getPartnerNames, corePrograms } from '../mock/programmes.js'
+import { resolveSubjects, getGradeInfo, getProgrammeNames, getSpecializationNames, getPartnerNames, corePrograms } from '../mock/programmes.js'
 import { absences } from '../mock/absences.js'
 import { announcements, nextAnnouncementId } from '../mock/announcements.js'
 
 const programmeNames = getProgrammeNames()
-const majorNames     = getMajorNames()
+const specializationNames     = getSpecializationNames()
 const partnerNames   = getPartnerNames()
 
 const route  = useRoute()
@@ -680,10 +713,10 @@ function issueOffer(enr, type) {
   showToast('Offer issued.')
 }
 
-// ── Majors for programme (for add enrolment) ─────────────────────────────────
-function majorsForProgramme(programmeName) {
+// ── Specializations for programme (for add enrolment) ─────────────────────────────────
+function specializationsForProgramme(programmeName) {
   const prog = corePrograms.find(p => p.name === programmeName)
-  return prog ? prog.majors.map(m => m.name) : []
+  return prog ? prog.specializations.map(m => m.name) : []
 }
 
 // ── Doc slots ─────────────────────────────────────────────────────────────────
@@ -756,7 +789,7 @@ function openEnrEdit(enr) {
   enrEditTab.value        = 'grades'
   saveSuccess.value       = false
   // Load grades
-  const modules = resolveSubjects(student.value.partner, enr.programme, enr.major)
+  const modules = resolveSubjects(student.value.partner, enr.programme, enr.specialization)
   const saved   = gradesStore[student.value.studentId] ?? {}
   gradeRows.value = modules.map(mod => {
     const ex = saved[mod.name]
@@ -824,14 +857,14 @@ function addChangeNote(enr) {
 
 // ── Add Enrolment modal ───────────────────────────────────────────────────────
 const showAddEnrol = ref(false)
-const addEnrForm   = reactive({ programme: '', major: '', commencementDate: '', durationOfStudy: '', modeOfStudy: 'Distance/Online self-study' })
+const addEnrForm   = reactive({ programme: '', specialization: '', commencementDate: '', durationOfStudy: '', modeOfStudy: 'Distance/Online self-study' })
 
 function submitAddEnrolment() {
   const s = student.value
-  if (!s || !addEnrForm.programme || !addEnrForm.major) return
+  if (!s || !addEnrForm.programme || !addEnrForm.specialization) return
   s.enrollments.push({
     id: nextEnrollId(),
-    programme: addEnrForm.programme, major: addEnrForm.major,
+    programme: addEnrForm.programme, specialization: addEnrForm.specialization,
     commencementDate: addEnrForm.commencementDate, durationOfStudy: addEnrForm.durationOfStudy,
     modeOfStudy: addEnrForm.modeOfStudy,
     enrollmentStatus: 'Active',
@@ -880,7 +913,7 @@ function printOfferLetter(s, enr, type) {
     <tr><td>Student ID</td><td>${s.studentId}</td></tr>
     <tr><td>Full Name</td><td>${s.firstName} ${s.lastName}</td></tr>
     <tr><td>Programme</td><td>${enr.programme}</td></tr>
-    <tr><td>Major</td><td>${enr.major}</td></tr>
+    <tr><td>Specialization</td><td>${enr.specialization}</td></tr>
     <tr><td>Commencement Date</td><td>${fmtDate(enr.commencementDate)}</td></tr>
     <tr><td>Mode of Study</td><td>${enr.modeOfStudy || '—'}</td></tr>
     <tr><td>Partner Institution</td><td>${s.partner}</td></tr>
@@ -985,7 +1018,7 @@ function printGradeReport(s, withStamp) {
     <tr><td>Student Name</td><td>${s.firstName} ${s.lastName}</td></tr>
     <tr><td>Student ID</td><td>${s.studentId}</td></tr>
     <tr><td>Programme</td><td>${enr.programme ?? '—'}</td></tr>
-    <tr><td>Major</td><td>${enr.major ?? '—'}</td></tr>
+    <tr><td>Specialization</td><td>${enr.specialization ?? '—'}</td></tr>
     <tr><td>Partner Institution</td><td>${s.partner}</td></tr>
     <tr><td>Commencement Date</td><td>${fmtDate(enr.commencementDate)}</td></tr>
   </table>
@@ -1018,11 +1051,11 @@ function printCertificate(s, withStamp) {
 
   const enr = s.enrollments?.[0] ?? {}
   const bottomBlock = withStamp ? `
-    <div class="cert-declaration"><p>This is to certify that the above-named student has successfully completed all academic requirements for the award of <strong>${enr.programme ?? ''}</strong> — <strong>${enr.major ?? ''}</strong> at the International Business School of Scandinavia.</p></div>
+    <div class="cert-declaration"><p>This is to certify that the above-named student has successfully completed all academic requirements for the award of <strong>${enr.programme ?? ''}</strong> — <strong>${enr.specialization ?? ''}</strong> at the International Business School of Scandinavia.</p></div>
     <div class="stamp"><div class="stamp-text">APPROVED ✓</div><div class="stamp-date">${todayFormatted}</div></div>
     <div class="sign"><p>Certified by,</p><div class="sig-line"></div><p class="sig-name">IBSS Academic Registrar</p><p class="sig-org">International Business School of Scandinavia</p>
     <p class="sig-note">Digitally certified — ${todayFormatted}</p></div>` : `
-    <div class="cert-declaration"><p>This is to certify that the above-named student has successfully completed all academic requirements for the award of <strong>${enr.programme ?? ''}</strong> — <strong>${enr.major ?? ''}</strong> at the International Business School of Scandinavia.</p></div>
+    <div class="cert-declaration"><p>This is to certify that the above-named student has successfully completed all academic requirements for the award of <strong>${enr.programme ?? ''}</strong> — <strong>${enr.specialization ?? ''}</strong> at the International Business School of Scandinavia.</p></div>
     <div class="phys-note">FOR PHYSICAL SIGNING — Official seal and signature to be applied manually.</div>
     <div class="sign-blank"><div style="display:flex;gap:60px;margin-top:20px"><div><div class="sig-line"></div><p class="sig-name">Academic Registrar</p></div><div><div class="sig-line"></div><p class="sig-name">Date</p></div></div></div>`
 
@@ -1064,7 +1097,7 @@ function printCertificate(s, withStamp) {
     <tr><td>Student Name</td><td>${s.firstName} ${s.lastName}</td></tr>
     <tr><td>Student ID</td><td>${s.studentId}</td></tr>
     <tr><td>Programme</td><td>${enr.programme ?? '—'}</td></tr>
-    <tr><td>Major / Specialisation</td><td>${enr.major ?? '—'}</td></tr>
+    <tr><td>Specialization / Specialisation</td><td>${enr.specialization ?? '—'}</td></tr>
     <tr><td>Partner Institution</td><td>${s.partner}</td></tr>
     <tr><td>Commencement Date</td><td>${fmtDate(enr.commencementDate)}</td></tr>
     <tr><td>Mode of Study</td><td>${enr.modeOfStudy || '—'}</td></tr>
@@ -1117,8 +1150,41 @@ function showToast(msg) {
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { toast.value = '' }, 2800)
 }
-function mockView(label, filename) {
-  showToast(`Mock preview: "${filename}" — in production this would open the file.`)
+// ── Document review modal ────────────────────────────────────────────────────
+const reviewDoc = ref(null)
+
+const reviewPreview = computed(() => {
+  if (!reviewDoc.value || !student.value) return { kind: 'none' }
+  const filename = student.value[reviewDoc.value.field] ?? ''
+  const ext = filename.split('.').pop()?.toLowerCase()
+  if (ext === 'png' || ext === 'jpg' || ext === 'jpeg') {
+    return { kind: 'image', src: '/ibss-logo-wide.jpg' }
+  }
+  if (ext === 'pdf') {
+    return { kind: 'pdf', src: '/sample-document.pdf' }
+  }
+  return { kind: 'unsupported' }
+})
+
+function openReview(doc) { reviewDoc.value = doc }
+function closeReview()   { reviewDoc.value = null }
+
+function approveDoc() {
+  const s = student.value
+  if (!s || !reviewDoc.value) return
+  if (!s.docsVerified) s.docsVerified = {}
+  s.docsVerified[reviewDoc.value.verifyKey] = true
+  showToast(`Approved: ${reviewDoc.value.label}`)
+  closeReview()
+}
+
+function rejectDoc() {
+  const s = student.value
+  if (!s || !reviewDoc.value) return
+  if (!s.docsVerified) s.docsVerified = {}
+  s.docsVerified[reviewDoc.value.verifyKey] = false
+  showToast(`Rejected: ${reviewDoc.value.label}`)
+  closeReview()
 }
 
 function logout() { auth.logout(); router.push('/login') }
@@ -1199,7 +1265,7 @@ function logout() { auth.logout(); router.push('/login') }
 /* Programme cell */
 .td-prog {}
 .prog-name-main { font-size: 0.88rem; font-weight: 700; color: #003366; }
-.prog-major-sub { font-size: 0.8rem; color: #555; margin-top: 1px; margin-bottom: 0.5rem; }
+.prog-specialization-sub { font-size: 0.8rem; color: #555; margin-top: 1px; margin-bottom: 0.5rem; }
 
 /* Doc links in enrollment table */
 .doc-list { display: flex; flex-direction: column; gap: 0.22rem; }
@@ -1276,6 +1342,8 @@ function logout() { auth.logout(); router.push('/login') }
 .doc-actions { display: flex; gap: 0.4rem; align-items: center; flex-shrink: 0; }
 .btn-view { background: #e8f0f8; color: #003366; border: 1px solid #c5d8f0; border-radius: 5px; padding: 0.25rem 0.75rem; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .btn-view:hover { background: #d0e4f5; }
+.btn-review { background: #003366; color: #fff; border: 1px solid #003366; border-radius: 5px; padding: 0.25rem 0.75rem; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn-review:hover { background: #0055a5; border-color: #0055a5; }
 .btn-upload-doc { position: relative; overflow: hidden; background: #003366; color: #fff; border: none; border-radius: 5px; padding: 0.25rem 0.75rem; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .btn-upload-doc:hover { background: #0055a5; }
 .file-hidden-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
@@ -1402,6 +1470,22 @@ function logout() { auth.logout(); router.push('/login') }
 /* Add Enrolment modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 300; display: flex; align-items: center; justify-content: center; }
 .add-enrol-modal { background: #fff; border-radius: 12px; width: 520px; max-width: 95vw; box-shadow: 0 8px 40px rgba(0,0,0,0.22); }
+
+/* Document review modal */
+.review-modal { background: #fff; border-radius: 12px; width: 820px; max-width: 95vw; max-height: 92vh; display: flex; flex-direction: column; box-shadow: 0 8px 40px rgba(0,0,0,0.22); }
+.review-sub { font-size: 0.8rem; color: #888; margin: 0.15rem 0 0; font-family: ui-monospace, monospace; }
+.review-actions { display: flex; gap: 0.75rem; justify-content: flex-end; padding: 0.85rem 1.5rem; border-bottom: 1.5px solid #e8edf4; }
+.btn-approve { background: #0d6b55; color: #fff; border: none; border-radius: 7px; padding: 0.55rem 1.35rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
+.btn-approve:hover { background: #0a5a47; }
+.btn-reject { background: #fff; color: #b42318; border: 1.5px solid #fda29b; border-radius: 7px; padding: 0.55rem 1.35rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
+.btn-reject:hover { background: #fee4e2; }
+.review-preview { flex: 1; min-height: 420px; background: #f2f5f9; padding: 1rem; display: flex; align-items: center; justify-content: center; overflow: auto; }
+.preview-img { max-width: 100%; max-height: 70vh; border-radius: 7px; box-shadow: 0 2px 10px rgba(0,0,0,0.12); background: #fff; }
+.preview-pdf { width: 100%; height: 70vh; border: none; border-radius: 7px; background: #fff; }
+.preview-unsupported { text-align: center; color: #666; font-size: 0.9rem; padding: 2rem; }
+.preview-unsupported-icon { font-size: 2rem; color: #b88a00; margin-bottom: 0.5rem; }
+.preview-unsupported-sub { font-size: 0.82rem; color: #888; margin-top: 0.35rem; }
+.preview-unsupported-file { margin-top: 0.85rem; font-family: ui-monospace, monospace; font-size: 0.8rem; color: #003366; background: #fff; padding: 0.35rem 0.75rem; border-radius: 5px; border: 1px solid #e8edf4; display: inline-block; }
 .modal-hdr { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.5rem; border-bottom: 1.5px solid #e8edf4; }
 .modal-hdr h3 { font-size: 1rem; font-weight: 700; color: #003366; margin: 0; }
 .btn-modal-close { background: none; border: none; font-size: 1.1rem; color: #888; cursor: pointer; }

@@ -2,7 +2,7 @@ using School.PathwayApi.Pathway.V1.SoftDelete.Command;
 
 namespace School.PathwayApi.Pathway.V1.SoftDelete.Endpoint;
 
-[Route("/v1/school/system-config/pathways/{id:int}")]
+[Route("/v1/school/system-config/pathways/{id:guid}")]
 [EndpointTag("School.SystemConfig.Pathway")]
 public sealed class PathwayV1SoftDeleteEndpoint : IEndpointMarker
 {
@@ -14,7 +14,7 @@ public sealed class PathwayV1SoftDeleteEndpoint : IEndpointMarker
     }
 
     private async Task<IResult> EndpointHandlerAsync(
-        int id,
+        Guid id,
         [FromServices] IDispatcher sender,
         [FromServices] IMapper<PathwayV1SoftDeleteCommandResult, PathwayV1SoftDeleteEndpointResponse> responseMapper,
         CancellationToken cancellationToken)

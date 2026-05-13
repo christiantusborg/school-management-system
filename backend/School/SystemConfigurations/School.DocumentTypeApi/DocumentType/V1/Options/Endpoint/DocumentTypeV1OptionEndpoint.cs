@@ -1,6 +1,5 @@
 using System.Text.Json.Nodes;
 using School.DocumentTypeApi.DocumentType.V1.Create.Endpoint;
-using School.DocumentTypeApi.DocumentType.V1.Get.Endpoint;
 using School.DocumentTypeApi.DocumentType.V1.List.Endpoint;
 using School.DocumentTypeApi.DocumentType.V1.Options.Command;
 using School.DocumentTypeApi.DocumentType.V1.Update.Endpoint;
@@ -14,7 +13,7 @@ public sealed class DocumentTypeV1OptionEndpoint : IEndpointMarker
 {
     private static readonly JsonNode PathIdParam = new JsonObject
     {
-        ["id"] = new JsonObject { ["type"] = "integer", ["in"] = "path" }
+        ["id"] = new JsonObject { ["type"] = "string", ["format"] = "uuid", ["in"] = "path" }
     };
 
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
@@ -32,11 +31,6 @@ public sealed class DocumentTypeV1OptionEndpoint : IEndpointMarker
                 Request = null,
                 Result = DtoJsonSchemaGenerator.GenerateListOf(typeof(DocumentTypeV1ListEndpointResponseItem)),
             },
-            Get = new DocumentTypeV1OptionInnerEndpointResponse
-            {
-                Request = PathIdParam.DeepClone(),
-                Result = DtoJsonSchemaGenerator.Generate(typeof(DocumentTypeV1GetEndpointResponse)),
-            },
             Create = new DocumentTypeV1OptionInnerEndpointResponse
             {
                 Request = DtoJsonSchemaGenerator.Generate(typeof(DocumentTypeV1CreateEndpointRequest)),
@@ -52,16 +46,6 @@ public sealed class DocumentTypeV1OptionEndpoint : IEndpointMarker
                 Result = DtoJsonSchemaGenerator.Generate(typeof(DocumentTypeV1UpdateEndpointResponse)),
             },
             SoftDelete = new DocumentTypeV1OptionInnerEndpointResponse
-            {
-                Request = PathIdParam.DeepClone(),
-                Result = null,
-            },
-            Restore = new DocumentTypeV1OptionInnerEndpointResponse
-            {
-                Request = PathIdParam.DeepClone(),
-                Result = null,
-            },
-            PermanentDelete = new DocumentTypeV1OptionInnerEndpointResponse
             {
                 Request = PathIdParam.DeepClone(),
                 Result = null,

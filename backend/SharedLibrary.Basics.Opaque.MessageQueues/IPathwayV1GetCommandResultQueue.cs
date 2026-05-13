@@ -2,4 +2,5 @@ namespace SharedLibrary.Basics.Opaque.MessageQueues;
 
 public interface IPathwayV1GetCommandResultQueue : IMessageQueue
 {
+    Guid PathwayId { get; }
 }

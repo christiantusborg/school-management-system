@@ -1,563 +1,336 @@
 <template>
   <div class="student-portal">
-    <!-- Navbar -->
     <nav class="navbar">
-      <div class="navbar-brand">IBSS Student Portal — {{ auth.user?.displayName }}</div>
+      <div class="navbar-brand">IBSS Student Portal — {{ displayName }}</div>
       <button class="btn-logout" @click="logout">Log Out</button>
     </nav>
 
-    <!-- Tab bar -->
-    <div class="tab-bar">
-      <button
-        v-for="tab in tabs" :key="tab.id"
-        class="tab-btn"
-        :class="{ active: activeTab === tab.id }"
-        @click="activeTab = tab.id"
-      >{{ tab.label }}</button>
-    </div>
-
     <div class="tab-content">
+      <div v-if="loadError" class="err-banner">{{ loadError }}</div>
+      <div v-else-if="!loaded" class="loading">Loading…</div>
 
-      <!-- ── Dashboard ─────────────────────────────────────────────── -->
-      <div v-if="activeTab === 'dashboard'" class="tab-pane">
-        <div class="card status-card">
-          <h2>Your Status</h2>
-          <div class="status-row">
-            <span :class="['badge', 'badge-' + myStatus]">{{ STATUS_LABELS[myStatus] }}</span>
-            <span class="status-desc">{{ STATUS_DESCS[myStatus] }}</span>
-          </div>
-          <div class="status-meta">
-            <span><strong>Programme:</strong> {{ enrollment.programme }}</span>
-            <span><strong>Major:</strong> {{ enrollment.major }}</span>
-            <span><strong>Student ID:</strong> {{ student.studentId }}</span>
-          </div>
+      <template v-else-if="data">
+        <div v-if="!data.enrollments?.length" class="empty">
+          You don't have any applications yet.
         </div>
 
-        <div class="card" v-if="latestAnnouncement">
-          <h3>Latest Notice</h3>
-          <div class="notice-item">
-            <div class="notice-title">{{ latestAnnouncement.title }}</div>
-            <div class="notice-body">{{ latestAnnouncement.body }}</div>
-            <div class="notice-date">{{ fmtDate(latestAnnouncement.createdAt) }}</div>
+        <div v-for="enr in data.enrollments" :key="enr.enrollmentId" class="enr-card">
+          <div class="enr-head">
+            <div>
+              <strong>{{ enr.programmeName }}</strong>
+              <span class="badge-code">{{ enr.programmeCode }}</span>
+              <span class="badge-specialization">{{ enr.specializationName }}</span>
+            </div>
+            <span class="badge-status" :class="`tone-${badgeFor(enr).tone}`">{{ badgeFor(enr).label }}</span>
           </div>
-        </div>
 
-        <div class="card quick-links" v-if="openTickets.length || pendingAbsences.length">
-          <h3>Pending Actions</h3>
-          <ul>
-            <li v-if="openTickets.length">
-              <a href="#" @click.prevent="activeTab='support'">
-                You have {{ openTickets.length }} open support ticket{{ openTickets.length > 1 ? 's' : '' }}
-              </a>
-            </li>
-            <li v-if="pendingAbsences.length">
-              <a href="#" @click.prevent="activeTab='absence'">
-                {{ pendingAbsences.length }} absence report{{ pendingAbsences.length > 1 ? 's' : '' }} awaiting acknowledgement
-              </a>
+          <!-- Action banner -->
+          <div v-if="enr.isRejected" class="action-banner action-bad">
+            <div class="action-banner-title">{{ rejectedDocCount(enr) }} document(s) need replacement</div>
+            <div v-if="enr.rejectionSummary?.byName" class="action-banner-meta">
+              Returned by {{ enr.rejectionSummary.byName }} on {{ formatDate(enr.rejectionSummary.atUtc) }}
+            </div>
+          </div>
+          <div v-else-if="enr.canAcceptOffer" class="action-banner action-blue">
+            <div class="action-banner-title">Your offer is ready</div>
+            <div class="action-banner-meta">Review the offer letter below, then accept to continue.</div>
+            <button class="btn-primary" :disabled="busy" @click="acceptOffer(enr)">Accept Offer</button>
+          </div>
+          <div v-else-if="isReviewing(enr.statusCode)" class="action-banner action-info">
+            Your application is being reviewed. We'll let you know as soon as there's an update.
+          </div>
+          <div v-else-if="enr.statusCode === 'ApplicationApprovedAdmission'" class="action-banner action-blue">
+            <div class="action-banner-title">Approved by Admission</div>
+            <div class="action-banner-meta">Final admission step coming soon.</div>
+          </div>
+
+          <!-- Programme summary (no Tuition) -->
+          <dl class="summary">
+            <div><dt>Specialization</dt><dd>{{ enr.specializationName || '—' }}</dd></div>
+            <div><dt>Duration</dt><dd>{{ enr.durationOfStudyMonths ? `${enr.durationOfStudyMonths} months` : '—' }}</dd></div>
+          </dl>
+
+          <!-- Per-application documents -->
+          <button type="button" class="docs-h" @click="toggleDocs(enr.enrollmentId)">
+            <span class="docs-caret" :class="{ open: isDocsOpen(enr.enrollmentId) }">▶</span>
+            Documents
+            <span class="docs-count">({{ enr.requiredDocuments.length }})</span>
+          </button>
+          <template v-if="isDocsOpen(enr.enrollmentId)">
+          <ul class="doc-list">
+            <li v-for="doc in enr.requiredDocuments" :key="doc.documentTypeId" class="doc-row">
+              <div class="doc-info">
+                <span :class="['doc-mark', doc.uploaded ? (doc.isRejected ? 'mark-bad' : 'mark-ok') : 'mark-pending']">
+                  {{ doc.uploaded ? (doc.isRejected ? '×' : '✓') : '·' }}
+                </span>
+                <div class="doc-text">
+                  <strong>{{ doc.name }}</strong>
+                  <p class="doc-meta">
+                    <span v-if="doc.uploaded">{{ doc.fileName }} · uploaded {{ formatDate(doc.uploadedAt) }}</span>
+                    <span v-else>Not uploaded</span>
+                  </p>
+                  <span v-if="doc.statusName" class="doc-pill" :class="docPillTone(doc)">{{ doc.statusName }}</span>
+                </div>
+              </div>
+              <div class="doc-actions">
+                <label v-if="canReplace(enr, doc)" class="btn-upload">
+                  {{ doc.uploaded ? 'Replace' : 'Upload' }}
+                  <input type="file" :accept="acceptedTypes" @change="onPick($event, enr, doc)" />
+                </label>
+                <span v-else class="lock-note">{{ replaceLockReason(enr, doc) }}</span>
+              </div>
             </li>
           </ul>
-        </div>
-      </div>
 
-      <!-- ── Academic ──────────────────────────────────────────────── -->
-      <div v-if="activeTab === 'academic'" class="tab-pane">
-        <div class="card">
-          <h2>Academic Results</h2>
-          <template v-if="isGraded(student.studentId)">
-            <table class="tbl">
-              <thead>
-                <tr>
-                  <th>Subject Code</th><th>Subject Name</th><th>Credits</th>
-                  <th>Grade</th><th>Grade Points</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in myGrades.subjects" :key="row.code">
-                  <td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.credits }}</td>
-                  <td><span :class="gradeClass(row.grade)">{{ row.grade }}</span></td>
-                  <td>{{ row.points }}</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="4" style="text-align:right;font-weight:700">Cumulative GPA</td>
-                  <td style="font-weight:700">{{ myGpa }}</td>
-                </tr>
-              </tfoot>
-            </table>
+          <!-- Per-doc rejection cards -->
+          <div v-for="doc in enr.requiredDocuments.filter(d => d.isRejected && d.rejectionReasons)"
+               :key="`r-${enr.enrollmentId}-${doc.documentTypeId}`" class="reject-card">
+            <div class="reject-card-head">
+              <strong>{{ doc.name }}</strong>
+              <span v-if="doc.rejectionReasons.byName">by {{ doc.rejectionReasons.byName }}</span>
+              <span class="reject-card-date">{{ formatDate(doc.rejectionReasons.atUtc) }}</span>
+            </div>
+            <div v-if="parsedReasons(doc).reasons.length" class="reject-chips">
+              <span v-for="r in parsedReasons(doc).reasons" :key="r" class="reject-chip">{{ r }}</span>
+            </div>
+            <p v-if="parsedReasons(doc).freeText" class="reject-free">{{ parsedReasons(doc).freeText }}</p>
+          </div>
           </template>
-          <div v-else class="empty-state">Grades are not yet available. Check back after your assessment period.</div>
-        </div>
-      </div>
 
-      <!-- ── Documents ─────────────────────────────────────────────── -->
-      <div v-if="activeTab === 'documents'" class="tab-pane">
-        <div class="card">
-          <h2>Documents</h2>
-          <div class="doc-grid">
-            <!-- Offer Letter -->
-            <div class="doc-card" :class="{ disabled: !enrollment.offerType }">
-              <div class="doc-icon">📄</div>
-              <div class="doc-info">
-                <div class="doc-name">Offer Letter</div>
-                <div class="doc-sub" v-if="enrollment.offerType">{{ OFFER_LABELS[enrollment.offerType] || enrollment.offerType }}</div>
-                <div class="doc-sub" v-else>Not yet issued</div>
+          <!-- Resubmit footer (rejected applications only) -->
+          <div v-if="enr.canResubmit" class="actions">
+            <button
+              class="btn-primary"
+              :disabled="!canResubmit(enr) || busy"
+              :title="canResubmit(enr) ? '' : 'Replace every rejected document first.'"
+              @click="resubmit(enr)"
+            >Resubmit application</button>
+            <span v-if="!canResubmit(enr)" class="action-hint">Replace every rejected document first.</span>
+          </div>
+
+          <!-- Small download strip -->
+          <div class="doc-strip">
+            <div class="doc-mini" :class="{ disabled: !canDownloadOffer(enr) }">
+              <div class="doc-mini-icon">📄</div>
+              <div class="doc-mini-info">
+                <div class="doc-mini-name">Offer Letter</div>
+                <div class="doc-mini-sub">{{ canDownloadOffer(enr) ? 'Ready' : 'Not yet issued' }}</div>
               </div>
-              <button class="btn-dl" :disabled="!enrollment.offerType" @click="downloadOffer">Download</button>
+              <button class="btn-mini" :disabled="!canDownloadOffer(enr)" @click="downloadOffer(enr)">Download</button>
             </div>
-            <!-- Admission Letter -->
-            <div class="doc-card" :class="{ disabled: !enrollment.paymentDone }">
-              <div class="doc-icon">📋</div>
-              <div class="doc-info">
-                <div class="doc-name">Admission Letter</div>
-                <div class="doc-sub" v-if="enrollment.paymentDone">Payment confirmed</div>
-                <div class="doc-sub" v-else>Available after payment</div>
+            <div class="doc-mini" :class="{ disabled: !canDownloadAdmission(enr) }">
+              <div class="doc-mini-icon">📋</div>
+              <div class="doc-mini-info">
+                <div class="doc-mini-name">Admission Letter</div>
+                <div class="doc-mini-sub">{{ canDownloadAdmission(enr) ? 'Confirmed' : 'Available after admission' }}</div>
               </div>
-              <button class="btn-dl" :disabled="!enrollment.paymentDone" @click="downloadAdmission">Download</button>
+              <button class="btn-mini" :disabled="!canDownloadAdmission(enr)" @click="downloadAdmission(enr)">Download</button>
             </div>
-            <!-- Certificate -->
-            <div class="doc-card" :class="{ disabled: !enrollment.certReleased }">
-              <div class="doc-icon">🎓</div>
-              <div class="doc-info">
-                <div class="doc-name">Certificate</div>
-                <div class="doc-sub" v-if="enrollment.certReleased">Ready for download</div>
-                <div class="doc-sub" v-else>Not yet available</div>
+            <div class="doc-mini" :class="{ disabled: !canDownloadTranscript(enr) }">
+              <div class="doc-mini-icon">📑</div>
+              <div class="doc-mini-info">
+                <div class="doc-mini-name">Transcript</div>
+                <div class="doc-mini-sub">{{ canDownloadTranscript(enr) ? 'Ready' : 'Available after grades approved' }}</div>
               </div>
-              <button class="btn-dl" :disabled="!enrollment.certReleased" @click="downloadCert">Download</button>
+              <button class="btn-mini" :disabled="!canDownloadTranscript(enr)" @click="downloadTranscript(enr)">Download</button>
             </div>
-          </div>
-
-          <div class="divider"></div>
-          <h3>Upload / Replace Documents</h3>
-          <p class="help-text">Upload any missing or updated documents below. Accepted formats: PDF, JPG, PNG.</p>
-          <div class="upload-slots">
-            <div v-for="slot in docSlots" :key="slot.field" class="upload-slot">
-              <div class="slot-label">{{ slot.label }}</div>
-              <div class="slot-status" v-if="student[slot.field]">
-                <span class="file-chip">{{ student[slot.field] }}</span>
+            <div class="doc-mini" :class="{ disabled: !canDownloadCertificate(enr) }">
+              <div class="doc-mini-icon">🎓</div>
+              <div class="doc-mini-info">
+                <div class="doc-mini-name">Certificate</div>
+                <div class="doc-mini-sub">{{ canDownloadCertificate(enr) ? 'Ready' : 'Not yet available' }}</div>
               </div>
-              <div class="slot-status" v-else><span class="missing-chip">Not uploaded</span></div>
-              <label class="btn-upload">
-                {{ student[slot.field] ? 'Replace' : 'Upload' }}
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="handleDocUpload(slot.field, $event)" hidden />
-              </label>
+              <button class="btn-mini" :disabled="!canDownloadCertificate(enr)" @click="downloadCertificate(enr)">Download</button>
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- ── Profile ───────────────────────────────────────────────── -->
-      <div v-if="activeTab === 'profile'" class="tab-pane">
-        <div class="card">
-          <h2>My Profile</h2>
-          <div class="profile-grid">
-            <div class="profile-ro">
-              <label>Full Name</label>
-              <div>{{ student.firstName }} {{ student.lastName }}</div>
-            </div>
-            <div class="profile-ro">
-              <label>Student ID</label>
-              <div>{{ student.studentId }}</div>
-            </div>
-            <div class="profile-ro">
-              <label>Date of Birth</label>
-              <div>{{ student.dateOfBirth }}</div>
-            </div>
-            <div class="profile-ro">
-              <label>Passport / ID No.</label>
-              <div>{{ student.passportId }}</div>
-            </div>
-            <div class="profile-ro">
-              <label>Programme</label>
-              <div>{{ enrollment.programme }}</div>
-            </div>
-            <div class="profile-ro">
-              <label>Major</label>
-              <div>{{ enrollment.major }}</div>
-            </div>
-            <div class="profile-ro">
-              <label>Partner</label>
-              <div>{{ student.partner }}</div>
-            </div>
-          </div>
-          <div class="divider"></div>
-          <h3>Editable Details</h3>
-          <div class="profile-edit-grid">
-            <div class="field">
-              <label>Email</label>
-              <input v-model="editEmail" type="email" />
-            </div>
-            <div class="field">
-              <label>Phone</label>
-              <input v-model="editPhone" type="tel" placeholder="+60 12 345 6789" />
-            </div>
-            <div class="field full-width">
-              <label>Address</label>
-              <textarea v-model="editAddress" rows="3"></textarea>
-            </div>
-          </div>
-          <div class="profile-actions">
-            <button class="btn-save" @click="saveProfile">Save Changes</button>
-            <span v-if="profileSaved" class="saved-msg">Changes saved!</span>
-          </div>
+          <EnrollmentActivityLog :api-path="`/v1/student/me/enrollments/${enr.enrollmentId}/activity`" />
         </div>
-      </div>
-
-      <!-- ── Report Absence ─────────────────────────────────────────── -->
-      <div v-if="activeTab === 'absence'" class="tab-pane">
-        <div class="card">
-          <h2>Report an Absence</h2>
-          <div class="absence-form">
-            <div class="field">
-              <label>Date of Absence</label>
-              <input v-model="absForm.date" type="date" :max="today" />
-            </div>
-            <div class="field">
-              <label>Type</label>
-              <select v-model="absForm.type">
-                <option value="">— select —</option>
-                <option>Sick</option>
-                <option>Personal</option>
-                <option>Family Emergency</option>
-                <option>Other</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>Reason</label>
-              <textarea v-model="absForm.reason" rows="3" placeholder="Brief description…"></textarea>
-            </div>
-            <div class="field">
-              <label>Supporting Document <span class="optional">(optional — e.g. doctor's note)</span></label>
-              <div v-if="absForm.docFilename" class="file-chip">{{ absForm.docFilename }}</div>
-              <label class="btn-upload">
-                {{ absForm.docFilename ? 'Replace' : 'Attach file' }}
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="handleAbsDoc" hidden />
-              </label>
-            </div>
-            <button class="btn-save" :disabled="!absForm.date || !absForm.type" @click="submitAbsence">Submit Report</button>
-            <span v-if="absSaved" class="saved-msg">Absence reported!</span>
-          </div>
-        </div>
-
-        <div class="card" v-if="myAbsences.length">
-          <h3>Previous Absence Reports</h3>
-          <table class="tbl">
-            <thead>
-              <tr><th>Date</th><th>Type</th><th>Reason</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="a in myAbsences" :key="a.id">
-                <td>{{ a.date }}</td>
-                <td>{{ a.type }}</td>
-                <td>{{ a.reason || '—' }}</td>
-                <td>
-                  <span :class="['badge', a.status === 'acknowledged' ? 'badge-confirmed' : 'badge-new']">
-                    {{ a.status === 'acknowledged' ? 'Acknowledged' : 'Pending' }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- ── Support ───────────────────────────────────────────────── -->
-      <div v-if="activeTab === 'support'" class="tab-pane">
-        <div class="card">
-          <h2>Raise a Support Ticket</h2>
-          <div class="ticket-form">
-            <div class="field">
-              <label>Subject</label>
-              <input v-model="ticketForm.subject" type="text" placeholder="Brief subject…" />
-            </div>
-            <div class="field">
-              <label>Message</label>
-              <textarea v-model="ticketForm.message" rows="4" placeholder="Describe your issue…"></textarea>
-            </div>
-            <button class="btn-save" :disabled="!ticketForm.subject || !ticketForm.message" @click="submitTicket">Submit Ticket</button>
-            <span v-if="ticketSaved" class="saved-msg">Ticket submitted!</span>
-          </div>
-        </div>
-
-        <div class="card" v-if="myTickets.length">
-          <h3>My Tickets</h3>
-          <div v-for="t in myTickets" :key="t.id" class="ticket-item">
-            <div class="ticket-header" @click="toggleTicket(t.id)">
-              <span class="ticket-subject">{{ t.subject }}</span>
-              <span :class="['badge', t.status === 'resolved' ? 'badge-approved' : 'badge-offer']">
-                {{ t.status === 'resolved' ? 'Resolved' : 'Open' }}
-              </span>
-              <span class="ticket-date">{{ fmtDate(t.createdAt) }}</span>
-              <span class="ticket-toggle">{{ expandedTickets.includes(t.id) ? '▲' : '▼' }}</span>
-            </div>
-            <div v-if="expandedTickets.includes(t.id)" class="ticket-thread">
-              <div v-for="(reply, i) in t.replies" :key="i" :class="['reply', 'reply-' + reply.from]">
-                <span class="reply-from">{{ replyFromLabel(reply.from) }}</span>
-                <span class="reply-at">{{ fmtDate(reply.at) }}</span>
-                <p>{{ reply.text }}</p>
-              </div>
-              <div v-if="t.status !== 'resolved'" class="reply-box">
-                <textarea v-model="replyTexts[t.id]" rows="2" placeholder="Add a follow-up…"></textarea>
-                <button class="btn-save btn-sm" :disabled="!replyTexts[t.id]" @click="addReply(t)">Send</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Notices ───────────────────────────────────────────────── -->
-      <div v-if="activeTab === 'notices'" class="tab-pane">
-        <div class="card">
-          <h2>Notices &amp; Announcements</h2>
-          <div v-if="myAnnouncements.length === 0" class="empty-state">No notices at this time.</div>
-          <div v-for="a in myAnnouncements" :key="a.id" class="notice-item">
-            <div class="notice-title">{{ a.title }}</div>
-            <div class="notice-body">{{ a.body }}</div>
-            <div class="notice-date">{{ fmtDate(a.createdAt) }}</div>
-          </div>
-        </div>
-      </div>
-
+      </template>
     </div>
 
-    <!-- Toast -->
     <div v-if="toast" class="toast">{{ toast }}</div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import EnrollmentActivityLog from '../components/letters/EnrollmentActivityLog.vue'
 import { auth } from '../store/auth.js'
-import { students } from '../mock/data.js'
-import { absences, nextAbsenceId } from '../mock/absences.js'
-import { tickets, nextTicketId } from '../mock/tickets.js'
-import { announcements } from '../mock/announcements.js'
-import { gradesStore, isGraded } from '../store/grades.js'
+import api from '../api/client.js'
+import { statusBadge, isReviewing, parseRejectionNote } from '../utils/applicationStatus.js'
 
 const router = useRouter()
+const acceptedTypes = 'application/pdf,image/jpeg,image/png'
 
-// find the live student record so reactive updates from admin are reflected
-const student    = computed(() => students.find(s => s.studentId === auth.user?.studentId) || auth.user)
-const enrollment = computed(() => student.value?.enrollments?.[0] ?? {})
-
-const tabs = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'academic',  label: 'Academic'  },
-  { id: 'documents', label: 'Documents' },
-  { id: 'profile',   label: 'Profile'   },
-  { id: 'absence',   label: 'Report Absence' },
-  { id: 'support',   label: 'Support'   },
-  { id: 'notices',   label: 'Notices'   },
-]
-const activeTab = ref('dashboard')
-
-// ── Status helpers ────────────────────────────────────────────────────────────
-const STATUS_LABELS = {
-  new:       'New',
-  offer:     'Offer Issued',
-  admission: 'Admission',
-  confirmed: 'Admitted',
-  graded:    'Graded',
-  approved:  'Approved',
-}
-const STATUS_DESCS = {
-  new:       'Your application is under review.',
-  offer:     'You have received an offer letter.',
-  admission: 'Your payment has been received — admission is in progress.',
-  confirmed: 'You are admitted — welcome to IBSS!',
-  graded:    'Your grades are ready. Please check the Academic tab.',
-  approved:  'Your certificate is available for download.',
-}
-const OFFER_LABELS = {
-  standard:  'Standard Offer',
-  conditional: 'Conditional Offer',
-  unconditional: 'Unconditional Offer',
-}
-
-const myStatus = computed(() => {
-  const s   = student.value
-  const enr = enrollment.value
-  if (!s) return 'new'
-  if (enr.certReleased)      return 'approved'
-  if (isGraded(s.studentId)) return 'graded'
-  if (enr.admissionConfirmed) return 'confirmed'
-  if (enr.paymentDone)       return 'admission'
-  if (enr.offerType)         return 'offer'
-  return 'new'
-})
-
-// ── Grades ────────────────────────────────────────────────────────────────────
-const myGrades = computed(() => gradesStore[student.value?.studentId] || { subjects: [] })
-const myGpa    = computed(() => {
-  const subs = myGrades.value.subjects
-  if (!subs.length) return '—'
-  const total  = subs.reduce((a, s) => a + s.credits * s.points, 0)
-  const credits = subs.reduce((a, s) => a + s.credits, 0)
-  return credits ? (total / credits).toFixed(2) : '—'
-})
-function gradeClass(g) {
-  if (['A','A+','A-'].includes(g)) return 'grade-a'
-  if (['B','B+','B-'].includes(g)) return 'grade-b'
-  if (['C','C+','C-'].includes(g)) return 'grade-c'
-  return 'grade-f'
-}
-
-// ── Documents ─────────────────────────────────────────────────────────────────
-const docSlots = [
-  { field: 'docPassport', label: 'Passport / National ID' },
-  { field: 'docDegree',   label: 'Degree Certificate'     },
-  { field: 'docLanguage', label: 'Language Result'         },
-  { field: 'docCV',       label: 'CV / Résumé'             },
-]
-function handleDocUpload(field, e) {
-  const file = e.target.files[0]
-  if (!file) return
-  const live = students.find(s => s.studentId === auth.user?.studentId)
-  if (live) live[field] = file.name
-  showToast(`${file.name} uploaded.`)
-}
-function downloadOffer() {
-  const s = student.value
-  const win = window.open('', '_blank')
-  win.document.write(`<html><body style="font-family:sans-serif;padding:2rem">
-    <h1>Offer Letter</h1>
-    <p>Dear ${s.firstName} ${s.lastName},</p>
-    <p>We are pleased to offer you a place on the <strong>${s.programme}</strong> programme.</p>
-    <p>Offer type: <strong>${OFFER_LABELS[s.offerType] || s.offerType}</strong></p>
-    <br/><p>IBSS Admissions</p>
-  </body></html>`)
-  win.document.close()
-  win.onload = () => win.print()
-}
-function downloadAdmission() {
-  const s = student.value
-  const win = window.open('', '_blank')
-  win.document.write(`<html><body style="font-family:sans-serif;padding:2rem">
-    <h1>Admission Letter</h1>
-    <p>Dear ${s.firstName} ${s.lastName},</p>
-    <p>Your payment has been received and you are now admitted to the <strong>${s.programme}</strong> programme.</p>
-    <p>Student ID: <strong>${s.studentId}</strong></p>
-    <br/><p>IBSS Admissions</p>
-  </body></html>`)
-  win.document.close()
-  win.onload = () => win.print()
-}
-function downloadCert() {
-  const s = student.value
-  const win = window.open('', '_blank')
-  win.document.write(`<html><body style="font-family:sans-serif;padding:2rem;text-align:center">
-    <h1>Certificate of Completion</h1>
-    <p>This is to certify that</p>
-    <h2>${s.firstName} ${s.lastName}</h2>
-    <p>has successfully completed the</p>
-    <h3>${s.programme}</h3>
-    <p>International Business School of Scandinavia</p>
-  </body></html>`)
-  win.document.close()
-  win.onload = () => win.print()
-}
-
-// ── Profile ───────────────────────────────────────────────────────────────────
-const editEmail   = ref(student.value?.email || '')
-const editPhone   = ref(student.value?.phone || '')
-const editAddress = ref(student.value?.address || '')
-const profileSaved = ref(false)
-function saveProfile() {
-  const live = students.find(s => s.studentId === auth.user?.studentId)
-  if (live) {
-    live.email   = editEmail.value
-    live.phone   = editPhone.value
-    live.address = editAddress.value
-  }
-  profileSaved.value = true
-  setTimeout(() => { profileSaved.value = false }, 2500)
-  showToast('Profile updated.')
-}
-
-// ── Absences ──────────────────────────────────────────────────────────────────
-const today = new Date().toISOString().split('T')[0]
-const absForm = reactive({ date: today, type: '', reason: '', docFilename: '' })
-const absSaved = ref(false)
-const myAbsences = computed(() => absences.filter(a => a.studentId === student.value?.studentId).slice().reverse())
-const pendingAbsences = computed(() => myAbsences.value.filter(a => a.status === 'pending'))
-
-function handleAbsDoc(e) {
-  absForm.docFilename = e.target.files[0]?.name || ''
-}
-function submitAbsence() {
-  absences.push({
-    id: nextAbsenceId(),
-    studentId: student.value.studentId,
-    date: absForm.date,
-    type: absForm.type,
-    reason: absForm.reason,
-    docFilename: absForm.docFilename,
-    status: 'pending',
-    submittedAt: new Date().toISOString(),
-  })
-  Object.assign(absForm, { date: today, type: '', reason: '', docFilename: '' })
-  absSaved.value = true
-  setTimeout(() => { absSaved.value = false }, 2500)
-  showToast('Absence report submitted.')
-}
-
-// ── Support tickets ───────────────────────────────────────────────────────────
-const ticketForm  = reactive({ subject: '', message: '' })
-const ticketSaved = ref(false)
-const myTickets   = computed(() => tickets.filter(t => t.studentId === student.value?.studentId).slice().reverse())
-const openTickets = computed(() => myTickets.value.filter(t => t.status === 'open'))
-const expandedTickets = ref([])
-const replyTexts  = reactive({})
-
-function toggleTicket(id) {
-  const i = expandedTickets.value.indexOf(id)
-  if (i === -1) expandedTickets.value.push(id)
-  else expandedTickets.value.splice(i, 1)
-}
-function submitTicket() {
-  const id = nextTicketId()
-  tickets.push({
-    id,
-    studentId: student.value.studentId,
-    subject: ticketForm.subject,
-    message: ticketForm.message,
-    status: 'open',
-    createdAt: new Date().toISOString(),
-    replies: [{ from: 'student', text: ticketForm.message, at: new Date().toISOString() }],
-  })
-  Object.assign(ticketForm, { subject: '', message: '' })
-  ticketSaved.value = true
-  setTimeout(() => { ticketSaved.value = false }, 2500)
-  expandedTickets.value.push(id)
-  showToast('Ticket submitted.')
-}
-function addReply(t) {
-  const text = replyTexts[t.id]
-  if (!text) return
-  t.replies.push({ from: 'student', text, at: new Date().toISOString() })
-  replyTexts[t.id] = ''
-  showToast('Reply sent.')
-}
-function replyFromLabel(from) {
-  return from === 'student' ? 'You' : from === 'admin' ? 'IBSS Admin' : 'Partner'
-}
-
-// ── Announcements ─────────────────────────────────────────────────────────────
-const myAnnouncements = computed(() =>
-  announcements
-    .filter(a => a.targetStudentId === null || a.targetStudentId === student.value?.studentId)
-    .slice().reverse()
-)
-const latestAnnouncement = computed(() => myAnnouncements.value[0] || null)
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function fmtDate(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
+const data = ref(null)
+const loaded = ref(false)
+const loadError = ref('')
+const busy = ref(false)
 const toast = ref('')
+
+const displayName = computed(() => {
+  const f = data.value?.account?.firstName
+  const l = data.value?.account?.lastName
+  return [f, l].filter(Boolean).join(' ') || auth.user?.displayName || 'Student'
+})
+
+function badgeFor(enr) { return statusBadge(enr.statusCode) }
+
+function rejectedDocCount(enr) {
+  return enr.requiredDocuments?.filter(d => d.isRejected).length ?? 0
+}
+
+function docPillTone(doc) {
+  if (!doc.statusCode) return 'tone-grey'
+  if (doc.statusCode === 'VerifiedByEnrolment' || doc.statusCode === 'VerifiedByPartner') return 'tone-green'
+  if (doc.statusCode === 'RejectedByPartner' || doc.statusCode === 'RejectedByEnrolment') return 'tone-red'
+  return 'tone-amber'
+}
+
+// Replace is allowed only when:
+//  - the doc isn't already IBSS-verified (final), AND
+//  - the application is in a state where the student is the next actor.
+// Locks during partner / admission review so a doc can't get swapped out
+// from under the reviewer's eyes.
+function canReplace(enr, doc) {
+  if (doc.statusCode === 'VerifiedByEnrolment') return false
+  return enr.isRejected || enr.statusCode === 'Draft'
+}
+function replaceLockReason(enr, doc) {
+  if (doc.statusCode === 'VerifiedByEnrolment') return 'Verified — locked'
+  if (isReviewing(enr.statusCode)) return 'Under review — locked'
+  return 'Locked'
+}
+
+// Per-card collapse state for the Documents section. Default open.
+const docsOpen = ref({})
+function isDocsOpen(enrollmentId) {
+  return docsOpen.value[enrollmentId] !== false
+}
+function toggleDocs(enrollmentId) {
+  docsOpen.value[enrollmentId] = !isDocsOpen(enrollmentId)
+}
+
+function canResubmit(enr) {
+  return enr.requiredDocuments.every(d => d.uploaded
+    && d.statusCode !== 'RejectedByPartner'
+    && d.statusCode !== 'RejectedByEnrolment')
+}
+
+function parsedReasons(doc) { return parseRejectionNote(doc.rejectionReasons?.note) }
+
+// Letter availability is decided by whether a StudentDocument actually
+// exists for that letter type — not by the workflow stage. A programme
+// whose template is still unpublished will be at the right stage but
+// won't have a letter doc, and the button stays disabled.
+function canDownloadOffer(enr)       { return !!enr.letters?.offerLetter?.studentDocumentId }
+function canDownloadAdmission(enr)   { return !!enr.letters?.admissionLetter?.studentDocumentId }
+function canDownloadTranscript(enr)  { return !!enr.letters?.transcript?.studentDocumentId }
+function canDownloadCertificate(enr) { return !!enr.letters?.certificate?.studentDocumentId }
+
+function formatDate(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+async function load() {
+  loadError.value = ''
+  try {
+    const res = await api.get('/v1/student/me/application')
+    data.value = res.data
+  } catch (e) {
+    loadError.value = e.response?.data?.error ?? e.message ?? 'Failed to load'
+  } finally {
+    loaded.value = true
+  }
+}
+
+async function onPick(event, enr, doc) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('File is larger than 10 MB.')
+    return
+  }
+  busy.value = true
+  const fd = new FormData()
+  fd.append('enrollmentId', enr.enrollmentId)
+  fd.append('documentTypeId', doc.documentTypeId)
+  fd.append('file', file)
+  try {
+    await api.post('/v1/student/me/documents', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    await load()
+    showToast(`${file.name} uploaded.`)
+  } catch (e) {
+    showToast(e.response?.data?.error ?? e.message ?? 'Upload failed')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function resubmit(enr) {
+  if (!canResubmit(enr)) return
+  busy.value = true
+  try {
+    await api.post(`/v1/student/me/application/${enr.enrollmentId}/resubmit`)
+    await load()
+    showToast('Application resubmitted.')
+  } catch (e) {
+    showToast(e.response?.data?.error ?? e.message ?? 'Resubmit failed')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function acceptOffer(enr) {
+  busy.value = true
+  try {
+    await api.post(`/v1/student/me/application/${enr.enrollmentId}/accept-offer`)
+    await load()
+    showToast('Offer accepted.')
+  } catch (e) {
+    showToast(e.response?.data?.error ?? e.message ?? 'Accept failed')
+  } finally {
+    busy.value = false
+  }
+}
+
+// Streams the released PDF from the backend and triggers a download.
+// Accepts a "letter" object from `enr.letters.<type>` (shape:
+// { studentDocumentId, fileName, uploadedAt }). Bails quietly if the
+// letter hasn't been released — the button is already disabled in that
+// case, but defensive guards keep the UI honest.
+async function downloadLetter(letter) {
+  if (!letter?.studentDocumentId) return
+  try {
+    const res = await api.get(
+      `/v1/student/me/documents/${letter.studentDocumentId}/file`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    // Prefer in-tab open for PDFs (browsers render natively); the
+    // download attribute on a temporary anchor preserves the filename.
+    const a = document.createElement('a')
+    a.href = url
+    a.download = letter.fileName ?? 'letter.pdf'
+    a.target = '_blank'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (e) {
+    showToast(e.response?.status === 404
+      ? 'This letter is not available yet.'
+      : (e.response?.data?.error ?? e.message ?? 'Download failed'))
+  }
+}
+function downloadOffer(enr)       { return downloadLetter(enr.letters?.offerLetter) }
+function downloadAdmission(enr)   { return downloadLetter(enr.letters?.admissionLetter) }
+function downloadTranscript(enr)  { return downloadLetter(enr.letters?.transcript) }
+function downloadCertificate(enr) { return downloadLetter(enr.letters?.certificate) }
+
 function showToast(msg) {
   toast.value = msg
   setTimeout(() => { toast.value = '' }, 3000)
@@ -567,177 +340,100 @@ function logout() {
   auth.logout()
   router.push('/login')
 }
+
+onMounted(load)
 </script>
 
 <style scoped>
 .student-portal { min-height: 100vh; background: #f0f4f8; font-family: sans-serif; }
-
-/* Navbar */
-.navbar {
-  background: #003366; color: #fff;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0.85rem 1.5rem;
-}
+.navbar { background: #003366; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1.5rem; }
 .navbar-brand { font-weight: 700; font-size: 1rem; }
-.btn-logout {
-  background: transparent; border: 1.5px solid rgba(255,255,255,.5);
-  color: #fff; padding: 0.35rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.85rem;
-}
+.btn-logout { background: transparent; border: 1.5px solid rgba(255,255,255,.5); color: #fff; padding: 0.35rem 1rem; border-radius: 5px; cursor: pointer; font-size: 0.85rem; }
 .btn-logout:hover { background: rgba(255,255,255,.15); }
 
-/* Tab bar */
-.tab-bar {
-  display: flex; gap: 0; background: #fff;
-  border-bottom: 2px solid #dde3ea;
-  overflow-x: auto;
+.tab-content { padding: 1.5rem 2rem; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.85rem; }
+.err-banner { background: #fef2f2; border: 1.5px solid #fca5a5; color: #b91c1c; padding: 0.65rem 1rem; border-radius: 7px; font-size: 0.86rem; }
+.loading { color: #888; font-style: italic; padding: 2rem; text-align: center; }
+.empty { color: #555; background: #fff; border-radius: 10px; padding: 1.4rem; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+
+.enr-card { background: #fff; border-radius: 8px; padding: 0.9rem 1.1rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); border: 1px solid #e8edf4; }
+.enr-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+.enr-head strong { font-size: 0.95rem; color: #0a264f; }
+.badge-code { background: #e8f0f8; color: #003366; border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 700; margin-left: 0.45rem; }
+.badge-specialization { background: #f0f3f7; color: #555; border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; margin-left: 0.35rem; }
+.badge-status { font-size: 0.7rem; font-weight: 700; padding: 3px 10px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.02em; }
+
+.tone-grey  { background: #f0f3f7; color: #555; }
+.tone-amber { background: #fff3cd; color: #856404; }
+.tone-blue  { background: #cfe2ff; color: #084298; }
+.tone-green { background: #d1fae5; color: #065f46; }
+.tone-red   { background: #fee2e2; color: #b91c1c; }
+
+.action-banner { padding: 0.55rem 0.85rem; border-radius: 7px; margin: 0.45rem 0 0.65rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; font-size: 0.85rem; }
+.action-banner-title { font-weight: 700; font-size: 0.86rem; }
+.action-banner-meta { font-size: 0.78rem; opacity: 0.8; }
+.action-bad   { background: #fef2f2; border: 1.5px solid #fca5a5; color: #b91c1c; }
+.action-blue  { background: #eef5ff; border: 1.5px solid #b6d4fe; color: #084298; }
+.action-info  { background: #eef5ff; border: 1.5px solid #b6d4fe; color: #084298; font-size: 0.86rem; }
+.action-banner .btn-primary { margin-left: auto; }
+
+.summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.4rem 1rem; margin: 0.3rem 0 0.7rem; padding: 0; }
+.summary div { display: flex; flex-direction: column; }
+.summary dt { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: #888; margin: 0; }
+.summary dd { font-size: 0.85rem; color: #222; margin: 0.1rem 0 0; }
+
+.docs-h {
+  display: flex; align-items: center; gap: 0.4rem;
+  background: none; border: none; padding: 0; cursor: pointer;
+  margin: 0.85rem 0 0.4rem; color: #003366; font-size: 0.88rem; font-weight: 700;
+  font-family: inherit; text-align: left;
 }
-.tab-btn {
-  padding: 0.75rem 1.25rem; border: none; background: transparent;
-  cursor: pointer; font-size: 0.88rem; color: #555; white-space: nowrap;
-  border-bottom: 3px solid transparent; margin-bottom: -2px;
-  transition: color .2s, border-color .2s;
-}
-.tab-btn.active { color: #003366; font-weight: 700; border-bottom-color: #003366; }
-.tab-btn:hover:not(.active) { color: #003366; background: #f7f9fc; }
+.docs-h:hover { color: #0055a5; }
+.docs-caret { display: inline-block; font-size: 0.65rem; transition: transform 0.15s ease; color: #5f6e85; }
+.docs-caret.open { transform: rotate(90deg); }
+.docs-count { color: #888; font-weight: 500; font-size: 0.78rem; }
 
-/* Content */
-.tab-content { padding: 1.5rem; max-width: 960px; margin: 0 auto; }
-.tab-pane { display: flex; flex-direction: column; gap: 1.25rem; }
-.card {
-  background: #fff; border-radius: 10px; padding: 1.5rem;
-  box-shadow: 0 1px 4px rgba(0,0,0,.08);
-}
-.card h2 { margin: 0 0 1.1rem; font-size: 1.1rem; color: #003366; }
-.card h3 { margin: 0 0 0.9rem; font-size: 0.95rem; color: #444; }
-.divider { border: none; border-top: 1px solid #eee; margin: 1.25rem 0; }
+.doc-list { list-style: none; padding: 0; margin: 0; }
+.doc-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 0.5rem 0; border-bottom: 1px solid #f0f3f7; gap: 1rem; }
+.doc-row:last-child { border-bottom: none; }
+.doc-info { display: flex; gap: 0.5rem; align-items: flex-start; flex: 1; }
+.doc-mark { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 700; flex-shrink: 0; font-size: 0.85rem; }
+.mark-ok { background: #d1fae5; color: #065f46; }
+.mark-bad { background: #fee2e2; color: #b91c1c; }
+.mark-pending { background: #f0f3f7; color: #aaa; }
+.doc-text { display: flex; flex-direction: column; gap: 0.15rem; }
+.doc-text strong { font-size: 0.85rem; color: #222; }
+.doc-meta { color: #888; font-size: 0.75rem; margin: 0; }
+.doc-pill { display: inline-block; font-size: 0.68rem; font-weight: 600; padding: 1px 7px; border-radius: 4px; margin-top: 0.15rem; align-self: flex-start; }
 
-/* Status card */
-.status-card .status-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
-.status-desc { color: #555; font-size: 0.9rem; }
-.status-meta { display: flex; flex-wrap: wrap; gap: 1.5rem; font-size: 0.85rem; color: #666; }
+.doc-actions { display: flex; gap: 0.4rem; align-items: center; }
+.btn-upload { background: #003366; color: #fff; padding: 0.28rem 0.75rem; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+.btn-upload input { display: none; }
+.lock-note { color: #888; font-size: 0.75rem; font-style: italic; }
 
-/* Badges */
-.badge { padding: 0.25rem 0.65rem; border-radius: 12px; font-size: 0.78rem; font-weight: 600; }
-.badge-new       { background: #e9ecef; color: #555; }
-.badge-offer     { background: #fff3cd; color: #856404; }
-.badge-admission { background: #cfe2ff; color: #084298; }
-.badge-confirmed { background: #d1e7dd; color: #0a3622; }
-.badge-graded    { background: #d4edda; color: #155724; }
-.badge-approved  { background: #d1f0e0; color: #0a5c36; }
+.reject-card { background: #fff7f7; border: 1px solid #fbcaca; border-left: 3px solid #b91c1c; border-radius: 6px; padding: 0.6rem 0.8rem; margin: 0.5rem 0 0; }
+.reject-card-head { display: flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap; font-size: 0.82rem; color: #7f1d1d; }
+.reject-card-head strong { color: #b91c1c; }
+.reject-card-date { margin-left: auto; color: #999; font-size: 0.74rem; }
+.reject-chips { margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.reject-chip { background: #fee2e2; color: #b91c1c; border-radius: 12px; font-size: 0.72rem; padding: 1px 9px; }
+.reject-free { margin: 0.45rem 0 0; color: #555; font-size: 0.83rem; white-space: pre-wrap; }
 
-/* Tables */
-.tbl { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-.tbl th { background: #f8f9fa; color: #444; font-weight: 600; padding: 0.55rem 0.75rem; text-align: left; border-bottom: 2px solid #dee2e6; }
-.tbl td { padding: 0.55rem 0.75rem; border-bottom: 1px solid #f0f0f0; color: #333; }
-.tbl tbody tr:hover { background: #fafcff; }
-.grade-a { color: #0a5c36; font-weight: 700; }
-.grade-b { color: #084298; font-weight: 600; }
-.grade-c { color: #856404; font-weight: 600; }
-.grade-f { color: #842029; font-weight: 600; }
+.actions { margin-top: 0.85rem; padding-top: 0.7rem; border-top: 1px solid #f0f3f7; display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; }
+.btn-primary { background: #16a34a; color: #fff; border: none; padding: 0.45rem 1.1rem; border-radius: 6px; font-weight: 700; font-size: 0.84rem; cursor: pointer; }
+.btn-primary:hover:not(:disabled) { background: #15803d; }
+.btn-primary:disabled { background: #aaa; cursor: not-allowed; }
+.action-hint { color: #888; font-size: 0.8rem; }
 
-/* Doc cards */
-.doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; margin-bottom: 0.5rem; }
-.doc-card {
-  border: 1.5px solid #dde3ea; border-radius: 8px; padding: 1rem;
-  display: flex; flex-direction: column; align-items: center; gap: 0.5rem; text-align: center;
-}
-.doc-card.disabled { opacity: .5; }
-.doc-icon { font-size: 2rem; }
-.doc-name { font-weight: 600; font-size: 0.9rem; color: #333; }
-.doc-sub  { font-size: 0.78rem; color: #888; }
-.btn-dl {
-  margin-top: 0.25rem; padding: 0.4rem 1rem; font-size: 0.82rem;
-  background: #003366; color: #fff; border: none; border-radius: 5px; cursor: pointer;
-}
-.btn-dl:disabled { background: #aaa; cursor: not-allowed; }
+.doc-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.85rem; padding-top: 0.65rem; border-top: 1px solid #f0f3f7; }
+.doc-mini { display: flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0.6rem; border: 1px solid #e2e8f0; border-radius: 6px; background: #fafcff; }
+.doc-mini.disabled { opacity: 0.55; }
+.doc-mini-icon { font-size: 1.05rem; }
+.doc-mini-info { flex: 1; min-width: 0; }
+.doc-mini-name { font-size: 0.78rem; font-weight: 700; color: #003366; }
+.doc-mini-sub { font-size: 0.68rem; color: #888; }
+.btn-mini { background: #003366; color: #fff; border: none; padding: 0.22rem 0.6rem; border-radius: 5px; font-size: 0.72rem; cursor: pointer; }
+.btn-mini:disabled { background: #bbb; cursor: not-allowed; }
 
-/* Upload slots */
-.upload-slots { display: flex; flex-direction: column; gap: 0.75rem; }
-.upload-slot {
-  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
-  padding: 0.65rem 0.75rem; background: #f8f9fa; border-radius: 7px;
-}
-.slot-label { font-weight: 600; font-size: 0.85rem; min-width: 180px; color: #333; }
-.file-chip { background: #d1e7dd; color: #0a5c36; padding: 0.2rem 0.6rem; border-radius: 10px; font-size: 0.78rem; }
-.missing-chip { background: #f8d7da; color: #842029; padding: 0.2rem 0.6rem; border-radius: 10px; font-size: 0.78rem; }
-.btn-upload {
-  padding: 0.35rem 0.9rem; background: #0055a5; color: #fff;
-  border-radius: 5px; font-size: 0.82rem; cursor: pointer;
-}
-
-/* Profile */
-.profile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.85rem; }
-.profile-ro label { display: block; font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 0.2rem; }
-.profile-ro > div { font-size: 0.9rem; color: #222; font-weight: 500; }
-.profile-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
-.full-width { grid-column: 1 / -1; }
-.field { display: flex; flex-direction: column; gap: 0.3rem; }
-.field label { font-size: 0.83rem; font-weight: 600; color: #444; }
-.field input, .field select, .field textarea {
-  padding: 0.55rem 0.75rem; border: 1.5px solid #ccc; border-radius: 6px; font-size: 0.9rem;
-}
-.field input:focus, .field select:focus, .field textarea:focus { border-color: #003366; outline: none; }
-.profile-actions { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
-
-/* Absence form */
-.absence-form { display: flex; flex-direction: column; gap: 0.85rem; max-width: 500px; }
-
-/* Ticket */
-.ticket-form { display: flex; flex-direction: column; gap: 0.85rem; max-width: 560px; }
-.ticket-item { border: 1.5px solid #dde3ea; border-radius: 8px; margin-bottom: 0.75rem; overflow: hidden; }
-.ticket-header {
-  display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem;
-  cursor: pointer; background: #f8f9fa;
-}
-.ticket-header:hover { background: #eef2f7; }
-.ticket-subject { flex: 1; font-weight: 600; font-size: 0.9rem; color: #222; }
-.ticket-date { font-size: 0.78rem; color: #888; }
-.ticket-toggle { color: #666; font-size: 0.75rem; }
-.ticket-thread { padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
-.reply {
-  padding: 0.6rem 0.8rem; border-radius: 7px; font-size: 0.87rem;
-}
-.reply-student { background: #e8f0fe; border-left: 3px solid #4a90d9; }
-.reply-admin   { background: #e8f6e9; border-left: 3px solid #2d9e53; }
-.reply-partner { background: #fff8e6; border-left: 3px solid #e6a817; }
-.reply-from { font-weight: 700; margin-right: 0.5rem; }
-.reply-at { font-size: 0.75rem; color: #888; }
-.reply p { margin: 0.3rem 0 0; }
-.reply-box { display: flex; gap: 0.5rem; align-items: flex-end; margin-top: 0.5rem; }
-.reply-box textarea { flex: 1; padding: 0.5rem 0.7rem; border: 1.5px solid #ccc; border-radius: 6px; font-size: 0.88rem; resize: vertical; }
-
-/* Notices */
-.notice-item { border-left: 3px solid #003366; padding: 0.6rem 0.9rem; margin-bottom: 0.75rem; background: #f7f9fc; border-radius: 0 6px 6px 0; }
-.notice-title { font-weight: 700; color: #003366; font-size: 0.92rem; }
-.notice-body  { color: #444; font-size: 0.88rem; margin: 0.3rem 0; }
-.notice-date  { font-size: 0.75rem; color: #888; }
-
-/* Common buttons */
-.btn-save {
-  padding: 0.55rem 1.4rem; background: #003366; color: #fff;
-  border: none; border-radius: 6px; font-size: 0.9rem; cursor: pointer; font-weight: 600;
-}
-.btn-save:hover:not(:disabled) { background: #0055a5; }
-.btn-save:disabled { background: #aaa; cursor: not-allowed; }
-.btn-sm { padding: 0.4rem 0.9rem; font-size: 0.82rem; }
-.saved-msg { font-size: 0.85rem; color: #2d9e53; font-weight: 600; }
-.optional { font-weight: normal; color: #888; font-size: 0.8rem; }
-.empty-state { color: #888; font-style: italic; font-size: 0.9rem; padding: 1rem 0; }
-.help-text { font-size: 0.83rem; color: #666; margin: 0 0 0.75rem; }
-
-/* Quick links */
-.quick-links ul { margin: 0; padding: 0 0 0 1.1rem; }
-.quick-links li { margin-bottom: 0.4rem; }
-.quick-links a { color: #003366; font-size: 0.9rem; }
-
-/* Toast */
-.toast {
-  position: fixed; bottom: 2rem; right: 2rem;
-  background: #003366; color: #fff;
-  padding: 0.75rem 1.4rem; border-radius: 8px;
-  font-size: 0.9rem; box-shadow: 0 4px 16px rgba(0,0,0,.2);
-  animation: fadein .3s ease;
-  z-index: 9999;
-}
-@keyframes fadein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.toast { position: fixed; bottom: 2rem; right: 2rem; background: #003366; color: #fff; padding: 0.75rem 1.4rem; border-radius: 8px; font-size: 0.9rem; box-shadow: 0 4px 16px rgba(0,0,0,.2); z-index: 9999; }
 </style>

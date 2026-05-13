@@ -48,20 +48,20 @@
             <span class="arrow">{{ xProg === prog.id ? '▾' : '▸' }}</span>
             <strong>{{ prog.name }}</strong>
             <span class="badge-code">{{ prog.code }}</span>
-            <span class="badge-count">{{ prog.majors.length }} major{{ prog.majors.length !== 1 ? 's' : '' }}</span>
+            <span class="badge-count">{{ prog.specializations.length }} specialization{{ prog.specializations.length !== 1 ? 's' : '' }}</span>
           </div>
           <button class="btn-del" @click.stop="removeProgramme(prog.id)">Delete</button>
         </div>
 
         <div v-if="xProg === prog.id" class="acc-body">
-          <div v-for="maj in prog.majors" :key="maj.id" class="maj-block">
+          <div v-for="maj in prog.specializations" :key="maj.id" class="maj-block">
             <div class="maj-header">
               <div class="maj-title" @click="toggleMaj(maj.id)">
                 <span class="arrow">{{ xMaj === maj.id ? '▾' : '▸' }}</span>
                 {{ maj.name }}
                 <span class="badge-count">{{ maj.subjects.length }} subjects</span>
               </div>
-              <button class="btn-del" @click="removeMajor(prog, maj.id)">Remove</button>
+              <button class="btn-del" @click="removeSpecialization(prog, maj.id)">Remove</button>
             </div>
             <div v-if="xMaj === maj.id" class="subj-block">
               <!-- Column headers -->
@@ -85,9 +85,9 @@
               </div>
             </div>
           </div>
-          <div class="add-major-row">
-            <input v-model="mf[prog.id]" class="inp-wide" placeholder="New major name…" />
-            <button class="btn-primary-sm" @click="addMajor(prog)">+ Add Major</button>
+          <div class="add-specialization-row">
+            <input v-model="mf[prog.id]" class="inp-wide" placeholder="New specialization name…" />
+            <button class="btn-primary-sm" @click="addSpecialization(prog)">+ Add Specialization</button>
           </div>
         </div>
       </div>
@@ -126,7 +126,7 @@
                 <div class="approval-info">
                   <strong>{{ clone.name }}</strong>
                   <span class="badge-code">{{ clone.code }}</span>
-                  <span class="badge-count">{{ clone.majors?.length }} major{{ clone.majors?.length !== 1 ? 's' : '' }}</span>
+                  <span class="badge-count">{{ clone.specializations?.length }} specialization{{ clone.specializations?.length !== 1 ? 's' : '' }}</span>
                   <span :class="statusBadgeClass(clone.status)">{{ statusLabel(clone.status) }}</span>
                 </div>
                 <div v-if="clone.status !== 'draft'" class="approval-actions">
@@ -144,7 +144,7 @@
                 Rejection reason: {{ clone.rejectionReason }}
               </div>
               <div class="view-maj-list" style="margin-top:0.4rem">
-                <div v-for="m in clone.majors" :key="m.id" class="view-maj-row">
+                <div v-for="m in clone.specializations" :key="m.id" class="view-maj-row">
                   {{ m.name }} <span class="badge-count">{{ m.subjects.length }} subjects</span>
                 </div>
               </div>
@@ -157,10 +157,10 @@
           <div v-for="prog in corePrograms" :key="prog.id" class="view-prog-block">
             <div class="view-prog-name">
               <span class="badge-code">{{ prog.code }}</span> {{ prog.name }}
-              <span class="badge-count">{{ enabledMajorCount(partner, prog) }}/{{ prog.majors.length }} on</span>
+              <span class="badge-count">{{ enabledSpecializationCount(partner, prog) }}/{{ prog.specializations.length }} on</span>
             </div>
             <div class="view-maj-list">
-              <div v-for="maj in prog.majors" :key="maj.id" class="view-maj-row">
+              <div v-for="maj in prog.specializations" :key="maj.id" class="view-maj-row">
                 <label class="toggle-wrap">
                   <input type="checkbox"
                     :checked="hasAccess(partner, prog.id, maj.id)"
@@ -191,7 +191,7 @@ const tab = ref('core')
 // ── Core tab accordion ────────────────────────────────────────────────────────
 const xProg = ref(null)
 const xMaj  = ref(null)
-const mf    = reactive({})   // progId → new major name
+const mf    = reactive({})   // progId → new specialization name
 const sf    = reactive({})   // majId_n / majId_c
 
 function toggleProg(id) { xProg.value = xProg.value === id ? null : id; xMaj.value = null }
@@ -201,7 +201,7 @@ const newProg = reactive({ show: false, name: '', code: '' })
 
 function addProgramme() {
   if (!newProg.name.trim() || !newProg.code.trim()) return
-  corePrograms.push({ id: uid(), name: newProg.name.trim(), code: newProg.code.trim().toUpperCase(), majors: [] })
+  corePrograms.push({ id: uid(), name: newProg.name.trim(), code: newProg.code.trim().toUpperCase(), specializations: [] })
   newProg.name = ''; newProg.code = ''; newProg.show = false
 }
 function removeProgramme(id) {
@@ -209,15 +209,15 @@ function removeProgramme(id) {
   if (i >= 0) corePrograms.splice(i, 1)
   if (xProg.value === id) xProg.value = null
 }
-function addMajor(prog) {
+function addSpecialization(prog) {
   const name = (mf[prog.id] ?? '').trim()
   if (!name) return
-  prog.majors.push({ id: uid(), name, subjects: [] })
+  prog.specializations.push({ id: uid(), name, subjects: [] })
   mf[prog.id] = ''
 }
-function removeMajor(prog, majId) {
-  const i = prog.majors.findIndex(m => m.id === majId)
-  if (i >= 0) prog.majors.splice(i, 1)
+function removeSpecialization(prog, majId) {
+  const i = prog.specializations.findIndex(m => m.id === majId)
+  if (i >= 0) prog.specializations.splice(i, 1)
 }
 function addSubject(maj, majId) {
   const name = (sf[majId + '_n'] ?? '').trim()
@@ -250,8 +250,8 @@ function toggleAccess(partner, progId, majId) {
   else partner.coreAccess.push(key)
 }
 
-function enabledMajorCount(partner, prog) {
-  return prog.majors.filter(m => hasAccess(partner, prog.id, m.id)).length
+function enabledSpecializationCount(partner, prog) {
+  return prog.specializations.filter(m => hasAccess(partner, prog.id, m.id)).length
 }
 
 function partnerProgClones(partner) {
@@ -375,7 +375,7 @@ function logout() { auth.logout(); router.push('/login') }
 .inp-num { width: 58px; padding: 0.36rem 0.45rem; border: 1.5px solid #ccc; border-radius: 5px; font-size: 0.84rem; text-align: center; outline: none; }
 .inp-num:focus { border-color: #003366; }
 
-.add-major-row { display: flex; gap: 0.55rem; align-items: center; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px dashed #dde6f0; }
+.add-specialization-row { display: flex; gap: 0.55rem; align-items: center; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px dashed #dde6f0; }
 
 /* Partner programmes view */
 .view-section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #888; font-weight: 700; margin-bottom: 0.6rem; margin-top: 0.2rem; }

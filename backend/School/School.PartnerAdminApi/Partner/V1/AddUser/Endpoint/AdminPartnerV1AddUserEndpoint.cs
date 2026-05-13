@@ -27,8 +27,9 @@ public sealed class AdminPartnerV1AddUserEndpoint : IEndpointMarker
         try
         {
             var email = request.Email?.Trim() ?? $"{request.Username.Trim()}@partner.local";
+            var customPassword = string.IsNullOrWhiteSpace(request.Password) ? null : request.Password;
             var (user, password) = await creator.CreateUserAsync(
-                request.Username.Trim(), email, "Partner", id, ct);
+                request.Username.Trim(), email, "Partner", id, ct, customPassword);
 
             return Results.Ok(new
             {

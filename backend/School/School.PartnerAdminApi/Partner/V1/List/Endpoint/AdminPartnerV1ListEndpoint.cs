@@ -16,9 +16,14 @@ public sealed class AdminPartnerV1ListEndpoint : IEndpointMarker
     private async Task<IResult> EndpointHandlerAsync(
         [FromServices] IDispatcher sender,
         [FromServices] IMapper<CommandSearchResult<AdminPartnerV1ListCommandResultItem>, AdminPartnerV1ListEndpointResponse> mapper,
+        HttpContext httpContext,
         CancellationToken ct)
     {
-        var result = await sender.SendAsync(new AdminPartnerV1ListCommand(), ct);
+        // Read the query param directly off the request so the binder doesn't
+        // reject the call when it's omitted entirely (the default state).
+        var includeDeleted = httpContext.Request.Query.TryGetValue("includeDeleted", out var v)
+            && bool.TryParse(v.ToString(), out var parsed) && parsed;
+        var result = await sender.SendAsync(new AdminPartnerV1ListCommand(includeDeleted), ct);
         return result.ToResult(mapper);
     }
 }
