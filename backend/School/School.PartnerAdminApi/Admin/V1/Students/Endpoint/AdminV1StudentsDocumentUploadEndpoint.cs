@@ -1,45 +1,40 @@
+using System.Security.Claims;
 using Odin.Api.Base.Documents;
-using SharedLibrary.Basics.Opaque.Domains;
+using Odin.Api.Base.Storage;
 
-namespace SharedLibrary.Basics.Opaque.StudentApi.V1.MeApplication.Endpoint;
+namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 
 /// <summary>
-/// Student uploads or replaces a document of a given type.
+/// Admin uploads a document on behalf of a student for a specific
+/// enrolment. Mirrors the student self-upload semantics:
 ///
-/// Replace flow (default): soft-deletes any existing non-deleted
-/// <see cref="StudentDocument"/> the caller has for the same
-/// <c>(EnrollmentId, DocumentTypeId)</c>, persists the new file via
-/// <see cref="IFileStorage"/>, inserts a fresh row with
-/// <c>CurrentStatusId = Submitted</c>, and appends a "Replaced by student"
-/// note. Once a doc for that slot is already approved
-/// (VerifiedByPartner / VerifiedByEnrolment), replace is rejected — the
-/// caller must use the additional-document path instead.
+/// - Replace flow (isAdditional=false): soft-deletes any prior non-deleted
+///   doc of the same (EnrollmentId, DocumentTypeId). Rejected if a doc
+///   already exists in Verified state — caller must use additional flow.
+/// - Additional flow (isAdditional=true): never soft-deletes; inserts a
+///   new row alongside the existing approved one.
 ///
-/// Additional flow (isAdditional=true): never soft-deletes; inserts a new
-/// row alongside any existing docs of the same type. The "kind" of the
-/// additional document is the caller-supplied <c>documentTypeId</c>.
+/// Records a <c>StudentDocumentNote</c> with the admin's user id so the
+/// activity log attributes the action to the Admission Office.
 /// </summary>
-[Route("/v1/student/me/documents")]
-[EndpointTag("Student.MeApplication")]
-public sealed class StudentV1MeDocumentUploadEndpoint : IEndpointMarker
+[Route("/v1/admin/students/{studentId:guid}/enrollments/{enrollmentId:guid}/documents")]
+[EndpointTag("Admin.Students")]
+public sealed class AdminV1StudentsDocumentUploadEndpoint : IEndpointMarker
 {
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
-        app.MapPost("/v1/student/me/documents", HandleAsync)
-            .RequireAuthorization("StudentOnly")
+        app.MapPost("/v1/admin/students/{studentId:guid}/enrollments/{enrollmentId:guid}/documents", HandleAsync)
+            .RequireAuthorization("AdminOnly")
             .DisableAntiforgery();
         return app;
     }
 
     private static async Task<IResult> HandleAsync(
+        Guid studentId, Guid enrollmentId,
         HttpContext httpContext, OdinDbContext db, IFileStorage storage, CancellationToken ct)
     {
         var callerId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
-
-        var student = await db.Students
-            .FirstOrDefaultAsync(s => s.UserId == callerId && s.DeletedAt == null, ct);
-        if (student is null) return Results.NotFound();
 
         if (!httpContext.Request.HasFormContentType)
             return Results.BadRequest(new { error = "multipart/form-data required" });
@@ -47,13 +42,15 @@ public sealed class StudentV1MeDocumentUploadEndpoint : IEndpointMarker
         var form = await httpContext.Request.ReadFormAsync(ct);
         if (!Guid.TryParse(form["documentTypeId"].ToString(), out var documentTypeGuid))
             return Results.BadRequest(new { error = "documentTypeId is required" });
-        if (!Guid.TryParse(form["enrollmentId"].ToString(), out var enrollmentGuid))
-            return Results.BadRequest(new { error = "enrollmentId is required" });
         var isAdditional = bool.TryParse(form["isAdditional"].ToString(), out var ia) && ia;
 
+        var student = await db.Students
+            .FirstOrDefaultAsync(s => s.StudentId == studentId && s.DeletedAt == null, ct);
+        if (student is null) return Results.NotFound();
+
         var enrolmentOwned = await db.Enrollments
-            .AnyAsync(e => e.StudentEnrollmentId == enrollmentGuid
-                && e.StudentId == student.StudentId
+            .AnyAsync(e => e.StudentEnrollmentId == enrollmentId
+                && e.StudentId == studentId
                 && e.DeletedAt == null, ct);
         if (!enrolmentOwned) return Results.NotFound();
 
@@ -68,7 +65,7 @@ public sealed class StudentV1MeDocumentUploadEndpoint : IEndpointMarker
         var now = DateTime.UtcNow;
 
         var existingApproved = await db.StudentDocuments
-            .AnyAsync(d => d.EnrollmentId == enrollmentGuid
+            .AnyAsync(d => d.EnrollmentId == enrollmentId
                 && d.DocumentTypeId == documentTypeGuid
                 && d.DeletedAt == null
                 && (d.CurrentStatusId == DocumentStatusIds.VerifiedByPartner
@@ -85,7 +82,7 @@ public sealed class StudentV1MeDocumentUploadEndpoint : IEndpointMarker
         if (!isAdditional)
         {
             prior = await db.StudentDocuments
-                .Where(d => d.EnrollmentId == enrollmentGuid
+                .Where(d => d.EnrollmentId == enrollmentId
                     && d.DocumentTypeId == documentTypeGuid
                     && d.DeletedAt == null)
                 .ToListAsync(ct);
@@ -94,15 +91,15 @@ public sealed class StudentV1MeDocumentUploadEndpoint : IEndpointMarker
 
         var safeName = Path.GetFileName(file.FileName ?? "upload");
         var docId = Guid.NewGuid();
-        var rel = $"{student.StudentId}/{docId:N}-{safeName}";
+        var rel = $"{studentId}/{docId:N}-{safeName}";
         await using (var src = file.OpenReadStream())
             await storage.SaveAsync(src, rel, ct);
 
         var doc = new StudentDocument
         {
             StudentDocumentId = docId,
-            StudentId = student.StudentId,
-            EnrollmentId = enrollmentGuid,
+            StudentId = studentId,
+            EnrollmentId = enrollmentId,
             DocumentTypeId = documentTypeGuid,
             FileName = safeName,
             MimeType = file.ContentType ?? "application/octet-stream",
@@ -118,8 +115,8 @@ public sealed class StudentV1MeDocumentUploadEndpoint : IEndpointMarker
             StatusId = DocumentStatusIds.Submitted,
             ByUserId = callerId,
             Note = isAdditional
-                ? "Student added an additional document."
-                : prior.Count > 0 ? "Replaced by student." : "Uploaded by student.",
+                ? "Admin added an additional document."
+                : prior.Count > 0 ? "Replaced by admin." : "Uploaded by admin.",
             CreatedAt = now,
         });
 
@@ -128,7 +125,7 @@ public sealed class StudentV1MeDocumentUploadEndpoint : IEndpointMarker
         return Results.Ok(new
         {
             studentDocumentId = doc.StudentDocumentId,
-            enrollmentId = enrollmentGuid,
+            enrollmentId,
             documentTypeId = documentTypeGuid,
             fileName = doc.FileName,
             uploadedAt = doc.UploadedAt,

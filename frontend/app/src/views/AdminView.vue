@@ -464,7 +464,7 @@
 
     <!-- ══════════════════════ ADMIN USERS TAB (SuperAdministrator only) ══════════════════════ -->
     <div v-show="tab === 'admin-users'" class="container">
-      <AdminUsersTab v-if="tab === 'admin-users' && auth.isSuperAdmin" />
+      <AdminUsersTab v-if="tab === 'admin-users' && auth.isSuperAdmin" :key="adminUsersRefreshKey" />
     </div>
 
     <!-- ══════════════════════ MESSAGES TAB ══════════════════════ -->
@@ -1024,8 +1024,15 @@ function copyPassword() {
   navigator.clipboard.writeText(newUserPassword.value).catch(() => {})
 }
 
-// Load partners when Partners tab is activated
-watch(tab, (t) => { if (t === 'partners') loadPartners() })
+// Refresh the active tab's data on every tab switch. Tabs that host a
+// child component use a refresh-key bump to force a remount (the child's
+// onMounted then re-fetches). Tabs that load locally call their loader.
+watch(tab, (t) => {
+  if (t === 'students')    adminStudentsRefreshKey.value++
+  if (t === 'partners')    loadPartners()
+  if (t === 'admin-users') adminUsersRefreshKey.value++
+  // Messages tab has no GET to refresh.
+})
 
 // ── Add Student modal (admin) ─────────────────────────────────────────────────
 // Two stages: pick a partner, then host /apply?partner=<slug> in an iframe.
@@ -1035,6 +1042,7 @@ const addStudentPartnerSlug  = ref('')
 const addStudentPartnerName  = ref('')
 const addStudentPickSearch   = ref('')
 const adminStudentsRefreshKey = ref(0)
+const adminUsersRefreshKey = ref(0)
 
 const addStudentPartnerOptions = computed(() => {
   const q = addStudentPickSearch.value.trim().toLowerCase()

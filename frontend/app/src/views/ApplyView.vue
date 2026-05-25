@@ -211,7 +211,7 @@
                 </span>
                 <label class="btn-upload">
                   {{ uploadedFor(row.specializationId, req.documentTypeId) ? 'Replace' : 'Upload' }}
-                  <input type="file" accept="application/pdf,image/jpeg,image/png"
+                  <input type="file" :accept="ACCEPTED_DOC_ACCEPT_ATTR"
                          @change="onUpload($event, row.specializationId, req.documentTypeId)" />
                 </label>
                 <button v-if="uploadedFor(row.specializationId, req.documentTypeId)" class="btn-x"
@@ -255,6 +255,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import api from '../api/client.js'
+import { ACCEPTED_DOC_ACCEPT_ATTR } from '../utils/uploadPolicy.js'
 import { resolvePartnerSlug } from '../lib/partner.js'
 import { blindPassword, deriveClientPublicKey } from '../crypto/opaque.js'
 

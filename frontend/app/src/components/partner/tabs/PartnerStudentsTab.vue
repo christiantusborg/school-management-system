@@ -314,28 +314,59 @@
             </div>
 
             <div v-if="detailModal.activeTab === 'documents'" class="tab-pane">
-              <p v-if="!detailModal.data.documents?.length" class="muted">No documents uploaded yet.</p>
-              <div v-else>
-                <div v-for="enr in docsByEnrollment" :key="enr.enrollmentId" class="docs-group">
-                  <div class="docs-group-head">
-                    <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
-                    <span class="docs-group-count">{{ enr.docs.length }}</span>
-                  </div>
-                  <div class="docs-list">
-                    <div v-for="d in enr.docs" :key="d.studentDocumentId" class="doc-row">
-                      <span :class="['doc-pill', docPillClass(d.status)]">{{ docPillIcon(d.status) }}</span>
-                      <div class="doc-info">
-                        <div class="doc-name">{{ d.documentTypeName }}</div>
-                        <div class="doc-sub">
-                          {{ d.fileName }} · uploaded {{ formatDateD(d.uploadedAt) }} · {{ d.statusName }}
-                        </div>
+              <div v-for="enr in docsByEnrollment" :key="enr.enrollmentId" class="docs-group">
+                <div class="docs-group-head">
+                  <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
+                  <span class="docs-group-count">{{ enr.coreDocs.length + enr.additionalDocs.length }}</span>
+                  <button class="btn-mini-d" style="margin-left:auto"
+                          @click="openAdditionalDialog(enr.enrollmentId)">
+                    + Add additional document
+                  </button>
+                </div>
+                <div class="docs-list" v-if="enr.coreDocs.length">
+                  <div v-for="d in enr.coreDocs" :key="d.studentDocumentId" class="doc-row">
+                    <span :class="['doc-pill', docPillClass(d.status)]">{{ docPillIcon(d.status) }}</span>
+                    <div class="doc-info">
+                      <div class="doc-name">{{ d.documentTypeName }}</div>
+                      <div class="doc-sub">
+                        {{ d.fileName }} · uploaded {{ formatDateD(d.uploadedAt) }} · {{ d.statusName }}
                       </div>
-                      <button class="btn-mini-d" @click="downloadStudentDocPartner(d)">Open</button>
                     </div>
+                    <button class="btn-mini-d" @click="downloadStudentDocPartner(d)">Open</button>
+                    <label class="btn-mini-d" v-if="!d.isVerified" style="margin-left:6px">
+                      Replace
+                      <input type="file" :accept="ACCEPTED_DOC_ACCEPT_ATTR" hidden
+                             @change="onPartnerReplace($event, enr.enrollmentId, d)" />
+                    </label>
+                  </div>
+                </div>
+                <p v-else class="muted" style="padding:6px 0;">No documents uploaded yet for this application.</p>
+                <div v-if="enr.additionalDocs.length" class="docs-list">
+                  <div class="docs-subhead">Additional documents</div>
+                  <div v-for="d in enr.additionalDocs" :key="d.studentDocumentId" class="doc-row">
+                    <span :class="['doc-pill', docPillClass(d.status)]">{{ docPillIcon(d.status) }}</span>
+                    <div class="doc-info">
+                      <div class="doc-name">
+                        {{ d.documentTypeName }}
+                        <span class="pill-additional">Additional</span>
+                      </div>
+                      <div class="doc-sub">
+                        {{ d.fileName }} · uploaded {{ formatDateD(d.uploadedAt) }} · {{ d.statusName }}
+                      </div>
+                    </div>
+                    <button class="btn-mini-d" @click="downloadStudentDocPartner(d)">Open</button>
                   </div>
                 </div>
               </div>
+              <p v-if="!docsByEnrollment.length" class="muted">No enrolments for this student yet.</p>
             </div>
+
+            <AdditionalDocumentUploadDialog
+              v-if="additionalDialog.open"
+              types-endpoint="/v1/partner/document-types"
+              :upload-endpoint="additionalDialog.uploadEndpoint"
+              @close="additionalDialog.open = false"
+              @uploaded="onAdditionalUploaded" />
 
             <div v-if="detailModal.activeTab === 'letters'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
@@ -384,6 +415,8 @@ import Fuse from 'fuse.js'
 import api from '../../../api/client.js'
 import StudentReviewWizard from '../StudentReviewWizard.vue'
 import EnrollmentActivityLog from '../../letters/EnrollmentActivityLog.vue'
+import AdditionalDocumentUploadDialog from '../../letters/AdditionalDocumentUploadDialog.vue'
+import { ACCEPTED_DOC_ACCEPT_ATTR } from '../../../utils/uploadPolicy.js'
 import {
   partnerReviewState,
   getSubStatus,
@@ -661,20 +694,65 @@ async function openStudentDetail(s, preselectEnrollmentId = null) {
 }
 
 // Documents tab support: groups uploaded docs by the enrolment they were
-// attached to so the partner sees which docs went on which application.
+// attached to so the partner sees which docs went on which application,
+// partitioned into core slot docs vs additional supplementary docs based
+// on the server-supplied `isAdditional` flag.
 const docsByEnrollment = computed(() => {
   const data = detailModal.value?.data
-  if (!data?.documents?.length || !data?.enrollments?.length) return []
-  return data.enrollments.map(e => ({
-    enrollmentId: e.studentEnrollmentId,
-    programmeCode: e.programmeCode,
-    programmeName: e.programmeName,
-    specializationName: e.specializationName,
-    docs: data.documents
+  if (!data?.enrollments?.length) return []
+  const allDocs = data.documents || []
+  return data.enrollments.map(e => {
+    const docs = allDocs
       .filter(d => d.enrollmentId === e.studentEnrollmentId)
-      .sort((a, b) => (a.documentTypeName || '').localeCompare(b.documentTypeName || '')),
-  })).filter(g => g.docs.length > 0)
+      .sort((a, b) => (a.documentTypeName || '').localeCompare(b.documentTypeName || ''))
+    return {
+      enrollmentId: e.studentEnrollmentId,
+      programmeCode: e.programmeCode,
+      programmeName: e.programmeName,
+      specializationName: e.specializationName,
+      coreDocs: docs.filter(d => !d.isAdditional),
+      additionalDocs: docs.filter(d => d.isAdditional),
+    }
+  })
 })
+
+const additionalDialog = reactive({ open: false, uploadEndpoint: '' })
+function openAdditionalDialog(enrollmentId) {
+  const studentId = detailModal.value?.studentId
+  if (!studentId || !enrollmentId) return
+  additionalDialog.uploadEndpoint =
+    `/v1/partner/my-students/${studentId}/enrollments/${enrollmentId}/documents`
+  additionalDialog.open = true
+}
+async function onAdditionalUploaded() {
+  await refreshPartnerDetailModal()
+}
+async function onPartnerReplace(ev, enrollmentId, doc) {
+  const file = ev.target.files?.[0]
+  ev.target.value = ''
+  if (!file || !detailModal.value?.studentId) return
+  try {
+    const body = new FormData()
+    body.append('documentTypeId', doc.documentTypeId)
+    body.append('isAdditional', 'false')
+    body.append('file', file)
+    await api.post(
+      `/v1/partner/my-students/${detailModal.value.studentId}/enrollments/${enrollmentId}/documents`,
+      body)
+    await refreshPartnerDetailModal()
+  } catch (err) {
+    detailModal.value.error = err.response?.data?.error
+      ?? err.message ?? 'Replace failed.'
+    setTimeout(() => { if (detailModal.value) detailModal.value.error = '' }, 3000)
+  }
+}
+async function refreshPartnerDetailModal() {
+  if (!detailModal.value?.studentId) return
+  try {
+    const res = await api.get(`/v1/partner/my-students/${detailModal.value.studentId}`)
+    detailModal.value.data = res.data
+  } catch { /* keep stale view */ }
+}
 function docPillClass(status) {
   if (status === 'VerifiedByPartner' || status === 'VerifiedByEnrolment') return 'doc-pill-ok'
   if (status === 'RejectedByPartner' || status === 'RejectedByEnrolment') return 'doc-pill-bad'
@@ -1376,6 +1454,8 @@ function confirmSubStatus() {
 .doc-info { flex: 1; min-width: 0; }
 .doc-name { font-size: .86rem; font-weight: 600; color: #1a2d4f; }
 .doc-sub { font-size: .72rem; color: #6b7888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.docs-subhead { font-size: .72rem; font-weight: 700; color: #6b7888; text-transform: uppercase; letter-spacing: .04em; margin: .5rem 0 .25rem; }
+.pill-additional { display: inline-block; margin-left: .4rem; padding: 0 .4rem; background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; border-radius: 999px; font-size: .65rem; font-weight: 700; vertical-align: middle; }
 
 .letters-list { display: flex; flex-direction: column; gap: .5rem; }
 .letter-row { display: flex; align-items: center; gap: .65rem; padding: .55rem .75rem; background: #f6f9fc; border: 1px solid #eef2f7; border-radius: 7px; }

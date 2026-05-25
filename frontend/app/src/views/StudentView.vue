@@ -95,6 +95,27 @@
             </div>
             <p v-if="parsedReasons(doc).freeText" class="reject-free">{{ parsedReasons(doc).freeText }}</p>
           </div>
+
+          <!-- Additional documents -->
+          <div v-if="enr.additionalDocuments?.length || true" class="extra-docs">
+            <div class="extra-docs-head">
+              <strong>Additional documents</strong>
+              <button class="btn-secondary" @click="openAddAdditional(enr.enrollmentId)">+ Add another document</button>
+            </div>
+            <ul v-if="enr.additionalDocuments?.length" class="doc-list">
+              <li v-for="d in enr.additionalDocuments" :key="d.studentDocumentId" class="doc-row">
+                <div class="doc-info">
+                  <span class="doc-mark mark-ok">✓</span>
+                  <div class="doc-text">
+                    <strong>{{ d.documentTypeName }}</strong>
+                    <p class="doc-meta">{{ d.fileName }} · uploaded {{ formatDate(d.uploadedAt) }}</p>
+                    <span class="doc-pill">{{ d.statusName }}</span>
+                  </div>
+                </div>
+              </li>
+            </ul>
+            <p v-else class="muted-extra">None added.</p>
+          </div>
           </template>
 
           <!-- Resubmit footer (rejected applications only) -->
@@ -150,19 +171,29 @@
     </div>
 
     <div v-if="toast" class="toast">{{ toast }}</div>
+
+    <AdditionalDocumentUploadDialog
+      v-if="additionalDialog.open"
+      types-endpoint="/v1/student/me/document-types"
+      upload-endpoint="/v1/student/me/documents"
+      :enrollment-id="additionalDialog.enrollmentId"
+      @close="additionalDialog.open = false"
+      @uploaded="onAdditionalUploaded" />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import EnrollmentActivityLog from '../components/letters/EnrollmentActivityLog.vue'
+import AdditionalDocumentUploadDialog from '../components/letters/AdditionalDocumentUploadDialog.vue'
 import { auth } from '../store/auth.js'
 import api from '../api/client.js'
 import { statusBadge, isReviewing, parseRejectionNote } from '../utils/applicationStatus.js'
+import { ACCEPTED_DOC_ACCEPT_ATTR } from '../utils/uploadPolicy.js'
 
 const router = useRouter()
-const acceptedTypes = 'application/pdf,image/jpeg,image/png'
+const acceptedTypes = ACCEPTED_DOC_ACCEPT_ATTR
 
 const data = ref(null)
 const loaded = ref(false)
@@ -194,13 +225,18 @@ function docPillTone(doc) {
 //  - the application is in a state where the student is the next actor.
 // Locks during partner / admission review so a doc can't get swapped out
 // from under the reviewer's eyes.
-function canReplace(enr, doc) {
-  if (doc.statusCode === 'VerifiedByEnrolment') return false
-  return enr.isRejected || enr.statusCode === 'Draft'
+// Replace is allowed up until the partner approves the doc. After that
+// (VerifiedByPartner / VerifiedByEnrolment) the server rejects the
+// upload, so we hide the button. Anything else — pending, rejected,
+// no upload yet — can be replaced freely by the student.
+function canReplace(_enr, doc) {
+  if (!doc.uploaded) return true
+  return doc.statusCode !== 'VerifiedByPartner'
+    && doc.statusCode !== 'VerifiedByEnrolment'
 }
-function replaceLockReason(enr, doc) {
-  if (doc.statusCode === 'VerifiedByEnrolment') return 'Verified — locked'
-  if (isReviewing(enr.statusCode)) return 'Under review — locked'
+function replaceLockReason(_enr, doc) {
+  if (doc.statusCode === 'VerifiedByEnrolment') return 'Verified by Admission — locked'
+  if (doc.statusCode === 'VerifiedByPartner') return 'Verified by Partner — locked'
   return 'Locked'
 }
 
@@ -245,6 +281,15 @@ async function load() {
   } finally {
     loaded.value = true
   }
+}
+
+const additionalDialog = reactive({ open: false, enrollmentId: null })
+function openAddAdditional(enrollmentId) {
+  additionalDialog.enrollmentId = enrollmentId
+  additionalDialog.open = true
+}
+async function onAdditionalUploaded() {
+  await load()
 }
 
 async function onPick(event, enr, doc) {
@@ -436,4 +481,11 @@ onMounted(load)
 .btn-mini:disabled { background: #bbb; cursor: not-allowed; }
 
 .toast { position: fixed; bottom: 2rem; right: 2rem; background: #003366; color: #fff; padding: 0.75rem 1.4rem; border-radius: 8px; font-size: 0.9rem; box-shadow: 0 4px 16px rgba(0,0,0,.2); z-index: 9999; }
+
+.extra-docs { margin-top: 0.85rem; padding-top: 0.7rem; border-top: 1px dashed #d8dee6; }
+.extra-docs-head { display: flex; align-items: center; justify-content: space-between; gap: 0.65rem; margin-bottom: 0.4rem; }
+.extra-docs-head strong { font-size: 0.85rem; color: #1a2d4f; }
+.btn-secondary { background: #fff; color: #003366; border: 1px solid #003366; padding: 0.25rem 0.7rem; border-radius: 5px; font-size: 0.76rem; font-weight: 600; cursor: pointer; }
+.btn-secondary:hover { background: #f0f5fa; }
+.muted-extra { color: #999; font-size: 0.78rem; font-style: italic; margin: 0.2rem 0 0; }
 </style>

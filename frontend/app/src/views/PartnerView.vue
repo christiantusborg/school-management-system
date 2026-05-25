@@ -536,7 +536,7 @@
 
     <!-- ══ MY USERS TAB ════════════════════════════════════════════════════════ -->
     <div v-show="mainTab === 'users'" class="container">
-      <PartnerUsersTab v-if="mainTab === 'users'" />
+      <PartnerUsersTab v-if="mainTab === 'users'" :key="usersRefreshKey" />
     </div>
 
     <!-- Clone core programme modal -->
@@ -1255,6 +1255,7 @@ function closeAddStudent() {
   studentsRefreshKey.value++
 }
 const studentsRefreshKey = ref(0)
+const usersRefreshKey = ref(0)
 
 // ── My Core Programmes (real API) ─────────────────────────────────────────────
 const coreAccessItems = ref([])
@@ -1299,7 +1300,14 @@ async function toggleSpecialization(item, disabled) {
   }
 }
 
-watch(mainTab, t => { if (t === 'core' && coreAccessItems.value.length === 0 && !coreAccessLoading.value) loadCoreAccess() })
+watch(mainTab, t => {
+  // Reload the active tab's data on every switch (was previously gated by
+  // "only on first time"). The lazy guards were OK for first load but stale
+  // data is worse than a 100ms extra round-trip.
+  if (t === 'students') studentsRefreshKey.value++
+  if (t === 'core' && !coreAccessLoading.value) loadCoreAccess()
+  if (t === 'users') usersRefreshKey.value++
+})
 onMounted(() => { if (mainTab.value === 'core') loadCoreAccess() })
 
 // ── My Programs (real API) ────────────────────────────────────────────────────
@@ -1571,7 +1579,15 @@ function addSubjToMaj(clone, maj) {
   newSubjForms[cKey] = 15
 }
 
-watch(mainTab, t => { if (t === 'programs' && myProgClones.value.length === 0 && !myProgLoading.value) { loadMyPrograms(); if (coreAccessItems.value.length === 0) loadCoreAccess() } })
+watch(mainTab, t => {
+  // Always reload My Programmes on tab switch so admin actions (approve /
+  // reject / delete) show up without a manual refresh. Core access is
+  // refreshed too because the page shows it as a sidebar list.
+  if (t === 'programs' && !myProgLoading.value) {
+    loadMyPrograms()
+    if (!coreAccessLoading.value) loadCoreAccess()
+  }
+})
 onMounted(() => { if (mainTab.value === 'programs') { loadMyPrograms(); if (coreAccessItems.value.length === 0) loadCoreAccess() } })
 
 function progStatusLabel(status) {

@@ -99,6 +99,15 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
             })
             .ToListAsync(ct);
 
+        // Same core-vs-additional partitioning as the admin endpoint: the
+        // earliest non-deleted row per (enrollment, documentType) is the
+        // core doc; later rows are additional uploads (post-approval
+        // supplementary docs).
+        var coreDocIds = documents
+            .GroupBy(d => new { d.enrollmentId, d.documentTypeId })
+            .Select(g => g.OrderBy(x => x.uploadedAt).First().studentDocumentId)
+            .ToHashSet();
+
         var documentsOut = documents.Select(d => new
         {
             d.studentDocumentId,
@@ -110,6 +119,7 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
             d.status,
             d.statusName,
             d.isVerified,
+            isAdditional = !coreDocIds.Contains(d.studentDocumentId),
             d.requirements,
             lastChangedAt = d.lastNote?.CreatedAt,
             lastChangeReason = d.lastNote?.Note,

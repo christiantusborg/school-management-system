@@ -94,6 +94,18 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             })
             .ToListAsync(ct);
 
+        // Per (enrollmentId, documentTypeId) the OLDEST non-deleted row is
+        // the canonical "core" doc; any later rows are additional uploads.
+        // Today that mostly affects post-approval additional uploads — the
+        // student's pre-approval replace flow soft-deletes priors, so only
+        // one row per slot survives there. Letter-type docs are also
+        // multi-row by design (re-released) but never appear in the slot
+        // UI, so the "additional" label on those is harmless.
+        var coreDocIds = documents
+            .GroupBy(d => new { d.enrollmentId, d.documentTypeId })
+            .Select(g => g.OrderBy(x => x.uploadedAt).First().studentDocumentId)
+            .ToHashSet();
+
         var documentsOut = documents.Select(d => new
         {
             d.studentDocumentId,
@@ -105,6 +117,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             d.status,
             d.statusName,
             d.isVerified,
+            isAdditional = !coreDocIds.Contains(d.studentDocumentId),
             d.requirements,
             lastChangedAt = d.lastNote?.CreatedAt,
             lastChangeReason = d.lastNote?.Note,

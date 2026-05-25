@@ -102,9 +102,24 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
                     .FirstOrDefault(),
             })
             .ToListAsync(ct);
-        var docsByEnrolment = documents
+        // Multi-row handling: per (enrolment, documentType) the OLDEST
+        // non-deleted row is the canonical "core" doc — that's the one
+        // shown in the required-document slot. Any later rows are
+        // additional uploads (post-approval supplementary docs) and are
+        // surfaced separately in additionalDocuments below.
+        //
+        // Letter document types (offer/admission/transcript/etc.) can
+        // legitimately have multiple rows when re-released; the slot list
+        // never references them so the OLDEST-wins rule doesn't matter
+        // for letters. PickLetter takes the LATEST row explicitly.
+        var docsByEnrolmentAll = documents
             .GroupBy(d => d.enrollmentId)
-            .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.documentTypeId));
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var docsByEnrolment = docsByEnrolmentAll.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value
+                .GroupBy(x => x.documentTypeId)
+                .ToDictionary(g => g.Key, g => g.OrderBy(x => x.uploadedAt).First()));
 
         var enrollments = await db.Enrollments
             .Where(e => e.StudentId == student.StudentId && e.DeletedAt == null)
@@ -184,10 +199,15 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
             // Released letter PDFs surfaced as their own block. The frontend
             // download buttons key off these ids — null means "not yet
             // released" (button stays disabled). Picks the most recent doc
-            // per type in case the letter was re-released.
+            // per type in case the letter was re-released. Source list is
+            // docsByEnrolmentAll (every row), not docByType (core only).
             object? PickLetter(Guid documentTypeId)
             {
-                var d = docByType.TryGetValue(documentTypeId, out var v) ? v : null;
+                if (!docsByEnrolmentAll.TryGetValue(e.enrollmentId, out var list)) return null;
+                var d = list
+                    .Where(x => x.documentTypeId == documentTypeId)
+                    .OrderByDescending(x => x.uploadedAt)
+                    .FirstOrDefault();
                 if (d is null) return null;
                 return new
                 {
@@ -242,6 +262,36 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
                 });
             }
 
+            // Anything for this enrolment that is NOT the core doc of a
+            // required slot AND not a system-generated letter is treated as
+            // an additional supporting document.
+            var coreDocIds = docByType.Values.Select(v => v.studentDocumentId).ToHashSet();
+            var letterTypeIds = new HashSet<Guid>
+            {
+                SystemDocumentTypeIds.OfferLetter,
+                SystemDocumentTypeIds.AdmissionLetter,
+                SystemDocumentTypeIds.Transcript,
+                SystemDocumentTypeIds.Certificate,
+                SystemDocumentTypeIds.ProvisionalCertificate,
+            };
+            var additionalDocuments = (docsByEnrolmentAll.TryGetValue(e.enrollmentId, out var allDocsForEnr)
+                    ? allDocsForEnr
+                    : new())
+                .Where(x => !coreDocIds.Contains(x.studentDocumentId)
+                            && !letterTypeIds.Contains(x.documentTypeId))
+                .OrderBy(x => x.uploadedAt)
+                .Select(x => new
+                {
+                    studentDocumentId = x.studentDocumentId,
+                    documentTypeId = x.documentTypeId,
+                    documentTypeName = x.documentTypeName,
+                    fileName = x.fileName,
+                    uploadedAt = x.uploadedAt,
+                    statusCode = x.statusCode,
+                    statusName = x.statusName,
+                })
+                .ToList<object>();
+
             // Most-actionable first: rejected, then offer-ready, then accept-admission, then everything else.
             var rank = isRejected ? 0
                 : canAcceptOffer ? 1
@@ -263,6 +313,7 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
                 isRejected,
                 rejectionSummary,
                 requiredDocuments,
+                additionalDocuments,
                 letters,
                 canResubmit,
                 canAcceptOffer,

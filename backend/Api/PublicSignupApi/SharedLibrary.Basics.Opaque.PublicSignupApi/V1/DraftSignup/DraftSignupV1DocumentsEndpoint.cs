@@ -1,4 +1,5 @@
 using Odin.Api.Base.Authentication;
+using Odin.Api.Base.Documents;
 using Odin.Api.Base.Storage;
 
 namespace SharedLibrary.Basics.Opaque.PublicSignupApi.V1.DraftSignup;
@@ -12,7 +13,6 @@ namespace SharedLibrary.Basics.Opaque.PublicSignupApi.V1.DraftSignup;
 [EndpointTag("Public.DraftSignup")]
 public sealed class DraftSignupV1DocumentsEndpoint : IEndpointMarker
 {
-    private const long MaxBytes = 10 * 1024 * 1024; // 10 MB
 
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
@@ -44,8 +44,10 @@ public sealed class DraftSignupV1DocumentsEndpoint : IEndpointMarker
         var file = form.Files["file"];
         if (file is null || file.Length == 0)
             return Results.BadRequest(new { error = "file is required" });
-        if (file.Length > MaxBytes)
-            return Results.BadRequest(new { error = $"file too large (max {MaxBytes / (1024 * 1024)} MB)" });
+        if (file.Length > DocumentUploadPolicy.MaxBytes)
+            return Results.BadRequest(new { error = $"file too large (max {DocumentUploadPolicy.MaxBytes / (1024 * 1024)} MB)" });
+        if (!DocumentUploadPolicy.IsAllowed(file.ContentType))
+            return Results.BadRequest(new { error = $"only {DocumentUploadPolicy.AllowedHumanReadable} files are accepted" });
 
         var student = await db.Students.FirstOrDefaultAsync(s => s.StudentId == session.StudentId, ct);
         if (student is null) return Results.BadRequest(new { error = "student record not found" });

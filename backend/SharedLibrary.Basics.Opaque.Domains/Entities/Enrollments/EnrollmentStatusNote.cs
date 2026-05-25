@@ -18,3 +18,4 @@ public class EnrollmentStatusNote
     public EnrollmentStatus? Status { get; set; }
 }
 
+    
