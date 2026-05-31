@@ -207,18 +207,93 @@
                 </div>
                 <div class="detail-section">
                   <h4>Personal</h4>
-                  <dl>
-                    <dt>Date of birth</dt><dd>{{ formatDate(detailModal.data.personal?.dateOfBirth) || '—' }}</dd>
-                    <dt>Passport / ID</dt><dd>{{ detailModal.data.personal?.passportId || '—' }}</dd>
-                    <dt>Address</dt><dd>{{ formatAddress(detailModal.data.personal?.address) || '—' }}</dd>
-                  </dl>
+                  <p v-if="personalSaveError" class="err-banner">{{ personalSaveError }}</p>
+                  <p v-if="personalSaveOk" class="ok-banner">{{ personalSaveOk }}</p>
+                  <div class="edit-grid">
+                    <label class="edit-field">
+                      <span>First name</span>
+                      <input v-model="detailModal.data.account.firstName" />
+                    </label>
+                    <label class="edit-field">
+                      <span>Last name</span>
+                      <input v-model="detailModal.data.account.lastName" />
+                    </label>
+                    <label class="edit-field">
+                      <span>Date of birth</span>
+                      <input type="date" v-model="personalDobInput" />
+                    </label>
+                    <label class="edit-field">
+                      <span>Passport / ID</span>
+                      <input v-model="detailModal.data.personal.passportId" />
+                    </label>
+                    <label class="edit-field edit-field-wide">
+                      <span>Nationality</span>
+                      <select v-model.number="detailModal.data.personal.nationalityId">
+                        <option :value="null">—</option>
+                        <option v-for="n in nationalities" :key="n.nationalityId" :value="n.nationalityId">{{ n.name }}</option>
+                      </select>
+                    </label>
+                    <label class="edit-field edit-field-wide">
+                      <span>Address line 1</span>
+                      <input v-model="detailModal.data.personal.address.line1" />
+                    </label>
+                    <label class="edit-field">
+                      <span>City</span>
+                      <input v-model="detailModal.data.personal.address.city" />
+                    </label>
+                    <label class="edit-field">
+                      <span>State / Region</span>
+                      <input v-model="detailModal.data.personal.address.stateRegion" />
+                    </label>
+                    <label class="edit-field">
+                      <span>Postal code</span>
+                      <input v-model="detailModal.data.personal.address.postalCode" />
+                    </label>
+                    <label class="edit-field">
+                      <span>Country</span>
+                      <select v-model="detailModal.data.personal.address.countryCode">
+                        <option value="">—</option>
+                        <option v-for="n in nationalities" :key="n.code" :value="n.code">{{ n.name }}</option>
+                      </select>
+                    </label>
+                  </div>
+                  <button class="btn-row-details btn-save-admin" :disabled="savingPersonal" @click="saveAdminPersonal">
+                    {{ savingPersonal ? 'Saving…' : 'Save personal' }}
+                  </button>
                 </div>
                 <div class="detail-section">
                   <h4>Background</h4>
-                  <dl>
-                    <dt>Highest degree</dt><dd>{{ detailModal.data.background?.highestDegree || '—' }}</dd>
-                    <dt>Years exp.</dt><dd>{{ detailModal.data.background?.yearsWorkExperience ?? '—' }}</dd>
-                  </dl>
+                  <p v-if="backgroundSaveError" class="err-banner">{{ backgroundSaveError }}</p>
+                  <p v-if="backgroundSaveOk" class="ok-banner">{{ backgroundSaveOk }}</p>
+                  <div class="edit-grid">
+                    <label class="edit-field edit-field-wide">
+                      <span>Highest degree</span>
+                      <input v-model="detailModal.data.background.highestDegree" />
+                    </label>
+                    <label class="edit-field">
+                      <span>Years of experience</span>
+                      <input type="number" min="0" v-model.number="detailModal.data.background.yearsWorkExperience" />
+                    </label>
+                  </div>
+                  <div class="lang-block">
+                    <div class="lang-head">
+                      <span>Languages</span>
+                      <button class="btn-mini" @click="addAdminLanguage">+ Add language</button>
+                    </div>
+                    <div v-for="(l, idx) in (detailModal.data.background.languages || [])" :key="idx" class="lang-row">
+                      <select v-model.number="l.languageId">
+                        <option :value="0">— Pick language —</option>
+                        <option v-for="lg in languages" :key="lg.languageId" :value="lg.languageId">{{ lg.name }}</option>
+                      </select>
+                      <select v-model.number="l.proficiency">
+                        <option v-for="p in PROFICIENCIES" :key="p.id" :value="p.id">{{ p.label }}</option>
+                      </select>
+                      <button class="btn-mini btn-remove" @click="removeAdminLanguage(idx)">✕</button>
+                    </div>
+                  </div>
+                  <button class="btn-row-details btn-save-admin" :disabled="savingBackground" @click="saveAdminBackground">
+                    {{ savingBackground ? 'Saving…' : 'Save background' }}
+                  </button>
                 </div>
                 <div class="detail-section" v-if="activeEnrollment">
                   <h4>Enrolment</h4>
@@ -466,6 +541,10 @@ async function openStudentDetail(s, preselectEnrollmentId = null) {
   // Clear any reset-password reveal from a previous student so the value
   // doesn't bleed across modals.
   resetStudentPwValue.value = ''
+  personalSaveError.value = ''
+  personalSaveOk.value = ''
+  backgroundSaveError.value = ''
+  backgroundSaveOk.value = ''
   detailModal.value = reactive({
     studentId: s.studentId,
     studentNumber: s.studentNumber,
@@ -479,8 +558,16 @@ async function openStudentDetail(s, preselectEnrollmentId = null) {
     error: '',
   })
   try {
+    if (!languages.value.length || !nationalities.value.length) {
+      const [langs, nats] = await Promise.all([
+        api.get('/v1/public/languages'),
+        api.get('/v1/public/nationalities'),
+      ])
+      languages.value = langs.data.items ?? []
+      nationalities.value = nats.data.items ?? []
+    }
     const res = await api.get(`/v1/admin/students/${s.studentId}`)
-    detailModal.value.data = res.data
+    detailModal.value.data = normaliseDetailForEdit(res.data)
     // Pin the active enrolment to the most-actionable / first one returned.
     if (!detailModal.value.activeEnrollmentId && res.data.enrollments?.length) {
       detailModal.value.activeEnrollmentId = res.data.enrollments[0].studentEnrollmentId
@@ -490,6 +577,102 @@ async function openStudentDetail(s, preselectEnrollmentId = null) {
   } finally {
     detailModal.value.loading = false
   }
+}
+
+// Server returns the detail with possibly-missing inner objects (e.g.
+// background can be null for a freshly created student). Inline editing
+// binds straight to these paths via v-model, so we ensure every input
+// has a stable target — otherwise Vue throws on null reads.
+function normaliseDetailForEdit(data) {
+  data.account = data.account || { firstName: null, lastName: null }
+  data.personal = data.personal || { dateOfBirth: null, passportId: null, nationalityId: null, address: {} }
+  data.personal.address = data.personal.address || {}
+  data.background = data.background || { highestDegree: null, yearsWorkExperience: 0, languages: [] }
+  data.background.languages = data.background.languages || []
+  return data
+}
+
+const personalSaveError = ref('')
+const personalSaveOk = ref('')
+const backgroundSaveError = ref('')
+const backgroundSaveOk = ref('')
+const savingPersonal = ref(false)
+const savingBackground = ref(false)
+
+// HTML date input wants "YYYY-MM-DD" — round-trip through a computed so the
+// server's ISO string and the input's date string stay in sync.
+const personalDobInput = computed({
+  get() {
+    const v = detailModal.value?.data?.personal?.dateOfBirth
+    return v ? String(v).slice(0, 10) : ''
+  },
+  set(v) {
+    if (!detailModal.value?.data?.personal) return
+    detailModal.value.data.personal.dateOfBirth = v ? new Date(v).toISOString() : null
+  },
+})
+
+async function saveAdminPersonal() {
+  if (!detailModal.value?.data) return
+  savingPersonal.value = true
+  personalSaveError.value = ''
+  personalSaveOk.value = ''
+  try {
+    const d = detailModal.value.data
+    await api.patch(`/v1/admin/students/${detailModal.value.studentId}/personal`, {
+      firstName: d.account?.firstName ?? null,
+      lastName: d.account?.lastName ?? null,
+      dateOfBirth: d.personal?.dateOfBirth ?? null,
+      passportId: d.personal?.passportId ?? null,
+      nationalityId: d.personal?.nationalityId ?? null,
+      addressLine1: d.personal?.address?.line1 ?? null,
+      addressLine2: d.personal?.address?.line2 ?? null,
+      city: d.personal?.address?.city ?? null,
+      stateRegion: d.personal?.address?.stateRegion ?? null,
+      postalCode: d.personal?.address?.postalCode ?? null,
+      countryCode: d.personal?.address?.countryCode ?? null,
+    })
+    personalSaveOk.value = 'Saved.'
+    setTimeout(() => { personalSaveOk.value = '' }, 2500)
+    await refreshDetailModal()
+    load()
+  } catch (err) {
+    personalSaveError.value = err.response?.data?.error ?? err.message ?? 'Save failed.'
+  } finally {
+    savingPersonal.value = false
+  }
+}
+
+async function saveAdminBackground() {
+  if (!detailModal.value?.data) return
+  savingBackground.value = true
+  backgroundSaveError.value = ''
+  backgroundSaveOk.value = ''
+  try {
+    const d = detailModal.value.data
+    await api.patch(`/v1/admin/students/${detailModal.value.studentId}/background`, {
+      highestDegree: d.background?.highestDegree ?? null,
+      yearsWorkExperience: d.background?.yearsWorkExperience ?? 0,
+      languages: (d.background?.languages || [])
+        .filter(l => l.languageId > 0)
+        .map(l => ({ languageId: l.languageId, proficiency: l.proficiency })),
+    })
+    backgroundSaveOk.value = 'Saved.'
+    setTimeout(() => { backgroundSaveOk.value = '' }, 2500)
+    await refreshDetailModal()
+  } catch (err) {
+    backgroundSaveError.value = err.response?.data?.error ?? err.message ?? 'Save failed.'
+  } finally {
+    savingBackground.value = false
+  }
+}
+
+function addAdminLanguage() {
+  if (!detailModal.value?.data?.background) return
+  detailModal.value.data.background.languages.push({ languageId: 0, proficiency: 1 })
+}
+function removeAdminLanguage(idx) {
+  detailModal.value.data.background.languages.splice(idx, 1)
 }
 
 // Documents tab: groups uploaded docs by enrolment (so the admin sees
@@ -556,7 +739,7 @@ async function refreshDetailModal() {
   if (!detailModal.value?.studentId) return
   try {
     const res = await api.get(`/v1/admin/students/${detailModal.value.studentId}`)
-    detailModal.value.data = res.data
+    detailModal.value.data = normaliseDetailForEdit(res.data)
   } catch { /* keep stale view */ }
 }
 
@@ -1055,6 +1238,18 @@ onMounted(load)
 .reset-pw-reveal { padding: .5rem .65rem; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 6px; font-size: .8rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .reset-pw-reveal code { font-family: monospace; color: #065f46; background: #fff; padding: .1rem .4rem; border-radius: 3px; }
 .reset-pw-hint { width: 100%; font-size: .7rem; color: #047857; }
+
+.edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem .75rem; font-size: .82rem; }
+.edit-field { display: flex; flex-direction: column; gap: .15rem; color: #4a5a72; }
+.edit-field-wide { grid-column: 1 / -1; }
+.edit-field input, .edit-field select { padding: .35rem .55rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .85rem; background: #fff; color: #1a2d4f; }
+.btn-save-admin { margin-top: .75rem; }
+.ok-banner { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; padding: .4rem .65rem; border-radius: 5px; font-size: .8rem; margin: .35rem 0; }
+.lang-block { margin-top: .6rem; }
+.lang-head { display: flex; align-items: center; justify-content: space-between; font-size: .78rem; color: #6b7888; margin-bottom: .35rem; }
+.lang-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: .35rem; margin-bottom: .3rem; }
+.lang-row select { padding: .3rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; background: #fff; }
+.btn-remove { color: #b91c1c; }
 
 .docs-group { margin-bottom: 1rem; }
 .docs-group-head { font-size: .82rem; color: #1a2d4f; padding: .35rem .5rem; background: #eef3fb; border-left: 3px solid #1a4d8c; border-radius: 4px; margin-bottom: .35rem; display: flex; align-items: center; gap: .5rem; }

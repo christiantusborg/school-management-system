@@ -119,10 +119,9 @@
 
         <div class="drawer-body">
           <p v-if="detailError" class="err-banner">{{ detailError }}</p>
-          <div v-if="isLocked" class="lock-banner">
-            🔒 This student has at least one enrolment with IBSS for review (or already approved).
-            Personal info, background, document verification and that enrolment's details are read-only.
-            Use <strong>Withdraw IBSS submission</strong> on the relevant enrolment to unlock pending edits.
+          <div v-if="isAdmitted" class="lock-banner">
+            🔒 This student has been admitted to at least one programme.
+            Personal and background details are read-only — only IBSS can change them now.
           </div>
 
           <!-- Personal -->
@@ -157,7 +156,7 @@
                 <option v-for="n in nationalities" :key="n.code" :value="n.code">{{ n.name }}</option>
               </select>
             </div>
-            <button class="btn-save" :disabled="saving || isLocked" @click="savePersonal">Save personal</button>
+            <button class="btn-save" :disabled="saving || isAdmitted" @click="savePersonal">Save personal</button>
           </details>
         </div>
       </div>
@@ -548,13 +547,18 @@ const LOCKED_STATUS_CODES = new Set([
   'ApplicationAwaitingReviewByAdmission',
   'AcceptOffer',
 ])
-const isLocked = computed(() =>
-  (detail.value?.enrollments ?? []).some(e => LOCKED_STATUS_CODES.has(e.statusCode))
-)
 function enrollmentLocked(e) { return LOCKED_STATUS_CODES.has(e.statusCode) }
 const allEnrollmentsLocked = computed(() =>
   (detail.value?.enrollments ?? []).length > 0
   && detail.value.enrollments.every(e => LOCKED_STATUS_CODES.has(e.statusCode))
+)
+
+// "Admitted" gate for the Personal/Background sections: once any
+// enrolment has reached ApplicationApprovedAdmission (Level 300) or
+// later, IBSS owns the identity record and the partner cannot edit
+// it. Independent of the per-enrolment edit lock above.
+const isAdmitted = computed(() =>
+  (detail.value?.enrollments ?? []).some(e => (e.statusLevel ?? 0) >= 300)
 )
 
 function countFor(id) {
