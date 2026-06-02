@@ -47,14 +47,18 @@
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
               <span class="enr-prog">{{ e.programmeCode }}</span> · {{ e.specializationName }}
               <span :class="['s-badge', statusClass(e.statusCode)]">{{ e.statusName }}</span>
-              <button v-if="e.statusCode !== 'AwaitingGradesApproval'" class="btn-review-sm"
-                      :disabled="!canAdminReview(e)"
-                      :title="canAdminReview(e) ? '' : 'Not in the Admission queue.'"
-                      @click.stop="canAdminReview(e) && openReview(s.studentId, e.studentEnrollmentId)">Review</button>
-              <button v-else class="btn-review-sm btn-grades-approve"
+              <button v-if="e.statusCode === 'AwaitingGradesApproval'" class="btn-review-sm btn-grades-approve"
                       @click.stop="openGradeReview(s, e)">
                 Approve grades
               </button>
+              <button v-else-if="e.statusCode === 'AwaitingGradesSubmit'" class="btn-review-sm btn-grades-submit"
+                      @click.stop="openGradeSubmit(s, e)">
+                Submit grades
+              </button>
+              <button v-else class="btn-review-sm"
+                      :disabled="!canAdminReview(e)"
+                      :title="canAdminReview(e) ? '' : 'Not in the Admission queue.'"
+                      @click.stop="canAdminReview(e) && openReview(s.studentId, e.studentEnrollmentId)">Review</button>
               <button class="btn-row-details btn-row-details-sm" @click.stop="openStudentDetail(s, e.studentEnrollmentId)">
                 Details
               </button>
@@ -70,23 +74,28 @@
       <div v-if="gradeModal" class="manage-overlay" @click.self="gradeModal = null">
         <div class="manage-modal grade-modal">
           <div class="manage-hdr">
-            <h3>Approve grades</h3>
+            <h3>{{ gradeModal.mode === 'submit' ? 'Submit grades' : 'Approve grades' }}</h3>
             <button class="drawer-close" @click="gradeModal = null">✕</button>
           </div>
           <p class="manage-sub">{{ gradeModal.studentName }} · {{ gradeModal.programmeCode }} · {{ gradeModal.specializationName }}</p>
           <div class="manage-body">
             <p v-if="gradeModal.error" class="err-banner">{{ gradeModal.error }}</p>
             <p v-if="gradeModal.loading" class="muted">Loading grades…</p>
-            <div v-else-if="gradeModal.subjects?.length" class="grade-grid"
+            <p v-else-if="gradeModal.mode === 'submit'" class="muted manage-hint">
+              Enter a score (0–100) for each subject. On submit, the enrolment moves to Awaiting grades approval.
+            </p>
+            <div v-if="!gradeModal.loading && gradeModal.subjects?.length" class="grade-grid"
                  :style="{ columnCount: gradeColumnCount(gradeModal.subjects.length) }">
               <div v-for="row in gradeModal.subjects" :key="row.subjectId" class="grade-row">
                 <span class="gr-code mono">{{ row.code }}</span>
                 <span class="gr-name">{{ row.name }}</span>
                 <span class="gr-ects">{{ row.ects }} ects</span>
-                <strong :class="['grade-score', scoreClass(row.score)]">{{ row.score ?? '—' }}</strong>
+                <input v-if="gradeModal.mode === 'submit'" type="number" min="0" max="100"
+                       v-model.number="row.score" class="grade-input gr-input" />
+                <strong v-else :class="['grade-score', scoreClass(row.score)]">{{ row.score ?? '—' }}</strong>
               </div>
             </div>
-            <p v-else class="muted">No grades submitted for this enrolment.</p>
+            <p v-else-if="!gradeModal.loading" class="muted">No grades submitted for this enrolment.</p>
 
             <EnrollmentActivityLog v-if="gradeModal.studentId && gradeModal.enrollmentId"
               :api-path="`/v1/admin/students/${gradeModal.studentId}/enrollments/${gradeModal.enrollmentId}/activity`" />
@@ -95,7 +104,7 @@
                  button enables. Right now there's just the tuition check,
                  but the block is there so we can drop in more pre-flight
                  confirmations (e.g., academic integrity, attendance) later. -->
-            <div v-if="gradeModal.mode !== 'reject' && gradeModal.subjects?.length" class="approve-checks">
+            <div v-if="gradeModal.mode === 'view' && gradeModal.subjects?.length" class="approve-checks">
               <div class="approve-checks-title">Before approving — confirm:</div>
               <label class="approve-check">
                 <input type="checkbox" v-model="gradeModal.confirmTuitionPaid" />
@@ -122,7 +131,12 @@
               <button v-if="gradeModal.mode !== 'reject'" class="btn-link" @click="gradeModal = null">Cancel</button>
               <button v-else class="btn-link" @click="gradeModal.mode = 'view'">← Back</button>
 
-              <div class="grade-actions" v-if="gradeModal.mode !== 'reject'">
+              <button v-if="gradeModal.mode === 'submit'" class="btn-confirm-manage btn-approve-final"
+                      :disabled="!canCommitAdminGrades || gradeModal.submitting"
+                      @click="confirmGradeSubmission">
+                {{ gradeModal.submitting ? 'Submitting…' : '✓ Submit grades' }}
+              </button>
+              <div v-else-if="gradeModal.mode !== 'reject'" class="grade-actions">
                 <button class="btn-confirm-manage btn-reject-final"
                         :disabled="!gradeModal.subjects?.length || gradeModal.submitting"
                         @click="gradeModal.mode = 'reject'">
@@ -158,6 +172,23 @@
               <p class="manage-sub">
                 {{ detailModal.email || '—' }}
                 <span v-if="detailModal.partnerName"> · {{ detailModal.partnerName }}</span>
+                <template v-if="detailModal.data && !detailModal.data.account?.emailVerified">
+                  <span class="s-badge unverified">unverified</span>
+                  <button class="btn-row-details btn-row-details-sm"
+                          :disabled="confirmingEmail"
+                          @click="confirmEmailOnBehalf">
+                    {{ confirmingEmail ? 'Confirming…' : '✉ Confirm email on behalf' }}
+                  </button>
+                </template>
+              </p>
+              <p v-for="e in awaitingOfferAcceptance" :key="e.studentEnrollmentId" class="manage-sub">
+                <button class="btn-row-details btn-row-details-sm"
+                        :disabled="acceptingOfferId === e.studentEnrollmentId"
+                        @click="acceptOfferOnBehalf(e)">
+                  {{ acceptingOfferId === e.studentEnrollmentId
+                      ? 'Accepting…'
+                      : `✓ Accept ${e.programmeCode || 'offer'} on behalf of student` }}
+                </button>
               </p>
             </div>
             <button class="drawer-close" @click="detailModal = null">✕</button>
@@ -510,6 +541,43 @@ const activeEnrollment = computed(() =>
   ?? null
 )
 
+const awaitingOfferAcceptance = computed(() =>
+  (detailModal.value?.data?.enrollments ?? []).filter(e => e.statusCode === 'AcceptOffer'))
+
+const confirmingEmail = ref(false)
+const acceptingOfferId = ref(null)
+
+async function confirmEmailOnBehalf() {
+  if (!detailModal.value || confirmingEmail.value) return
+  confirmingEmail.value = true
+  detailModal.value.error = ''
+  try {
+    await api.post(`/v1/admin/students/${detailModal.value.studentId}/confirm-email`)
+    await refreshDetailModal()
+    detailModal.value.email = detailModal.value.data?.account?.email ?? detailModal.value.email
+    load()
+  } catch (err) {
+    detailModal.value.error = err.response?.data?.error ?? err.message ?? 'Failed to confirm email'
+  } finally {
+    confirmingEmail.value = false
+  }
+}
+
+async function acceptOfferOnBehalf(enr) {
+  if (!detailModal.value || acceptingOfferId.value) return
+  acceptingOfferId.value = enr.studentEnrollmentId
+  detailModal.value.error = ''
+  try {
+    await api.post(`/v1/admin/students/${detailModal.value.studentId}/enrollments/${enr.studentEnrollmentId}/accept-offer-on-behalf`)
+    await refreshDetailModal()
+    load()
+  } catch (err) {
+    detailModal.value.error = err.response?.data?.error ?? err.message ?? 'Failed to accept offer'
+  } finally {
+    acceptingOfferId.value = null
+  }
+}
+
 // Reset-password state for the student detail modal. Mirrors the
 // partner-user reset pattern: prompts for an optional custom password,
 // shows the new password inline until the modal closes.
@@ -824,10 +892,10 @@ async function openGradeReview(s, e) {
     programmeCode: e.programmeCode,
     specializationName: e.specializationName,
     subjects: [],
-    mode: 'view',          // 'view' | 'reject'
+    mode: 'view',          // 'view' | 'reject' | 'submit'
     rejectReason: '',
-    rejectPreset: '',      // pre-pickable templated reason (see REJECT_PRESETS)
-    confirmTuitionPaid: false, // Approve gate — admin must tick to confirm tuition is settled
+    rejectPreset: '',
+    confirmTuitionPaid: false,
     loading: true,
     submitting: false,
     error: '',
@@ -839,6 +907,59 @@ async function openGradeReview(s, e) {
     gradeModal.value.error = err.response?.data?.error ?? err.message ?? 'Failed to load grades'
   } finally {
     gradeModal.value.loading = false
+  }
+}
+
+async function openGradeSubmit(s, e) {
+  gradeModal.value = reactive({
+    studentId: s.studentId,
+    enrollmentId: e.studentEnrollmentId,
+    studentName: `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim(),
+    programmeCode: e.programmeCode,
+    specializationName: e.specializationName,
+    subjects: [],
+    mode: 'submit',
+    rejectReason: '',
+    rejectPreset: '',
+    confirmTuitionPaid: false,
+    loading: true,
+    submitting: false,
+    error: '',
+  })
+  try {
+    const res = await api.get(`/v1/admin/students/${s.studentId}/enrollments/${e.studentEnrollmentId}/subjects`)
+    gradeModal.value.subjects = (res.data.items ?? []).map(r => ({ ...r, score: r.score ?? null }))
+  } catch (err) {
+    gradeModal.value.error = err.response?.data?.error ?? err.message ?? 'Failed to load subjects'
+  } finally {
+    gradeModal.value.loading = false
+  }
+}
+
+const canCommitAdminGrades = computed(() => {
+  const m = gradeModal.value
+  if (!m?.subjects?.length) return false
+  return m.subjects.every(r => Number.isFinite(r.score) && r.score >= 0 && r.score <= 100)
+})
+
+async function confirmGradeSubmission() {
+  const m = gradeModal.value
+  if (!m || m.submitting || !canCommitAdminGrades.value) return
+  m.submitting = true
+  m.error = ''
+  try {
+    await api.post(
+      `/v1/admin/students/${m.studentId}/enrollments/${m.enrollmentId}/grades`,
+      { items: m.subjects.map(r => ({ subjectId: r.subjectId, score: r.score })) })
+    reviewToast.value = 'Grades submitted.'
+    setTimeout(() => { reviewToast.value = '' }, 3000)
+    gradeModal.value = null
+    await load()
+    if (detailModal.value?.studentId === m.studentId) await refreshDetailModal()
+  } catch (err) {
+    m.error = err.response?.data?.error ?? err.message ?? 'Failed to submit grades'
+  } finally {
+    if (gradeModal.value) gradeModal.value.submitting = false
   }
 }
 async function confirmGradeApproval() {
@@ -1140,6 +1261,8 @@ onMounted(load)
 .btn-review-sm:disabled { background: #c0c8d2; cursor: not-allowed; opacity: 0.7; }
 .btn-grades-approve { background: #16a34a; }
 .btn-grades-approve:hover:not(:disabled) { background: #15803d; }
+.btn-grades-submit { background: #2563eb; }
+.btn-grades-submit:hover:not(:disabled) { background: #1e40af; }
 .st-grades { background: #ede9fe; color: #5b21b6; }
 
 .enrol-line { font-size: .85rem; }
