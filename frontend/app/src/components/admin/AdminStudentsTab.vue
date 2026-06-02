@@ -334,7 +334,26 @@
                     <dt>Specialisation</dt><dd>{{ activeEnrollment.specializationName }}</dd>
                     <dt>Mode</dt><dd>{{ activeEnrollment.modeOfStudyName ?? '—' }}</dd>
                     <dt>Commencement</dt><dd>{{ formatDate(activeEnrollment.commencementDate) || '—' }}</dd>
-                    <dt>Duration</dt><dd>{{ activeEnrollment.durationOfStudyMonths ?? '—' }} months</dd>
+                    <dt>Default duration</dt><dd>{{ activeEnrollment.durationOfStudyMonths ?? '—' }} months</dd>
+                    <dt>Programme range</dt>
+                    <dd v-if="activeEnrollment.programmeMaxDurationMonths">
+                      {{ activeEnrollment.programmeMinDurationMonths }}–{{ activeEnrollment.programmeMaxDurationMonths }} months
+                    </dd>
+                    <dd v-else>—</dd>
+                    <dt>Approved duration</dt>
+                    <dd>
+                      <input type="number" class="dur-input"
+                             :min="activeEnrollment.programmeMinDurationMonths || 1"
+                             :max="activeEnrollment.programmeMaxDurationMonths || 999"
+                             v-model.number="approvedDurationDraft" />
+                      months
+                      <button class="btn-row-details btn-row-details-sm" :disabled="savingDuration"
+                              @click="saveApprovedDuration">
+                        {{ savingDuration ? 'Saving…' : 'Save' }}
+                      </button>
+                      <span v-if="durationSaveError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ durationSaveError }}</span>
+                      <span v-else-if="durationSaveOk" class="ok-banner" style="display:inline-block;margin-left:.5rem;">Saved</span>
+                    </dd>
                     <dt>Status</dt><dd><span :class="['s-badge', statusClass(activeEnrollment.statusCode)]">{{ activeEnrollment.statusName }}</span></dd>
                   </dl>
                 </div>
@@ -674,6 +693,39 @@ const activeEnrollment = computed(() =>
   ?? detailEnrollments.value[0]
   ?? null
 )
+
+const approvedDurationDraft = computed({
+  get() {
+    return activeEnrollment.value?.approvedDurationMonths
+      ?? activeEnrollment.value?.durationOfStudyMonths
+      ?? null
+  },
+  set(v) {
+    if (activeEnrollment.value) activeEnrollment.value.approvedDurationMonths = v
+  },
+})
+const savingDuration = ref(false)
+const durationSaveError = ref('')
+const durationSaveOk = ref(false)
+
+async function saveApprovedDuration() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value) return
+  savingDuration.value = true
+  durationSaveError.value = ''
+  durationSaveOk.value = false
+  try {
+    await api.patch(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/duration`,
+      { approvedDurationMonths: activeEnrollment.value.approvedDurationMonths })
+    durationSaveOk.value = true
+    setTimeout(() => { durationSaveOk.value = false }, 2500)
+    await refreshDetailModal()
+  } catch (err) {
+    durationSaveError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
+  } finally {
+    savingDuration.value = false
+  }
+}
 
 const awaitingOfferAcceptance = computed(() =>
   (detailModal.value?.data?.enrollments ?? []).filter(e => e.statusCode === 'AcceptOffer'))
@@ -1425,7 +1477,10 @@ const EXPORT_FIELD_GROUPS = [
     { id: 'currentStatusEnteredAt', label: 'Status entered at' },
     { id: 'daysInCurrentStatus', label: 'Days in current status' },
     { id: 'commencementDate',    label: 'Start date' },
-    { id: 'durationMonths',      label: 'Duration (months)' },
+    { id: 'durationMonths',      label: 'Duration (months, default)' },
+    { id: 'programmeMinDurationMonths', label: 'Programme min duration (months)' },
+    { id: 'programmeMaxDurationMonths', label: 'Programme max duration (months)' },
+    { id: 'approvedDurationMonths', label: 'Approved duration (months)' },
     { id: 'applicationDate',     label: 'Application date' },
     { id: 'daysSinceApplication',label: 'Days since application' },
     { id: 'approvedDate',        label: 'Approved date' },
@@ -1825,6 +1880,7 @@ async function runExport() {
 .btn-mini:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }
 .btn-mini:hover:not(:disabled) { background: #143b6c; }
 
+.dur-input { width: 70px; padding: .2rem .35rem; border: 1px solid #d8dde5; border-radius: 4px; font-size: .82rem; }
 .btn-export { margin-left: auto; padding: .35rem .85rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .82rem; font-weight: 600; cursor: pointer; }
 .btn-export:hover { background: #143b6c; }
 

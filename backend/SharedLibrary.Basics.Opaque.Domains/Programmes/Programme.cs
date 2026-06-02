@@ -9,8 +9,17 @@ public class Programme : IDeletedAtEntity
     public string Code { get; set; } = default!;
     public string Name { get; set; } = default!;
     public string Description { get; set; } = default!;
-    
-    
+
+    /// <summary>
+    /// Allowed range (in months) for any enrolment under this programme.
+    /// The specialisation's <see cref="Specialization.DurationOfStudyMonths"/>
+    /// continues to act as the default within this range; the partner picks
+    /// the actual approved value per enrolment during the review flow and
+    /// stores it on <see cref="Enrollment.ApprovedDurationMonths"/>.
+    /// </summary>
+    public int MinDurationMonths { get; set; }
+    public int MaxDurationMonths { get; set; }
+
     public DateTime? DeletedAt { get; set; }
    
     public Guid? OwnerId { get; set; }

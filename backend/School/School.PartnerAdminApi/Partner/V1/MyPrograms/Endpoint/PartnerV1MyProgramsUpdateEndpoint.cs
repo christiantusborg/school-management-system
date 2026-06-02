@@ -34,6 +34,8 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
         public string? Code { get; init; }
         public List<SpecializationInput>? Specializations { get; init; }
         public List<Guid>? PathwayIds { get; init; }
+        public int? MinDurationMonths { get; init; }
+        public int? MaxDurationMonths { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
@@ -60,6 +62,13 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
 
         if (!string.IsNullOrWhiteSpace(body.Name)) programme.Name = body.Name.Trim();
         if (!string.IsNullOrWhiteSpace(body.Code)) programme.Code = body.Code.Trim();
+
+        var newMin = body.MinDurationMonths ?? programme.MinDurationMonths;
+        var newMax = body.MaxDurationMonths ?? programme.MaxDurationMonths;
+        if (newMin < 1 || newMax < newMin)
+            return Results.BadRequest(new { error = "Invalid duration range: need 1 ≤ min ≤ max." });
+        programme.MinDurationMonths = newMin;
+        programme.MaxDurationMonths = newMax;
 
         // Sync specializations + subjects (server is the truth: rows not in the
         // payload get soft-deleted, missing IDs are treated as new).

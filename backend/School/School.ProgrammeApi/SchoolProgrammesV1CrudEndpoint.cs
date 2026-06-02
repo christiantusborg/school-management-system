@@ -27,6 +27,28 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
         public string? Description { get; init; }
         public IReadOnlyList<Guid>? PathwayIds { get; init; }
         public Guid? AwardEducationLevelId { get; init; }
+        /// <summary>
+        /// Allowed duration range in months. Both bounds required on create.
+        /// On update, omit either bound to leave it unchanged; supplying both
+        /// must satisfy 1 ≤ min ≤ max.
+        /// </summary>
+        public int? MinDurationMonths { get; init; }
+        public int? MaxDurationMonths { get; init; }
+        /// <summary>
+        /// Partner the programme belongs to. null = core (admin-shared) programme.
+        /// </summary>
+        public Guid? OwnerPartnerId { get; init; }
+    }
+
+    private static IResult? ValidateDurationRange(int? min, int? max)
+    {
+        if (min is null || max is null)
+            return Results.BadRequest(new { message = "minDurationMonths and maxDurationMonths are required" });
+        if (min < 1)
+            return Results.BadRequest(new { message = "minDurationMonths must be at least 1" });
+        if (max < min)
+            return Results.BadRequest(new { message = "maxDurationMonths must be greater than or equal to minDurationMonths" });
+        return null;
     }
 
     private static async Task<IResult> CreateAsync(
@@ -34,6 +56,8 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
     {
         if (string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.Code))
             return Results.BadRequest(new { message = "name and code are required" });
+        if (ValidateDurationRange(body.MinDurationMonths, body.MaxDurationMonths) is { } durErr)
+            return durErr;
 
         var entity = new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.Programme
         {
@@ -41,8 +65,10 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
             Name = body.Name.Trim(),
             Code = body.Code.Trim().ToUpperInvariant(),
             Description = body.Description ?? string.Empty,
-            OwnerId = null, // admin-created programmes are core (no partner owner)
+            OwnerId = body.OwnerPartnerId,
             AwardEducationLevelId = body.AwardEducationLevelId,
+            MinDurationMonths = body.MinDurationMonths!.Value,
+            MaxDurationMonths = body.MaxDurationMonths!.Value,
         };
         db.Programmes.Add(entity);
 
@@ -64,7 +90,7 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
     {
         var prog = await db.Programmes
             .Where(p => p.ProgrammeId == id)
-            .Select(p => new { p.ProgrammeId, p.Code, p.Name, p.Description, p.OwnerId, p.AwardEducationLevelId, p.DeletedAt })
+            .Select(p => new { p.ProgrammeId, p.Code, p.Name, p.Description, p.OwnerId, p.AwardEducationLevelId, p.MinDurationMonths, p.MaxDurationMonths, p.DeletedAt })
             .FirstOrDefaultAsync(ct);
         if (prog is null) return Results.NotFound();
 
@@ -81,6 +107,8 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
             description = prog.Description,
             ownerId = prog.OwnerId,
             awardEducationLevelId = prog.AwardEducationLevelId,
+            minDurationMonths = prog.MinDurationMonths,
+            maxDurationMonths = prog.MaxDurationMonths,
             deletedAt = prog.DeletedAt,
             pathwayIds,
         });
@@ -98,6 +126,14 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
         // Allow explicit clear-to-null on the award level (PATCH-style behaviour
         // would be cleaner, but PUT here accepts null as "no award").
         prog.AwardEducationLevelId = body.AwardEducationLevelId;
+
+        // Duration range: each bound is independently optional on update, but
+        // the final pair must still satisfy 1 ≤ min ≤ max.
+        var newMin = body.MinDurationMonths ?? prog.MinDurationMonths;
+        var newMax = body.MaxDurationMonths ?? prog.MaxDurationMonths;
+        if (ValidateDurationRange(newMin, newMax) is { } durErr) return durErr;
+        prog.MinDurationMonths = newMin;
+        prog.MaxDurationMonths = newMax;
 
         if (body.PathwayIds is not null)
         {

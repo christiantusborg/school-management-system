@@ -23,6 +23,8 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
     {
         public Guid? SourceProgrammeId { get; init; }
         public string? Name { get; init; }
+        public int? MinDurationMonths { get; init; }
+        public int? MaxDurationMonths { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
@@ -41,7 +43,7 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
 
             var source = await db.Programmes
                 .Where(p => p.ProgrammeId == sourceId && p.DeletedAt == null)
-                .Select(p => new { p.Name, p.Code, p.Description, p.AwardEducationLevelId })
+                .Select(p => new { p.Name, p.Code, p.Description, p.AwardEducationLevelId, p.MinDurationMonths, p.MaxDurationMonths })
                 .FirstOrDefaultAsync(ct);
             if (source is null) return Results.BadRequest(new { error = "Source programme not found." });
 
@@ -53,6 +55,8 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
                 Code = $"{source.Code}-{newProgrammeId.ToString()[..8]}",
                 Description = source.Description,
                 AwardEducationLevelId = source.AwardEducationLevelId,
+                MinDurationMonths = source.MinDurationMonths,
+                MaxDurationMonths = source.MaxDurationMonths,
             });
 
             var sourceSpecs = await db.Specializations
@@ -128,6 +132,11 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
         {
             var name = body.Name?.Trim();
             if (string.IsNullOrEmpty(name)) return Results.BadRequest(new { error = "Name is required." });
+            if (body.MinDurationMonths is null || body.MaxDurationMonths is null)
+                return Results.BadRequest(new { error = "minDurationMonths and maxDurationMonths are required." });
+            if (body.MinDurationMonths < 1 || body.MaxDurationMonths < body.MinDurationMonths)
+                return Results.BadRequest(new { error = "Invalid duration range: need 1 ≤ min ≤ max." });
+
             db.Programmes.Add(new Programme
             {
                 ProgrammeId = newProgrammeId,
@@ -135,6 +144,8 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
                 Name = name,
                 Code = $"P-{newProgrammeId.ToString()[..8]}",
                 Description = string.Empty,
+                MinDurationMonths = body.MinDurationMonths.Value,
+                MaxDurationMonths = body.MaxDurationMonths.Value,
             });
         }
 

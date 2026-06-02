@@ -173,6 +173,24 @@ public sealed class PartnerV1MyStudentsReviewEndpoint : IEndpointMarker
             enrollment.CommencementDate = commencement;
         }
 
+        if (!anyRejected && body.Enrolment?.DurationMonths is int months)
+        {
+            var programmeRange = await db.Specializations
+                .Where(s => s.SpecializationId == enrollment.SpecializationId)
+                .Select(s => new { s.Programmes.MinDurationMonths, s.Programmes.MaxDurationMonths })
+                .FirstOrDefaultAsync(ct);
+            if (programmeRange is not null
+                && programmeRange.MaxDurationMonths > 0
+                && (months < programmeRange.MinDurationMonths || months > programmeRange.MaxDurationMonths))
+            {
+                return Results.BadRequest(new
+                {
+                    error = $"Duration {months} months is outside the programme range ({programmeRange.MinDurationMonths}–{programmeRange.MaxDurationMonths}).",
+                });
+            }
+            enrollment.ApprovedDurationMonths = months;
+        }
+
         await db.SaveChangesAsync(ct);
 
         // Best-effort: release the offer letter PDF after persisting state.

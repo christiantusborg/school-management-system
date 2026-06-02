@@ -31,7 +31,7 @@
           >
             {{ showDeleted ? '✕ Hide Deleted' : '🗑 Show Deleted' }}
           </button>
-          <button class="btn-primary" @click="showAddProg = !showAddProg">+ Add Programme</button>
+          <button class="btn-primary" @click="onAddProgrammeClicked">+ Add Programme</button>
         </div>
       </div>
 
@@ -54,6 +54,23 @@
           <select v-model="newProg.awardEducationLevelId">
             <option :value="null">— none —</option>
             <option v-for="el in educationLevels" :key="el.educationLevelId" :value="el.educationLevelId">{{ el.name }}</option>
+          </select>
+        </div>
+        <div class="add-prog-fields" style="margin-top:0.85rem">
+          <div class="field">
+            <label>Min duration (months) <span class="req">*</span></label>
+            <input type="number" min="1" v-model.number="newProg.minDurationMonths" placeholder="e.g. 12" />
+          </div>
+          <div class="field">
+            <label>Max duration (months) <span class="req">*</span></label>
+            <input type="number" min="1" v-model.number="newProg.maxDurationMonths" placeholder="e.g. 24" />
+          </div>
+        </div>
+        <div class="field" style="margin-top:0.85rem">
+          <label>Owner partner</label>
+          <select v-model="newProg.ownerPartnerId">
+            <option :value="null">— Core (shared across all partners) —</option>
+            <option v-for="p in partnersForOwner" :key="p.partnerId" :value="p.partnerId">{{ p.name }}</option>
           </select>
         </div>
         <div class="field" style="margin-top:0.85rem">
@@ -114,6 +131,22 @@
             </div>
             <div v-if="pathwayBusy[prog.programmeId]" class="form-error-inline">Saving…</div>
             <div v-if="pathwayErr[prog.programmeId]" class="form-error">{{ pathwayErr[prog.programmeId] }}</div>
+          </div>
+
+          <div class="section-label">DURATION RANGE (MONTHS)</div>
+          <div class="pathway-edit-block">
+            <div class="duration-row">
+              <label>Min
+                <input type="number" min="1" :value="prog.minDurationMonths"
+                       @change="setDurationForProg(prog, 'min', Number($event.target.value))" />
+              </label>
+              <label>Max
+                <input type="number" min="1" :value="prog.maxDurationMonths"
+                       @change="setDurationForProg(prog, 'max', Number($event.target.value))" />
+              </label>
+              <span v-if="durationErr[prog.programmeId]" class="form-error-inline">{{ durationErr[prog.programmeId] }}</span>
+              <span v-else-if="durationBusy[prog.programmeId]" class="form-error-inline">Saving…</span>
+            </div>
           </div>
 
           <div class="section-label">AWARD ON COMPLETION</div>
@@ -396,7 +429,15 @@ function togglePathwaySection(id) { xPathway.value = xPathway.value === id ? nul
 
 // ── Forms ──────────────────────────────────────────────────────────────────────
 const showAddProg = ref(false)
-const newProg = reactive({ name: '', code: '', saving: false, error: '', pathwayIds: [], awardEducationLevelId: null })
+const newProg = reactive({ name: '', code: '', saving: false, error: '', pathwayIds: [], awardEducationLevelId: null, minDurationMonths: null, maxDurationMonths: null, ownerPartnerId: null })
+const partnersForOwner = ref([])
+async function loadPartnersForOwner() {
+  if (partnersForOwner.value.length) return
+  try {
+    const r = await api.get('/v1/admin/school/partners')
+    partnersForOwner.value = r.data.items ?? []
+  } catch { partnersForOwner.value = [] }
+}
 const educationLevels = ref([])
 const progAward = reactive({})       // programmeId → awardEducationLevelId | null
 const awardBusy = reactive({})       // programmeId → bool
@@ -504,8 +545,19 @@ function toggleNewPathway(id) {
   else newProg.pathwayIds.push(id)
 }
 
+function onAddProgrammeClicked() {
+  showAddProg.value = !showAddProg.value
+  if (showAddProg.value) loadPartnersForOwner()
+}
+
 async function addProgramme() {
   if (!newProg.name.trim() || !newProg.code.trim()) { newProg.error = 'Name and Code are required.'; return }
+  if (!newProg.minDurationMonths || !newProg.maxDurationMonths) {
+    newProg.error = 'Min and max duration are required.'; return
+  }
+  if (newProg.minDurationMonths < 1 || newProg.maxDurationMonths < newProg.minDurationMonths) {
+    newProg.error = 'Need 1 ≤ min ≤ max.'; return
+  }
   newProg.saving = true; newProg.error = ''
   try {
     const res = await api.post('/v1/school/programmes', {
@@ -513,12 +565,16 @@ async function addProgramme() {
       code: newProg.code.trim().toUpperCase(),
       pathwayIds: [...newProg.pathwayIds],
       awardEducationLevelId: newProg.awardEducationLevelId,
+      minDurationMonths: newProg.minDurationMonths,
+      maxDurationMonths: newProg.maxDurationMonths,
+      ownerPartnerId: newProg.ownerPartnerId,
     })
     const created = await api.get(`/v1/school/programmes/${res.data.programmeId}`)
     programmes.value.push(created.data)
     progPathways[created.data.programmeId] = created.data.pathwayIds ?? []
     progAward[created.data.programmeId] = created.data.awardEducationLevelId ?? null
     newProg.name = ''; newProg.code = ''; newProg.pathwayIds = []; newProg.awardEducationLevelId = null
+    newProg.minDurationMonths = null; newProg.maxDurationMonths = null; newProg.ownerPartnerId = null
     showAddProg.value = false
   } catch (e) {
     newProg.error = e.response?.data?.message ?? e.message ?? 'Failed to save'
@@ -548,6 +604,35 @@ async function togglePathwayForProg(prog, pathwayId) {
     pathwayErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save pathways'
   } finally {
     pathwayBusy[id] = false
+  }
+}
+
+const durationBusy = reactive({}) // id → bool
+const durationErr = reactive({})
+
+async function setDurationForProg(prog, which, value) {
+  const id = prog.programmeId
+  const newMin = which === 'min' ? value : prog.minDurationMonths
+  const newMax = which === 'max' ? value : prog.maxDurationMonths
+  if (!newMin || newMin < 1 || !newMax || newMax < newMin) {
+    durationErr[id] = 'Need 1 ≤ min ≤ max.'
+    return
+  }
+  durationBusy[id] = true; durationErr[id] = ''
+  try {
+    await api.put(`/v1/school/programmes/${id}`, {
+      name: prog.name,
+      code: prog.code,
+      awardEducationLevelId: progAward[id] ?? prog.awardEducationLevelId ?? null,
+      minDurationMonths: newMin,
+      maxDurationMonths: newMax,
+    })
+    prog.minDurationMonths = newMin
+    prog.maxDurationMonths = newMax
+  } catch (e) {
+    durationErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save'
+  } finally {
+    durationBusy[id] = false
   }
 }
 

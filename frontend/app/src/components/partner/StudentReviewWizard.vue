@@ -264,9 +264,14 @@
           <div class="rw-field"><label>Commencement date <span class="rw-req">*</span></label>
             <input type="date" v-model="enrolmentDraft.commencementDate" />
           </div>
-          <div class="rw-readonly-field"><label>Duration (months)</label>
-            <div>{{ enrolmentDraft.durationMonths != null ? enrolmentDraft.durationMonths : '—' }}</div>
-            <span class="rw-note">Set by the chosen specialization. Installment plan (next step) will be capped at {{ maxInstallmentMonths }} months.</span>
+          <div class="rw-field"><label>Duration (months) <span class="rw-req">*</span></label>
+            <input type="number" :min="durationMin" :max="durationMax"
+                   v-model.number="enrolmentDraft.durationMonths" />
+            <span class="rw-note">
+              Programme allows {{ durationMin }}–{{ durationMax }} months.
+              Installment plan (next step) will be capped at {{ maxInstallmentMonths }} months.
+            </span>
+            <p v-if="durationError" class="rw-err">{{ durationError }}</p>
           </div>
         </div>
 
@@ -515,12 +520,23 @@ function approveAndNext(key) {
 
 const enrollment = computed(() => props.student.enrollments?.[0] ?? null)
 
-// Duration and total tuition come from the chosen specialization (server-
-// owned, partner cannot edit). Commencement date and payment plan stay
-// partner-driven.
+// Duration is partner-set within the programme's min/max range. The draft
+// pre-fills with the existing approvedDurationMonths (if any) falling back
+// to the specialisation's default. Total tuition still comes from the
+// specialisation (server-owned).
 const enrolmentDraft = reactive({
   commencementDate: enrollment.value?.commencementDate?.slice(0, 10) ?? '',
   durationMonths: enrollment.value?.durationMonths ?? 0,
+})
+
+const durationMin = computed(() => enrollment.value?.programmeMinDurationMonths || 1)
+const durationMax = computed(() => enrollment.value?.programmeMaxDurationMonths || 999)
+const durationError = computed(() => {
+  const v = enrolmentDraft.durationMonths
+  if (!v) return ''
+  if (v < durationMin.value) return `Minimum is ${durationMin.value} months for this programme.`
+  if (v > durationMax.value) return `Maximum is ${durationMax.value} months for this programme.`
+  return ''
 })
 
 const paymentDraft = reactive({
@@ -559,7 +575,9 @@ function canAdvanceFromStep(n) {
     const key = STEPS[n - 1].key
     return draft[key].status !== 'pending'
   }
-  if (n === 6) return !!enrolmentDraft.commencementDate && enrolmentDraft.durationMonths >= 3
+  if (n === 6) return !!enrolmentDraft.commencementDate
+    && enrolmentDraft.durationMonths >= durationMin.value
+    && enrolmentDraft.durationMonths <= durationMax.value
   return true
 }
 const canAdvance = computed(() => canAdvanceFromStep(step.value))

@@ -24,6 +24,15 @@ public class Enrollment : IDeletedAtEntity
     public Guid PartnerId { get; set; }
     public DateTime? DeletedAt { get; set; }
 
+    /// <summary>
+    /// Duration in months the partner agreed to during the review flow.
+    /// Must fall between <see cref="Programme.MinDurationMonths"/> and
+    /// <see cref="Programme.MaxDurationMonths"/>. Null means the partner
+    /// hasn't picked one yet; consumers should fall back to
+    /// <see cref="Specialization.DurationOfStudyMonths"/>.
+    /// </summary>
+    public int? ApprovedDurationMonths { get; set; }
+
     public Pathway? Pathway { get; set; } = default!;
     public ModeOfStudy ModeOfStudy { get; set; } = default!;
     public Specialization Specialization { get; set; } = default!;

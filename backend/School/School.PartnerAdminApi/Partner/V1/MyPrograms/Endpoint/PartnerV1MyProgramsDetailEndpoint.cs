@@ -25,6 +25,8 @@ public sealed class PartnerV1MyProgramsDetailEndpoint : IEndpointMarker
                 p.ProgrammeId,
                 p.Name,
                 p.Code,
+                p.MinDurationMonths,
+                p.MaxDurationMonths,
             })
             .FirstOrDefaultAsync(ct);
         if (programme is null) return Results.NotFound();
@@ -65,6 +67,8 @@ public sealed class PartnerV1MyProgramsDetailEndpoint : IEndpointMarker
             programmeId = programme.ProgrammeId,
             name = programme.Name,
             code = programme.Code,
+            minDurationMonths = programme.MinDurationMonths,
+            maxDurationMonths = programme.MaxDurationMonths,
             status = MyProgramsHelpers.StatusLabel(status?.Status ?? MyProgramsHelpers.StatusDraft),
             isActive = status?.IsActive ?? false,
             isDisabledByAdmin = status?.IsDisabledByAdmin ?? false,
