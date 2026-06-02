@@ -31,6 +31,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
     {
         app.MapPost("/v1/admin/students/export", ExportAsync).RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/students/export/preview", PreviewAsync).RequireAuthorization("AdminOnly");
+        app.MapPost("/v1/admin/students/export/sample", SampleAsync).RequireAuthorization("AdminOnly");
         return app;
     }
 
@@ -39,6 +40,40 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
     {
         var count = await BuildBaseQuery(db, body).CountAsync(ct);
         return Results.Ok(new { count });
+    }
+
+    // First N rows of the export rendered exactly as the spreadsheet would
+    // see them, so the wizard's review step can show "this is what you're
+    // about to download." Capped at 10 rows so this stays cheap.
+    private const int SamplePageSize = 10;
+
+    private static async Task<IResult> SampleAsync(
+        [FromBody] ExportRequest body, OdinDbContext db, CancellationToken ct)
+    {
+        var count = await BuildBaseQuery(db, body).CountAsync(ct);
+        var rows = await BuildExportRowsAsync(db, body, ct, limit: SamplePageSize);
+        var fields = (body.Fields ?? AllFieldIds().ToList()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var active = Columns.Where(c => fields.Contains(c.Id)).ToList();
+
+        return Results.Ok(new
+        {
+            count,
+            columns = active.Select(c => new { id = c.Id, header = c.Header }).ToList(),
+            rows = rows.Select(r =>
+            {
+                var dict = new Dictionary<string, object?>(active.Count);
+                foreach (var col in active)
+                {
+                    var v = col.Get(r);
+                    dict[col.Id] = v switch
+                    {
+                        DateTime d => d.ToString("yyyy-MM-dd"),
+                        _ => v,
+                    };
+                }
+                return dict;
+            }).ToList(),
+        });
     }
 
     private static async Task<IResult> ExportAsync(
@@ -99,11 +134,11 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         string? PartnerName);
 
     private static async Task<List<ExportRow>> BuildExportRowsAsync(
-        OdinDbContext db, ExportRequest body, CancellationToken ct)
+        OdinDbContext db, ExportRequest body, CancellationToken ct, int? limit = null)
     {
-        var studentIds = await BuildBaseQuery(db, body)
-            .Select(s => s.StudentId)
-            .ToListAsync(ct);
+        var idQuery = BuildBaseQuery(db, body).Select(s => s.StudentId);
+        if (limit is int n) idQuery = idQuery.Take(n);
+        var studentIds = await idQuery.ToListAsync(ct);
 
         if (studentIds.Count == 0) return new();
 

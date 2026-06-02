@@ -433,7 +433,7 @@
     <AdminReviewWizard v-if="reviewingStudent" :student="reviewingStudent"
       @close="closeReview" @submitted="onReviewSubmitted" />
 
-    <!-- Export students modal -->
+    <!-- Export students wizard -->
     <transition name="fade">
       <div v-if="exportModal" class="manage-overlay" @click.self="exportModal = null">
         <div class="manage-modal export-modal">
@@ -441,11 +441,22 @@
             <h3>Export students</h3>
             <button class="drawer-close" @click="exportModal = null">✕</button>
           </div>
+
+          <div class="export-steps">
+            <div v-for="(s, i) in EXPORT_STEPS" :key="s.id"
+                 :class="['export-step-pill',
+                          { active: exportModal.step === i + 1,
+                            done: exportModal.step > i + 1 }]">
+              <span class="export-step-num">{{ i + 1 }}</span>
+              <span class="export-step-label">{{ s.label }}</span>
+            </div>
+          </div>
+
           <div class="manage-body">
             <p v-if="exportModal.error" class="err-banner">{{ exportModal.error }}</p>
 
-            <div class="export-section">
-              <h4>① Scope</h4>
+            <!-- Step 1: Scope -->
+            <div v-if="exportModal.step === 1" class="export-section">
               <div class="export-row">
                 <label class="export-label">Partners</label>
                 <div class="export-control">
@@ -478,8 +489,8 @@
               </div>
             </div>
 
-            <div class="export-section">
-              <h4>② Fields</h4>
+            <!-- Step 2: Fields -->
+            <div v-if="exportModal.step === 2" class="export-section">
               <div v-for="g in EXPORT_FIELD_GROUPS" :key="g.id" class="export-field-group">
                 <label class="export-group-toggle">
                   <input type="checkbox"
@@ -499,24 +510,61 @@
               </div>
             </div>
 
-            <div class="export-section">
-              <h4>③ Format</h4>
+            <!-- Step 3: Format -->
+            <div v-if="exportModal.step === 3" class="export-section">
               <label class="export-radio"><input type="radio" value="xlsx" v-model="exportModal.format" /> Excel (.xlsx)</label>
               <label class="export-radio"><input type="radio" value="csv" v-model="exportModal.format" /> CSV</label>
+            </div>
+
+            <!-- Step 4: Review & Download -->
+            <div v-if="exportModal.step === 4" class="export-section">
+              <div class="export-review-summary">
+                <div><strong>{{ exportModal.sample?.count ?? exportModal.previewCount ?? '—' }}</strong> students</div>
+                <div><strong>{{ exportModal.selectedFields.length }}</strong> columns</div>
+                <div>Format: <strong>{{ exportModal.format === 'xlsx' ? 'Excel (.xlsx)' : 'CSV' }}</strong></div>
+              </div>
+              <p v-if="exportModal.sampleLoading" class="muted">Loading preview…</p>
+              <p v-else-if="!exportModal.sample?.rows?.length" class="muted">No rows match the current scope.</p>
+              <template v-else>
+                <p class="export-help">Preview — first {{ exportModal.sample.rows.length }} of {{ exportModal.sample.count }} rows:</p>
+                <div class="export-preview-table-wrap">
+                  <table class="export-preview-table">
+                    <thead>
+                      <tr>
+                        <th v-for="c in exportModal.sample.columns" :key="c.id">{{ c.header }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, i) in exportModal.sample.rows" :key="i">
+                        <td v-for="c in exportModal.sample.columns" :key="c.id">{{ formatCell(row[c.id]) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-if="exportModal.sample.count > exportModal.sample.rows.length" class="export-help">
+                  … and {{ exportModal.sample.count - exportModal.sample.rows.length }} more rows in the full export.
+                </p>
+              </template>
             </div>
 
             <div class="manage-footer export-footer">
               <span class="export-count">
                 <template v-if="exportModal.previewLoading">Calculating…</template>
                 <template v-else-if="exportModal.previewCount != null">
-                  Will export <strong>{{ exportModal.previewCount }}</strong> student{{ exportModal.previewCount === 1 ? '' : 's' }}
+                  {{ exportModal.previewCount }} student{{ exportModal.previewCount === 1 ? '' : 's' }} match
                 </template>
               </span>
-              <button class="btn-link" @click="exportModal = null">Cancel</button>
-              <button class="btn-confirm-manage btn-approve-final"
-                      :disabled="exportModal.exporting || exportModal.previewCount === 0 || exportModal.selectedFields.length === 0"
+              <button v-if="exportModal.step > 1" class="btn-link" @click="goExportStep(exportModal.step - 1)">← Back</button>
+              <button v-else class="btn-link" @click="exportModal = null">Cancel</button>
+              <button v-if="exportModal.step < 4" class="btn-confirm-manage btn-approve-final"
+                      :disabled="!canAdvanceExport"
+                      @click="goExportStep(exportModal.step + 1)">
+                Next →
+              </button>
+              <button v-else class="btn-confirm-manage btn-approve-final"
+                      :disabled="exportModal.exporting || (exportModal.sample?.count ?? 0) === 0"
                       @click="runExport">
-                {{ exportModal.exporting ? 'Building…' : '📥 Export' }}
+                {{ exportModal.exporting ? 'Building…' : '📥 Download' }}
               </button>
             </div>
           </div>
@@ -1324,9 +1372,15 @@ async function onReviewSubmitted(s) {
 watch([filterProgrammeId, filterSpecializationId, () => props.partnerId], load)
 onMounted(load)
 
-// --- Export students modal ---
+// --- Export students wizard ---
 const exportModal = ref(null)
 const exportPartners = ref([])
+const EXPORT_STEPS = [
+  { id: 'scope',  label: 'Scope' },
+  { id: 'fields', label: 'Fields' },
+  { id: 'format', label: 'Format' },
+  { id: 'review', label: 'Review' },
+]
 
 const EXPORT_FIELD_GROUPS = [
   { id: 'identity', label: 'Identity', fields: [
@@ -1364,6 +1418,7 @@ const ALL_EXPORT_FIELDS = EXPORT_FIELD_GROUPS.flatMap(g => g.fields.map(f => f.i
 function makeExportModal() {
   loadExportPartners()
   const m = reactive({
+    step: 1,
     partnersMode: 'all',
     selectedPartnerIds: [],
     selectedStatusFilters: [],
@@ -1372,10 +1427,50 @@ function makeExportModal() {
     previewCount: null,
     previewLoading: false,
     previewToken: 0,
+    sample: null,
+    sampleLoading: false,
+    sampleToken: 0,
     exporting: false,
     error: '',
   })
   return m
+}
+
+const canAdvanceExport = computed(() => {
+  const m = exportModal.value
+  if (!m) return false
+  if (m.step === 2) return m.selectedFields.length > 0
+  return true
+})
+
+function goExportStep(n) {
+  const m = exportModal.value
+  if (!m) return
+  if (n < 1 || n > EXPORT_STEPS.length) return
+  m.step = n
+  if (n === 4) loadExportSample()
+}
+
+async function loadExportSample() {
+  const m = exportModal.value
+  if (!m) return
+  const token = ++m.sampleToken
+  m.sampleLoading = true
+  m.error = ''
+  try {
+    const res = await api.post('/v1/admin/students/export/sample', buildExportBody(m))
+    if (m.sampleToken === token) m.sample = res.data
+  } catch (err) {
+    if (m.sampleToken === token) m.error = err.response?.data?.error ?? err.message ?? 'Preview failed'
+  } finally {
+    if (m.sampleToken === token) m.sampleLoading = false
+  }
+}
+
+function formatCell(v) {
+  if (v === null || v === undefined) return '—'
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+  return String(v)
 }
 
 function togglePartner(id, checked) {
@@ -1714,4 +1809,19 @@ async function runExport() {
 .export-include-docs { display: flex; align-items: center; gap: .4rem; margin-top: .65rem; padding: .55rem .75rem; background: #f7f9fc; border: 1px solid #e6ebf2; border-radius: 6px; font-size: .85rem; }
 .export-footer { display: flex; align-items: center; gap: .65rem; padding-top: .8rem; }
 .export-count { margin-right: auto; font-size: .85rem; color: #243049; }
+
+.export-steps { display: flex; align-items: center; gap: .5rem; padding: .65rem 1rem .35rem; border-bottom: 1px solid #eef2f7; }
+.export-step-pill { display: flex; align-items: center; gap: .4rem; padding: .25rem .65rem; border: 1px solid #e0e6ee; background: #f7f9fc; border-radius: 999px; font-size: .78rem; color: #6b7888; }
+.export-step-pill.done { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.export-step-pill.active { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; font-weight: 700; }
+.export-step-num { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #1a4d8c; color: #fff; border-radius: 50%; font-size: .68rem; font-weight: 700; }
+.export-step-pill.done .export-step-num { background: #047857; }
+.export-step-pill:not(.active):not(.done) .export-step-num { background: #cbd5e1; }
+
+.export-review-summary { display: flex; gap: 1.4rem; padding: .6rem .85rem; background: #f7f9fc; border: 1px solid #e6ebf2; border-radius: 6px; margin-bottom: .65rem; font-size: .9rem; }
+.export-preview-table-wrap { max-width: 100%; max-height: 320px; overflow: auto; border: 1px solid #e6ebf2; border-radius: 5px; }
+.export-preview-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.export-preview-table th { position: sticky; top: 0; background: #f1f5f9; text-align: left; padding: .4rem .55rem; border-bottom: 1px solid #e2e8f0; font-weight: 700; white-space: nowrap; }
+.export-preview-table td { padding: .35rem .55rem; border-bottom: 1px solid #f1f5f9; vertical-align: top; white-space: nowrap; }
+.export-preview-table tr:nth-child(even) td { background: #fbfdff; }
 </style>
