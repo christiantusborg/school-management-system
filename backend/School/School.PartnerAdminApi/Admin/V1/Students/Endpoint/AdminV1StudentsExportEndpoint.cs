@@ -1,17 +1,13 @@
 using System.Globalization;
-using System.IO.Compression;
 using System.Text;
 using ClosedXML.Excel;
-using Odin.Api.Base.Storage;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 
 /// <summary>
 /// Bulk-export students for Admission. Filters by partner + enrolment
 /// status (ANY enrolment matches), picks fields per the request body,
-/// and emits either a CSV or XLSX. When IncludeDocuments is true, the
-/// spreadsheet is wrapped in a zip alongside a documents/&lt;studentNumber&gt;/
-/// folder per student containing all their uploaded files.
+/// and emits either a CSV or XLSX.
 ///
 /// Whole response is streamed straight from memory — nothing is cached
 /// on disk, so each click rebuilds from current data.
@@ -28,7 +24,6 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         public List<Guid>? PartnerIds { get; init; }
         public List<string>? StatusCodes { get; init; }
         public List<string>? Fields { get; init; }
-        public bool IncludeDocuments { get; init; }
         public string Format { get; init; } = "xlsx";
     }
 
@@ -47,7 +42,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> ExportAsync(
-        [FromBody] ExportRequest body, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+        [FromBody] ExportRequest body, OdinDbContext db, CancellationToken ct)
     {
         var rows = await BuildExportRowsAsync(db, body, ct);
         var fields = (body.Fields ?? AllFieldIds().ToList()).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -59,11 +54,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
             ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             : "text/csv";
 
-        if (!body.IncludeDocuments)
-            return Results.File(dataBytes, dataContentType, dataFilename);
-
-        var zipBytes = await BuildZipAsync(db, storage, rows, dataBytes, dataFilename, ct);
-        return Results.File(zipBytes, "application/zip", "students-export.zip");
+        return Results.File(dataBytes, dataContentType, dataFilename);
     }
 
     private static IQueryable<Student> BuildBaseQuery(OdinDbContext db, ExportRequest body)
@@ -312,71 +303,4 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         return "\"" + value.Replace("\"", "\"\"") + "\"";
     }
 
-    private static async Task<byte[]> BuildZipAsync(
-        OdinDbContext db, IFileStorage storage,
-        List<ExportRow> rows, byte[] dataBytes, string dataFilename,
-        CancellationToken ct)
-    {
-        var studentIds = rows.Select(r => r.StudentId).ToList();
-        var folderByStudent = rows.ToDictionary(
-            r => r.StudentId,
-            r => SanitizeFolder(r.StudentNumber ?? r.StudentId.ToString()));
-
-        var docs = await db.StudentDocuments
-            .Where(d => studentIds.Contains(d.StudentId) && d.DeletedAt == null)
-            .Select(d => new { d.StudentId, d.StoragePath, d.FileName })
-            .ToListAsync(ct);
-
-        using var ms = new MemoryStream();
-        using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, true))
-        {
-            var dataEntry = archive.CreateEntry(dataFilename, CompressionLevel.Optimal);
-            using (var es = dataEntry.Open())
-                await es.WriteAsync(dataBytes, ct);
-
-            var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var doc in docs)
-            {
-                if (string.IsNullOrWhiteSpace(doc.StoragePath)) continue;
-
-                Stream src;
-                try { src = await storage.OpenReadAsync(doc.StoragePath, ct); }
-                catch { continue; }
-
-                using (src)
-                {
-                    var folder = folderByStudent.GetValueOrDefault(doc.StudentId, "unknown");
-                    var safeName = SanitizeFile(doc.FileName ?? "file");
-                    var key = $"documents/{folder}/{safeName}";
-                    var attempt = key;
-                    int n = 1;
-                    while (!usedNames.Add(attempt))
-                    {
-                        var stem = Path.GetFileNameWithoutExtension(safeName);
-                        var ext  = Path.GetExtension(safeName);
-                        attempt = $"documents/{folder}/{stem} ({n}){ext}";
-                        n++;
-                    }
-                    var entry = archive.CreateEntry(attempt, CompressionLevel.Optimal);
-                    using var entryStream = entry.Open();
-                    await src.CopyToAsync(entryStream, ct);
-                }
-            }
-        }
-        return ms.ToArray();
-    }
-
-    private static string SanitizeFolder(string s)
-    {
-        var invalid = Path.GetInvalidFileNameChars().Concat(new[] { '/', '\\' }).ToArray();
-        var clean = string.Concat(s.Select(c => invalid.Contains(c) ? '_' : c)).Trim();
-        return string.IsNullOrWhiteSpace(clean) ? "unknown" : clean;
-    }
-
-    private static string SanitizeFile(string s)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var clean = string.Concat(s.Select(c => invalid.Contains(c) ? '_' : c)).Trim();
-        return string.IsNullOrWhiteSpace(clean) ? "file" : clean;
-    }
 }

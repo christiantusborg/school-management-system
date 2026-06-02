@@ -451,13 +451,14 @@
                 <div class="export-control">
                   <label class="export-radio"><input type="radio" value="all" v-model="exportModal.partnersMode" /> All partners</label>
                   <label class="export-radio"><input type="radio" value="pick" v-model="exportModal.partnersMode" /> Pick:</label>
-                  <select v-if="exportModal.partnersMode === 'pick'" multiple size="4" class="export-multi"
-                          @change="onExportPartnersChange">
-                    <option v-for="p in exportPartners" :key="p.partnerId" :value="p.partnerId"
-                            :selected="exportModal.selectedPartnerIds.includes(p.partnerId)">
+                  <div v-if="exportModal.partnersMode === 'pick'" class="export-chip-list">
+                    <label v-for="p in exportPartners" :key="p.partnerId" class="export-chip">
+                      <input type="checkbox" :value="p.partnerId"
+                             :checked="exportModal.selectedPartnerIds.includes(p.partnerId)"
+                             @change="togglePartner(p.partnerId, $event.target.checked)" />
                       {{ p.name }}
-                    </option>
-                  </select>
+                    </label>
+                  </div>
                 </div>
               </div>
               <div class="export-row">
@@ -496,11 +497,6 @@
                   </label>
                 </div>
               </div>
-              <label class="export-include-docs">
-                <input type="checkbox" v-model="exportModal.includeDocuments" />
-                <strong>Include uploaded documents</strong>
-                <span class="export-help">— output becomes a .zip with a documents/ folder per student</span>
-              </label>
             </div>
 
             <div class="export-section">
@@ -1372,7 +1368,6 @@ function makeExportModal() {
     selectedPartnerIds: [],
     selectedStatusFilters: [],
     selectedFields: [...ALL_EXPORT_FIELDS],
-    includeDocuments: false,
     format: 'xlsx',
     previewCount: null,
     previewLoading: false,
@@ -1383,6 +1378,16 @@ function makeExportModal() {
   return m
 }
 
+function togglePartner(id, checked) {
+  if (!exportModal.value) return
+  const list = exportModal.value.selectedPartnerIds
+  if (checked) {
+    if (!list.includes(id)) list.push(id)
+  } else {
+    exportModal.value.selectedPartnerIds = list.filter(x => x !== id)
+  }
+}
+
 async function loadExportPartners() {
   if (exportPartners.value.length) return
   try {
@@ -1391,12 +1396,6 @@ async function loadExportPartners() {
   } catch {
     exportPartners.value = []
   }
-}
-
-function onExportPartnersChange(ev) {
-  if (!exportModal.value) return
-  const opts = Array.from(ev.target.selectedOptions)
-  exportModal.value.selectedPartnerIds = opts.map(o => o.value)
 }
 
 function toggleStatusFilter(id, checked) {
@@ -1456,7 +1455,6 @@ function buildExportBody(m) {
     partnerIds: m.partnersMode === 'pick' ? m.selectedPartnerIds : [],
     statusCodes: resolveExportStatusCodes(m),
     fields: m.selectedFields,
-    includeDocuments: m.includeDocuments,
     format: m.format,
   }
 }
@@ -1509,9 +1507,7 @@ async function runExport() {
     const blob = res.data
     const cd = res.headers?.['content-disposition'] || ''
     const match = /filename="?([^"]+)"?/.exec(cd)
-    const fallback = m.includeDocuments
-      ? 'students-export.zip'
-      : (m.format === 'xlsx' ? 'students.xlsx' : 'students.csv')
+    const fallback = m.format === 'xlsx' ? 'students.xlsx' : 'students.csv'
     const filename = match?.[1] ?? fallback
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
