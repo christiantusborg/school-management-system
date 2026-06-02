@@ -135,7 +135,22 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         DateTime? OfferLetterDate,
         DateTime? AdmissionLetterDate,
         DateTime? TranscriptDate,
-        DateTime? CertificateDate);
+        DateTime? CertificateDate,
+        DateTime? ProvisionalCertificateDate,
+        decimal? TuitionFeeUsd,
+        string? InstructionLanguage,
+        string? PathwayName,
+        int? PathwayMinYearsExperience,
+        string? OfferAcceptanceMode,
+        int? DocsUploaded,
+        int? DocsVerified,
+        int? DocsRejected,
+        decimal? TotalDueUsd,
+        decimal? TotalPaidUsd,
+        decimal? OutstandingUsd,
+        DateTime? CurrentStatusEnteredAt,
+        int? DaysInCurrentStatus,
+        int? DaysSinceApplication);
 
     private sealed record ExportRow(
         Guid StudentId,
@@ -155,6 +170,8 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         string? CountryName,
         string? HighestDegree,
         int? YearsWorkExperience,
+        string? LanguageResult,
+        int? WizardStep,
         string? LanguagesJoined,
         string? EnrolmentsJoined,
         string? PartnerName,
@@ -182,6 +199,8 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                 s.NationalityId,
                 s.HighestDegree,
                 s.YearsWorkExperience,
+                s.LanguageResult,
+                s.WizardStep,
                 User = new { s.User.UserName, s.User.Email, s.User.EmailConfirmed },
                 Profile = db.UserProfiles.Where(p => p.UserId == s.UserId)
                     .Select(p => new { p.FirstName, p.LastName }).FirstOrDefault(),
@@ -214,6 +233,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
             {
                 e.StudentEnrollmentId,
                 e.StudentId,
+                e.StatusId,
                 ProgrammeCode = e.Specialization.Programmes.Code,
                 ProgrammeName = e.Specialization.Programmes.Name,
                 SpecializationName = e.Specialization.Name,
@@ -223,6 +243,11 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                 StatusLevel = e.Status.Level,
                 e.CommencementDate,
                 e.Specialization.DurationOfStudyMonths,
+                e.Specialization.TuitionFeeUsd,
+                e.Specialization.InstructionLanguage,
+                OfferAcceptanceMode = e.Specialization.OfferAcceptanceMode,
+                PathwayName = e.Pathway != null ? e.Pathway.Name : null,
+                PathwayMinYears = e.Pathway != null ? (int?)e.Pathway.MinimumYearsWorkExperience : null,
             })
             .ToListAsync(ct);
 
@@ -258,6 +283,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
             SystemDocumentTypeIds.AdmissionLetter,
             SystemDocumentTypeIds.Transcript,
             SystemDocumentTypeIds.Certificate,
+            SystemDocumentTypeIds.ProvisionalCertificate,
         };
         var letterAgg = enrolmentIds.Count == 0
             ? new()
@@ -277,28 +303,95 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         DateTime? LetterAt(Guid enrolmentId, Guid docTypeId) =>
             letterAgg.FirstOrDefault(d => d.EnrollmentId == enrolmentId && d.DocumentTypeId == docTypeId)?.MaxAt;
 
+        // Document counts (uploaded / verified / rejected) per enrolment.
+        // VerifiedByPartner+VerifiedByEnrolment both count as verified; same
+        // pattern for the rejection codes. See AdminV1StudentsDetailEndpoint
+        // for the same status-code mapping.
+        var docCounts = enrolmentIds.Count == 0
+            ? new()
+            : await db.StudentDocuments
+                .Where(d => d.EnrollmentId != null
+                    && enrolmentIds.Contains(d.EnrollmentId!.Value)
+                    && d.DeletedAt == null)
+                .GroupBy(d => d.EnrollmentId!.Value)
+                .Select(g => new
+                {
+                    EnrollmentId = g.Key,
+                    Total    = g.Count(),
+                    Verified = g.Count(x => x.CurrentStatus.Code == "VerifiedByPartner"
+                                         || x.CurrentStatus.Code == "VerifiedByEnrolment"),
+                    Rejected = g.Count(x => x.CurrentStatus.Code == "RejectedByPartner"
+                                         || x.CurrentStatus.Code == "RejectedByEnrolment"),
+                })
+                .ToListAsync(ct);
+
+        // Payment sums per enrolment. TotalPaid = sum of amounts whose
+        // PaymentDateAt is set (we treat them as fully paid because the
+        // schema has no partial-payment column today).
+        var paymentSums = enrolmentIds.Count == 0
+            ? new()
+            : await db.Set<EnrollmentPayment>()
+                .Where(p => enrolmentIds.Contains(p.StudentEnrollmentId))
+                .GroupBy(p => p.StudentEnrollmentId)
+                .Select(g => new
+                {
+                    EnrollmentId = g.Key,
+                    TotalDue  = g.Sum(p => p.PaymentDueAmount),
+                    TotalPaid = g.Where(p => p.PaymentDateAt != null).Sum(p => p.PaymentDueAmount),
+                })
+                .ToListAsync(ct);
+
+        var now = DateTime.UtcNow;
+        int? DaysBetween(DateTime? from, DateTime to) => from is null ? null : (int)(to - from.Value).TotalDays;
+
         var enrolmentsByStudent = enrolmentRaw
             .GroupBy(e => e.StudentId)
             .ToDictionary(g => g.Key, g => g
                 .OrderBy(e => e.CommencementDate ?? DateTime.MaxValue)
                 .ThenBy(e => e.ProgrammeCode)
-                .Select(e => new ExportEnrolment(
-                    e.StudentEnrollmentId,
-                    e.ProgrammeCode,
-                    e.ProgrammeName,
-                    e.SpecializationName,
-                    e.ModeOfStudyName,
-                    e.StatusCode,
-                    e.StatusName,
-                    e.CommencementDate,
-                    e.DurationOfStudyMonths,
-                    FirstAt(e.StudentEnrollmentId, EnrollmentStatusIds.ApplicationSubmitted),
-                    LastAt(e.StudentEnrollmentId, EnrollmentStatusIds.ApplicationApprovedAdmission),
-                    LastAt(e.StudentEnrollmentId, EnrollmentStatusIds.GradesApproved),
-                    LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.OfferLetter),
-                    LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.AdmissionLetter),
-                    LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.Transcript),
-                    LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.Certificate)))
+                .Select(e =>
+                {
+                    var dc = docCounts.FirstOrDefault(d => d.EnrollmentId == e.StudentEnrollmentId);
+                    var ps = paymentSums.FirstOrDefault(p => p.EnrollmentId == e.StudentEnrollmentId);
+                    var applicationDate = FirstAt(e.StudentEnrollmentId, EnrollmentStatusIds.ApplicationSubmitted);
+                    var currentEnteredAt = LastAt(e.StudentEnrollmentId, e.StatusId);
+                    decimal? totalDue = ps?.TotalDue;
+                    decimal? totalPaid = ps?.TotalPaid;
+                    decimal? outstanding = totalDue is null ? null : totalDue - (totalPaid ?? 0m);
+
+                    return new ExportEnrolment(
+                        e.StudentEnrollmentId,
+                        e.ProgrammeCode,
+                        e.ProgrammeName,
+                        e.SpecializationName,
+                        e.ModeOfStudyName,
+                        e.StatusCode,
+                        e.StatusName,
+                        e.CommencementDate,
+                        e.DurationOfStudyMonths,
+                        applicationDate,
+                        LastAt(e.StudentEnrollmentId, EnrollmentStatusIds.ApplicationApprovedAdmission),
+                        LastAt(e.StudentEnrollmentId, EnrollmentStatusIds.GradesApproved),
+                        LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.OfferLetter),
+                        LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.AdmissionLetter),
+                        LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.Transcript),
+                        LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.Certificate),
+                        LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.ProvisionalCertificate),
+                        e.TuitionFeeUsd,
+                        e.InstructionLanguage,
+                        e.PathwayName,
+                        e.PathwayMinYears,
+                        e.OfferAcceptanceMode.ToString(),
+                        dc?.Total,
+                        dc?.Verified,
+                        dc?.Rejected,
+                        totalDue,
+                        totalPaid,
+                        outstanding,
+                        currentEnteredAt,
+                        DaysBetween(currentEnteredAt, now),
+                        DaysBetween(applicationDate, now));
+                })
                 .ToList());
 
         return students.Select(s =>
@@ -342,6 +435,8 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                 countryName,
                 s.HighestDegree,
                 s.YearsWorkExperience,
+                s.LanguageResult,
+                s.WizardStep,
                 langJoined,
                 enrJoined,
                 s.PartnerName,
@@ -384,23 +479,40 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         new("countryName",         "Country",          false, (r, _) => r.CountryName),
         new("highestDegree",       "Highest degree",   false, (r, _) => r.HighestDegree),
         new("yearsWorkExperience", "Years experience", false, (r, _) => r.YearsWorkExperience),
+        new("languageResult",      "Language test result", false, (r, _) => r.LanguageResult),
+        new("wizardStep",          "Wizard step",      false, (r, _) => r.WizardStep),
         new("languages",           "Languages",        false, (r, _) => r.LanguagesJoined),
         new("enrolments",          "Enrolments",       false, (r, _) => r.EnrolmentsJoined),
         new("programmeCode",       "Programme code",   true,  (_, e) => e?.ProgrammeCode),
         new("programmeName",       "Programme",        true,  (_, e) => e?.ProgrammeName),
         new("specializationName",  "Specialisation",   true,  (_, e) => e?.SpecializationName),
         new("modeOfStudy",         "Mode of study",    true,  (_, e) => e?.ModeOfStudy),
+        new("instructionLanguage", "Instruction language", true, (_, e) => e?.InstructionLanguage),
+        new("pathwayName",         "Pathway",          true,  (_, e) => e?.PathwayName),
+        new("pathwayMinYearsExp",  "Pathway min yrs exp", true, (_, e) => e?.PathwayMinYearsExperience),
+        new("offerAcceptanceMode", "Offer acceptance mode", true, (_, e) => e?.OfferAcceptanceMode),
         new("statusCode",          "Status code",      true,  (_, e) => e?.StatusCode),
         new("statusName",          "Status",           true,  (_, e) => e?.StatusName),
+        new("currentStatusEnteredAt", "Status entered at", true, (_, e) => Iso(e?.CurrentStatusEnteredAt)),
+        new("daysInCurrentStatus", "Days in status",   true,  (_, e) => e?.DaysInCurrentStatus),
         new("commencementDate",    "Start date",       true,  (_, e) => Iso(e?.CommencementDate)),
         new("durationMonths",      "Duration (months)",true,  (_, e) => e?.DurationMonths),
         new("applicationDate",     "Application date", true,  (_, e) => Iso(e?.ApplicationDate)),
+        new("daysSinceApplication","Days since apply", true,  (_, e) => e?.DaysSinceApplication),
         new("approvedDate",        "Approved date",    true,  (_, e) => Iso(e?.ApprovedDate)),
         new("graduatedDate",       "Graduated date",   true,  (_, e) => Iso(e?.GraduatedDate)),
         new("offerLetterDate",     "Offer letter date",true,  (_, e) => Iso(e?.OfferLetterDate)),
         new("admissionLetterDate", "Admission letter date", true, (_, e) => Iso(e?.AdmissionLetterDate)),
         new("transcriptDate",      "Transcript date",  true,  (_, e) => Iso(e?.TranscriptDate)),
         new("certificateDate",     "Certificate date", true,  (_, e) => Iso(e?.CertificateDate)),
+        new("provisionalCertificateDate", "Provisional certificate date", true, (_, e) => Iso(e?.ProvisionalCertificateDate)),
+        new("tuitionFeeUsd",       "Tuition fee (USD)",true,  (_, e) => e?.TuitionFeeUsd),
+        new("totalDueUsd",         "Total due (USD)",  true,  (_, e) => e?.TotalDueUsd),
+        new("totalPaidUsd",        "Total paid (USD)", true,  (_, e) => e?.TotalPaidUsd),
+        new("outstandingUsd",      "Outstanding (USD)",true,  (_, e) => e?.OutstandingUsd),
+        new("docsUploaded",        "Docs uploaded",    true,  (_, e) => e?.DocsUploaded),
+        new("docsVerified",        "Docs verified",    true,  (_, e) => e?.DocsVerified),
+        new("docsRejected",        "Docs rejected",    true,  (_, e) => e?.DocsRejected),
     };
 
     private static IEnumerable<string> AllFieldIds() => Columns.Select(c => c.Id);
@@ -440,6 +552,8 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                     null => XLCellValue.FromObject(null),
                     int i => i,
                     long l => l,
+                    decimal m => m,
+                    double dd => dd,
                     bool b => b,
                     DateTime d => d,
                     _ => v.ToString() ?? "",
