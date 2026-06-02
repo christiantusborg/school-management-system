@@ -22,6 +22,7 @@
         <option v-for="m in specializationsAvailable" :key="m.specializationId" :value="m.specializationId">{{ m.name }}</option>
       </select>
       <button class="btn-refresh" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻' }}</button>
+      <button class="btn-export" @click="exportModal = makeExportModal()">📥 Export students</button>
     </div>
 
     <div v-if="!loading && filtered.length === 0" class="empty">No students match.</div>
@@ -431,6 +432,101 @@
 
     <AdminReviewWizard v-if="reviewingStudent" :student="reviewingStudent"
       @close="closeReview" @submitted="onReviewSubmitted" />
+
+    <!-- Export students modal -->
+    <transition name="fade">
+      <div v-if="exportModal" class="manage-overlay" @click.self="exportModal = null">
+        <div class="manage-modal export-modal">
+          <div class="manage-hdr">
+            <h3>Export students</h3>
+            <button class="drawer-close" @click="exportModal = null">✕</button>
+          </div>
+          <div class="manage-body">
+            <p v-if="exportModal.error" class="err-banner">{{ exportModal.error }}</p>
+
+            <div class="export-section">
+              <h4>① Scope</h4>
+              <div class="export-row">
+                <label class="export-label">Partners</label>
+                <div class="export-control">
+                  <label class="export-radio"><input type="radio" value="all" v-model="exportModal.partnersMode" /> All partners</label>
+                  <label class="export-radio"><input type="radio" value="pick" v-model="exportModal.partnersMode" /> Pick:</label>
+                  <select v-if="exportModal.partnersMode === 'pick'" multiple size="4" class="export-multi"
+                          @change="onExportPartnersChange">
+                    <option v-for="p in exportPartners" :key="p.partnerId" :value="p.partnerId"
+                            :selected="exportModal.selectedPartnerIds.includes(p.partnerId)">
+                      {{ p.name }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+              <div class="export-row">
+                <label class="export-label">Status</label>
+                <div class="export-control">
+                  <span class="export-help">(empty = all statuses)</span>
+                  <div class="export-chip-list">
+                    <label v-for="f in STATUS_FILTERS.filter(x => x.id !== '' && x.id !== 'action-required')" :key="f.id"
+                           class="export-chip">
+                      <input type="checkbox" :value="f.id"
+                             :checked="exportModal.selectedStatusFilters.includes(f.id)"
+                             @change="toggleStatusFilter(f.id, $event.target.checked)" />
+                      {{ f.label }}
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="export-section">
+              <h4>② Fields</h4>
+              <div v-for="g in EXPORT_FIELD_GROUPS" :key="g.id" class="export-field-group">
+                <label class="export-group-toggle">
+                  <input type="checkbox"
+                         :checked="groupAllSelected(g)"
+                         :indeterminate.prop="groupSomeSelected(g)"
+                         @change="toggleGroup(g, $event.target.checked)" />
+                  <strong>{{ g.label }}</strong>
+                </label>
+                <div class="export-field-list">
+                  <label v-for="f in g.fields" :key="f.id" class="export-field-check">
+                    <input type="checkbox" :value="f.id"
+                           :checked="exportModal.selectedFields.includes(f.id)"
+                           @change="toggleField(f.id, $event.target.checked)" />
+                    {{ f.label }}
+                  </label>
+                </div>
+              </div>
+              <label class="export-include-docs">
+                <input type="checkbox" v-model="exportModal.includeDocuments" />
+                <strong>Include uploaded documents</strong>
+                <span class="export-help">— output becomes a .zip with a documents/ folder per student</span>
+              </label>
+            </div>
+
+            <div class="export-section">
+              <h4>③ Format</h4>
+              <label class="export-radio"><input type="radio" value="xlsx" v-model="exportModal.format" /> Excel (.xlsx)</label>
+              <label class="export-radio"><input type="radio" value="csv" v-model="exportModal.format" /> CSV</label>
+            </div>
+
+            <div class="manage-footer export-footer">
+              <span class="export-count">
+                <template v-if="exportModal.previewLoading">Calculating…</template>
+                <template v-else-if="exportModal.previewCount != null">
+                  Will export <strong>{{ exportModal.previewCount }}</strong> student{{ exportModal.previewCount === 1 ? '' : 's' }}
+                </template>
+              </span>
+              <button class="btn-link" @click="exportModal = null">Cancel</button>
+              <button class="btn-confirm-manage btn-approve-final"
+                      :disabled="exportModal.exporting || exportModal.previewCount === 0 || exportModal.selectedFields.length === 0"
+                      @click="runExport">
+                {{ exportModal.exporting ? 'Building…' : '📥 Export' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <transition name="fade">
       <div v-if="reviewToast" class="review-toast">{{ reviewToast }}</div>
@@ -1231,6 +1327,205 @@ async function onReviewSubmitted(s) {
 // filterStatusId is a client-side filter — no refetch needed.
 watch([filterProgrammeId, filterSpecializationId, () => props.partnerId], load)
 onMounted(load)
+
+// --- Export students modal ---
+const exportModal = ref(null)
+const exportPartners = ref([])
+
+const EXPORT_FIELD_GROUPS = [
+  { id: 'identity', label: 'Identity', fields: [
+    { id: 'studentNumber', label: 'Student #' },
+    { id: 'partnerName',   label: 'Partner' },
+  ]},
+  { id: 'account', label: 'Account', fields: [
+    { id: 'username',      label: 'Username' },
+    { id: 'email',         label: 'Email' },
+    { id: 'emailVerified', label: 'Email verified' },
+  ]},
+  { id: 'personal', label: 'Personal', fields: [
+    { id: 'firstName',       label: 'First name' },
+    { id: 'lastName',        label: 'Last name' },
+    { id: 'dateOfBirth',     label: 'Date of birth' },
+    { id: 'passportId',      label: 'Passport / ID' },
+    { id: 'nationalityName', label: 'Nationality' },
+    { id: 'addressLine1',    label: 'Address' },
+    { id: 'city',            label: 'City' },
+    { id: 'stateRegion',     label: 'State / Region' },
+    { id: 'postalCode',      label: 'Postal code' },
+    { id: 'countryName',     label: 'Country' },
+  ]},
+  { id: 'background', label: 'Background', fields: [
+    { id: 'highestDegree',       label: 'Highest degree' },
+    { id: 'yearsWorkExperience', label: 'Years experience' },
+    { id: 'languages',           label: 'Languages' },
+  ]},
+  { id: 'enrolments', label: 'Enrolments', fields: [
+    { id: 'enrolments', label: 'Enrolments (joined)' },
+  ]},
+]
+const ALL_EXPORT_FIELDS = EXPORT_FIELD_GROUPS.flatMap(g => g.fields.map(f => f.id))
+
+function makeExportModal() {
+  loadExportPartners()
+  const m = reactive({
+    partnersMode: 'all',
+    selectedPartnerIds: [],
+    selectedStatusFilters: [],
+    selectedFields: [...ALL_EXPORT_FIELDS],
+    includeDocuments: false,
+    format: 'xlsx',
+    previewCount: null,
+    previewLoading: false,
+    previewToken: 0,
+    exporting: false,
+    error: '',
+  })
+  return m
+}
+
+async function loadExportPartners() {
+  if (exportPartners.value.length) return
+  try {
+    const res = await api.get('/v1/admin/school/partners')
+    exportPartners.value = res.data.items ?? []
+  } catch {
+    exportPartners.value = []
+  }
+}
+
+function onExportPartnersChange(ev) {
+  if (!exportModal.value) return
+  const opts = Array.from(ev.target.selectedOptions)
+  exportModal.value.selectedPartnerIds = opts.map(o => o.value)
+}
+
+function toggleStatusFilter(id, checked) {
+  if (!exportModal.value) return
+  const list = exportModal.value.selectedStatusFilters
+  if (checked) {
+    if (!list.includes(id)) list.push(id)
+  } else {
+    exportModal.value.selectedStatusFilters = list.filter(x => x !== id)
+  }
+}
+
+function toggleField(id, checked) {
+  if (!exportModal.value) return
+  const list = exportModal.value.selectedFields
+  if (checked) {
+    if (!list.includes(id)) list.push(id)
+  } else {
+    exportModal.value.selectedFields = list.filter(x => x !== id)
+  }
+}
+
+function groupAllSelected(g) {
+  if (!exportModal.value) return false
+  return g.fields.every(f => exportModal.value.selectedFields.includes(f.id))
+}
+function groupSomeSelected(g) {
+  if (!exportModal.value) return false
+  const some = g.fields.some(f => exportModal.value.selectedFields.includes(f.id))
+  return some && !groupAllSelected(g)
+}
+function toggleGroup(g, checked) {
+  if (!exportModal.value) return
+  const ids = g.fields.map(f => f.id)
+  const cur = exportModal.value.selectedFields
+  if (checked) {
+    exportModal.value.selectedFields = Array.from(new Set([...cur, ...ids]))
+  } else {
+    exportModal.value.selectedFields = cur.filter(x => !ids.includes(x))
+  }
+}
+
+// Resolve status filter IDs to the wire-level status codes the backend expects.
+// Empty selection means "all statuses".
+function resolveExportStatusCodes(m) {
+  const codes = new Set()
+  for (const id of m.selectedStatusFilters) {
+    const f = STATUS_FILTERS.find(x => x.id === id)
+    if (!f?.codes) continue
+    f.codes.forEach(c => codes.add(c))
+  }
+  return Array.from(codes)
+}
+
+function buildExportBody(m) {
+  return {
+    partnerIds: m.partnersMode === 'pick' ? m.selectedPartnerIds : [],
+    statusCodes: resolveExportStatusCodes(m),
+    fields: m.selectedFields,
+    includeDocuments: m.includeDocuments,
+    format: m.format,
+  }
+}
+
+let exportPreviewTimer = null
+watch(
+  () => exportModal.value && [
+    exportModal.value.partnersMode,
+    [...exportModal.value.selectedPartnerIds],
+    [...exportModal.value.selectedStatusFilters],
+  ],
+  () => {
+    if (!exportModal.value) return
+    if (exportPreviewTimer) clearTimeout(exportPreviewTimer)
+    const m = exportModal.value
+    const token = ++m.previewToken
+    m.previewLoading = true
+    exportPreviewTimer = setTimeout(async () => {
+      try {
+        const res = await api.post('/v1/admin/students/export/preview', buildExportBody(m))
+        if (m.previewToken === token) m.previewCount = res.data.count ?? 0
+      } catch (err) {
+        if (m.previewToken === token) m.error = err.response?.data?.error ?? err.message ?? 'Preview failed'
+      } finally {
+        if (m.previewToken === token) m.previewLoading = false
+      }
+    }, 300)
+  },
+  { deep: true, immediate: false },
+)
+
+watch(exportModal, m => {
+  if (!m) return
+  // Kick the first preview when the modal opens.
+  m.previewToken++
+  m.previewLoading = true
+  api.post('/v1/admin/students/export/preview', buildExportBody(m))
+    .then(res => { if (exportModal.value === m) m.previewCount = res.data.count ?? 0 })
+    .catch(err => { if (exportModal.value === m) m.error = err.response?.data?.error ?? err.message ?? 'Preview failed' })
+    .finally(() => { if (exportModal.value === m) m.previewLoading = false })
+})
+
+async function runExport() {
+  const m = exportModal.value
+  if (!m || m.exporting) return
+  m.exporting = true
+  m.error = ''
+  try {
+    const res = await api.post('/v1/admin/students/export', buildExportBody(m), { responseType: 'blob' })
+    const blob = res.data
+    const cd = res.headers?.['content-disposition'] || ''
+    const match = /filename="?([^"]+)"?/.exec(cd)
+    const fallback = m.includeDocuments
+      ? 'students-export.zip'
+      : (m.format === 'xlsx' ? 'students.xlsx' : 'students.csv')
+    const filename = match?.[1] ?? fallback
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    exportModal.value = null
+  } catch (err) {
+    m.error = err.response?.data?.error ?? err.message ?? 'Export failed'
+  } finally {
+    if (exportModal.value) exportModal.value.exporting = false
+  }
+}
 </script>
 
 <style scoped>
@@ -1399,4 +1694,28 @@ onMounted(load)
 .btn-mini { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }
 .btn-mini:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }
 .btn-mini:hover:not(:disabled) { background: #143b6c; }
+
+.btn-export { margin-left: auto; padding: .35rem .85rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .82rem; font-weight: 600; cursor: pointer; }
+.btn-export:hover { background: #143b6c; }
+
+.export-modal { max-width: 720px; }
+.export-section { padding: .85rem 0; border-bottom: 1px solid #eef2f7; }
+.export-section:last-of-type { border-bottom: none; }
+.export-section h4 { margin: 0 0 .55rem; font-size: .92rem; color: #1a2d4f; }
+.export-row { display: grid; grid-template-columns: 110px 1fr; gap: .55rem; align-items: start; margin-bottom: .45rem; }
+.export-label { font-size: .82rem; color: #4b5563; padding-top: .3rem; }
+.export-control { display: flex; flex-direction: column; gap: .4rem; }
+.export-radio { display: inline-flex; align-items: center; gap: .35rem; margin-right: .9rem; font-size: .85rem; cursor: pointer; }
+.export-help { font-size: .76rem; color: #6b7888; }
+.export-multi { padding: .35rem; border: 1px solid #d8dde5; border-radius: 5px; font-size: .82rem; min-width: 220px; }
+.export-chip-list { display: flex; flex-wrap: wrap; gap: .35rem; }
+.export-chip { display: inline-flex; align-items: center; gap: .3rem; padding: .25rem .55rem; border: 1px solid #e0e6ee; background: #f7f9fc; border-radius: 999px; font-size: .76rem; cursor: pointer; }
+.export-chip:hover { background: #eef3fa; }
+.export-field-group { padding: .35rem 0; }
+.export-group-toggle { display: inline-flex; align-items: center; gap: .35rem; font-size: .87rem; cursor: pointer; }
+.export-field-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: .25rem .85rem; margin-left: 1.5rem; margin-top: .25rem; }
+.export-field-check { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; cursor: pointer; color: #243049; }
+.export-include-docs { display: flex; align-items: center; gap: .4rem; margin-top: .65rem; padding: .55rem .75rem; background: #f7f9fc; border: 1px solid #e6ebf2; border-radius: 6px; font-size: .85rem; }
+.export-footer { display: flex; align-items: center; gap: .65rem; padding-top: .8rem; }
+.export-count { margin-right: auto; font-size: .85rem; color: #243049; }
 </style>

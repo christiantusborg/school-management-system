@@ -10,4 +10,7 @@
         <ProjectReference Include="../../SharedLibrary.Basics.Opaque.Domains/SharedLibrary.Basics.Opaque.Domains.csproj" />
         <ProjectReference Include="../../Odin.Api.Base/Odin.Api.Base.csproj" />
     </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="ClosedXML" Version="0.105.0" />
+    </ItemGroup>
 </Project>
