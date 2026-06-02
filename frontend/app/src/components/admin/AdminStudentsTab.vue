@@ -455,42 +455,36 @@
           <div class="manage-body">
             <p v-if="exportModal.error" class="err-banner">{{ exportModal.error }}</p>
 
-            <!-- Step 1: Scope -->
+            <!-- Step 1: Partners -->
             <div v-if="exportModal.step === 1" class="export-section">
-              <div class="export-row">
-                <label class="export-label">Partners</label>
-                <div class="export-control">
-                  <label class="export-radio"><input type="radio" value="all" v-model="exportModal.partnersMode" /> All partners</label>
-                  <label class="export-radio"><input type="radio" value="pick" v-model="exportModal.partnersMode" /> Pick:</label>
-                  <div v-if="exportModal.partnersMode === 'pick'" class="export-chip-list">
-                    <label v-for="p in exportPartners" :key="p.partnerId" class="export-chip">
-                      <input type="checkbox" :value="p.partnerId"
-                             :checked="exportModal.selectedPartnerIds.includes(p.partnerId)"
-                             @change="togglePartner(p.partnerId, $event.target.checked)" />
-                      {{ p.name }}
-                    </label>
-                  </div>
-                </div>
-              </div>
-              <div class="export-row">
-                <label class="export-label">Status</label>
-                <div class="export-control">
-                  <span class="export-help">(empty = all statuses)</span>
-                  <div class="export-chip-list">
-                    <label v-for="f in STATUS_FILTERS.filter(x => x.id !== '' && x.id !== 'action-required')" :key="f.id"
-                           class="export-chip">
-                      <input type="checkbox" :value="f.id"
-                             :checked="exportModal.selectedStatusFilters.includes(f.id)"
-                             @change="toggleStatusFilter(f.id, $event.target.checked)" />
-                      {{ f.label }}
-                    </label>
-                  </div>
-                </div>
+              <label class="export-radio"><input type="radio" value="all" v-model="exportModal.partnersMode" /> All partners</label>
+              <label class="export-radio"><input type="radio" value="pick" v-model="exportModal.partnersMode" /> Pick specific partners</label>
+              <div v-if="exportModal.partnersMode === 'pick'" class="export-chip-list" style="margin-top:.5rem;">
+                <label v-for="p in exportPartners" :key="p.partnerId" class="export-chip">
+                  <input type="checkbox" :value="p.partnerId"
+                         :checked="exportModal.selectedPartnerIds.includes(p.partnerId)"
+                         @change="togglePartner(p.partnerId, $event.target.checked)" />
+                  {{ p.name }}
+                </label>
               </div>
             </div>
 
-            <!-- Step 2: Fields -->
+            <!-- Step 2: Status -->
             <div v-if="exportModal.step === 2" class="export-section">
+              <p class="export-help" style="margin-bottom:.5rem;">Tick none to include every status.</p>
+              <div class="export-chip-list">
+                <label v-for="f in STATUS_FILTERS.filter(x => x.id !== '' && x.id !== 'action-required')" :key="f.id"
+                       class="export-chip">
+                  <input type="checkbox" :value="f.id"
+                         :checked="exportModal.selectedStatusFilters.includes(f.id)"
+                         @change="toggleStatusFilter(f.id, $event.target.checked)" />
+                  {{ f.label }}
+                </label>
+              </div>
+            </div>
+
+            <!-- Step 3: Fields -->
+            <div v-if="exportModal.step === 3" class="export-section">
               <div v-for="g in EXPORT_FIELD_GROUPS" :key="g.id" class="export-field-group">
                 <label class="export-group-toggle">
                   <input type="checkbox"
@@ -510,14 +504,14 @@
               </div>
             </div>
 
-            <!-- Step 3: Format -->
-            <div v-if="exportModal.step === 3" class="export-section">
+            <!-- Step 4: Format -->
+            <div v-if="exportModal.step === 4" class="export-section">
               <label class="export-radio"><input type="radio" value="xlsx" v-model="exportModal.format" /> Excel (.xlsx)</label>
               <label class="export-radio"><input type="radio" value="csv" v-model="exportModal.format" /> CSV</label>
             </div>
 
-            <!-- Step 4: Review & Download -->
-            <div v-if="exportModal.step === 4" class="export-section">
+            <!-- Step 5: Review & Download -->
+            <div v-if="exportModal.step === 5" class="export-section">
               <div class="export-review-summary">
                 <div><strong>{{ exportModal.sample?.count ?? exportModal.previewCount ?? '—' }}</strong> students</div>
                 <div><strong>{{ exportModal.selectedFields.length }}</strong> columns</div>
@@ -556,7 +550,7 @@
               </span>
               <button v-if="exportModal.step > 1" class="btn-link" @click="goExportStep(exportModal.step - 1)">← Back</button>
               <button v-else class="btn-link" @click="exportModal = null">Cancel</button>
-              <button v-if="exportModal.step < 4" class="btn-confirm-manage btn-approve-final"
+              <button v-if="exportModal.step < EXPORT_STEPS.length" class="btn-confirm-manage btn-approve-final"
                       :disabled="!canAdvanceExport"
                       @click="goExportStep(exportModal.step + 1)">
                 Next →
@@ -1376,10 +1370,11 @@ onMounted(load)
 const exportModal = ref(null)
 const exportPartners = ref([])
 const EXPORT_STEPS = [
-  { id: 'scope',  label: 'Scope' },
-  { id: 'fields', label: 'Fields' },
-  { id: 'format', label: 'Format' },
-  { id: 'review', label: 'Review' },
+  { id: 'partners', label: 'Partners' },
+  { id: 'status',   label: 'Status' },
+  { id: 'fields',   label: 'Fields' },
+  { id: 'format',   label: 'Format' },
+  { id: 'review',   label: 'Review' },
 ]
 
 const EXPORT_FIELD_GROUPS = [
@@ -1409,11 +1404,36 @@ const EXPORT_FIELD_GROUPS = [
     { id: 'yearsWorkExperience', label: 'Years experience' },
     { id: 'languages',           label: 'Languages' },
   ]},
-  { id: 'enrolments', label: 'Enrolments', fields: [
-    { id: 'enrolments', label: 'Enrolments (joined)' },
+  { id: 'enrolments', label: 'Enrolment summary', fields: [
+    { id: 'enrolments', label: 'Enrolments (joined into one cell)' },
+  ]},
+  // Picking ANY field from this group switches the export to one row per
+  // (student × enrolment). Student fields are duplicated across the rows.
+  { id: 'enrolmentDetail', label: 'Enrolment detail — switches to row-per-enrolment', fields: [
+    { id: 'programmeCode',       label: 'Programme code' },
+    { id: 'programmeName',       label: 'Programme' },
+    { id: 'specializationName',  label: 'Specialisation' },
+    { id: 'modeOfStudy',         label: 'Mode of study' },
+    { id: 'statusCode',          label: 'Status code' },
+    { id: 'statusName',          label: 'Status' },
+    { id: 'commencementDate',    label: 'Start date' },
+    { id: 'durationMonths',      label: 'Duration (months)' },
+    { id: 'applicationDate',     label: 'Application date' },
+    { id: 'approvedDate',        label: 'Approved date' },
+    { id: 'graduatedDate',       label: 'Graduated date' },
+    { id: 'offerLetterDate',     label: 'Offer letter date' },
+    { id: 'admissionLetterDate', label: 'Admission letter date' },
+    { id: 'transcriptDate',      label: 'Transcript date' },
+    { id: 'certificateDate',     label: 'Certificate date' },
   ]},
 ]
-const ALL_EXPORT_FIELDS = EXPORT_FIELD_GROUPS.flatMap(g => g.fields.map(f => f.id))
+// Default selection: every student-level field plus the joined enrolment
+// overview. Per-enrolment detail fields stay off by default so the export
+// doesn't surprise the user with multiple rows per student until they
+// explicitly opt in.
+const ALL_EXPORT_FIELDS = EXPORT_FIELD_GROUPS
+  .filter(g => g.id !== 'enrolmentDetail')
+  .flatMap(g => g.fields.map(f => f.id))
 
 function makeExportModal() {
   loadExportPartners()
@@ -1439,7 +1459,8 @@ function makeExportModal() {
 const canAdvanceExport = computed(() => {
   const m = exportModal.value
   if (!m) return false
-  if (m.step === 2) return m.selectedFields.length > 0
+  // Step 3 is Fields — require at least one column.
+  if (m.step === 3) return m.selectedFields.length > 0
   return true
 })
 
@@ -1448,7 +1469,8 @@ function goExportStep(n) {
   if (!m) return
   if (n < 1 || n > EXPORT_STEPS.length) return
   m.step = n
-  if (n === 4) loadExportSample()
+  // Step 5 is Review — fetch the sample on entry.
+  if (n === EXPORT_STEPS.length) loadExportSample()
 }
 
 async function loadExportSample() {

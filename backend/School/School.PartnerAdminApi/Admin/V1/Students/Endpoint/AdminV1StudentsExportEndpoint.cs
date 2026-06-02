@@ -9,11 +9,14 @@ namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 /// status (ANY enrolment matches), picks fields per the request body,
 /// and emits either a CSV or XLSX.
 ///
+/// Output shape:
+///   - No per-enrolment fields selected → one row per student.
+///   - Any per-enrolment field selected → one row per (student × enrolment).
+///     Student fields are duplicated across the enrolment rows; students
+///     with no enrolments still emit one empty-enrolment row.
+///
 /// Whole response is streamed straight from memory — nothing is cached
 /// on disk, so each click rebuilds from current data.
-///
-/// Also exposes /preview which returns just the row count so the modal
-/// can show "Will export N students" without building the file.
 /// </summary>
 [Route("/v1/admin/students/export")]
 [EndpointTag("Admin.Students")]
@@ -42,37 +45,42 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         return Results.Ok(new { count });
     }
 
-    // First N rows of the export rendered exactly as the spreadsheet would
-    // see them, so the wizard's review step can show "this is what you're
-    // about to download." Capped at 10 rows so this stays cheap.
-    private const int SamplePageSize = 10;
+    // First N students worth of rows rendered exactly as the spreadsheet
+    // would see them. When the user has selected per-enrolment fields the
+    // output expands to one row per (student × enrolment), so the table
+    // returned here may have more than N entries — that's intentional, it
+    // mirrors what the full file will look like.
+    private const int SampleStudentLimit = 10;
 
     private static async Task<IResult> SampleAsync(
         [FromBody] ExportRequest body, OdinDbContext db, CancellationToken ct)
     {
         var count = await BuildBaseQuery(db, body).CountAsync(ct);
-        var rows = await BuildExportRowsAsync(db, body, ct, limit: SamplePageSize);
+        var rows = await BuildExportRowsAsync(db, body, ct, limit: SampleStudentLimit);
         var fields = (body.Fields ?? AllFieldIds().ToList()).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var active = Columns.Where(c => fields.Contains(c.Id)).ToList();
+        var perEnrolment = active.Any(c => c.IsEnrolmentLevel);
+
+        var sampleRows = new List<Dictionary<string, object?>>();
+        foreach (var r in rows)
+        {
+            var enrs = perEnrolment
+                ? (r.Enrolments.Count > 0 ? r.Enrolments : new() { null! })
+                : new() { (ExportEnrolment?)null! };
+            foreach (var e in enrs)
+            {
+                var dict = new Dictionary<string, object?>(active.Count);
+                foreach (var col in active)
+                    dict[col.Id] = col.Get(r, e);
+                sampleRows.Add(dict);
+            }
+        }
 
         return Results.Ok(new
         {
             count,
             columns = active.Select(c => new { id = c.Id, header = c.Header }).ToList(),
-            rows = rows.Select(r =>
-            {
-                var dict = new Dictionary<string, object?>(active.Count);
-                foreach (var col in active)
-                {
-                    var v = col.Get(r);
-                    dict[col.Id] = v switch
-                    {
-                        DateTime d => d.ToString("yyyy-MM-dd"),
-                        _ => v,
-                    };
-                }
-                return dict;
-            }).ToList(),
+            rows = sampleRows,
         });
     }
 
@@ -111,6 +119,24 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         return q;
     }
 
+    private sealed record ExportEnrolment(
+        Guid EnrollmentId,
+        string? ProgrammeCode,
+        string? ProgrammeName,
+        string? SpecializationName,
+        string? ModeOfStudy,
+        string? StatusCode,
+        string? StatusName,
+        DateTime? CommencementDate,
+        int? DurationMonths,
+        DateTime? ApplicationDate,
+        DateTime? ApprovedDate,
+        DateTime? GraduatedDate,
+        DateTime? OfferLetterDate,
+        DateTime? AdmissionLetterDate,
+        DateTime? TranscriptDate,
+        DateTime? CertificateDate);
+
     private sealed record ExportRow(
         Guid StudentId,
         string? StudentNumber,
@@ -131,7 +157,8 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         int? YearsWorkExperience,
         string? LanguagesJoined,
         string? EnrolmentsJoined,
-        string? PartnerName);
+        string? PartnerName,
+        List<ExportEnrolment> Enrolments);
 
     private static async Task<List<ExportRow>> BuildExportRowsAsync(
         OdinDbContext db, ExportRequest body, CancellationToken ct, int? limit = null)
@@ -181,20 +208,98 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
             .ToDictionary(g => g.Key, g => g.Select(x =>
                 $"{x.LanguageName} ({ProficiencyLabel(x.Proficiency)})").ToList());
 
-        var enrolments = await db.Enrollments
+        var enrolmentRaw = await db.Enrollments
             .Where(e => studentIds.Contains(e.StudentId) && e.DeletedAt == null)
             .Select(e => new
             {
+                e.StudentEnrollmentId,
                 e.StudentId,
                 ProgrammeCode = e.Specialization.Programmes.Code,
+                ProgrammeName = e.Specialization.Programmes.Name,
                 SpecializationName = e.Specialization.Name,
+                ModeOfStudyName = e.ModeOfStudy.Name,
+                StatusCode = e.Status.Code,
                 StatusName = e.Status.Name,
+                StatusLevel = e.Status.Level,
+                e.CommencementDate,
+                e.Specialization.DurationOfStudyMonths,
             })
             .ToListAsync(ct);
-        var enrByStudent = enrolments
-            .GroupBy(x => x.StudentId)
-            .ToDictionary(g => g.Key,
-                g => g.Select(e => $"{e.ProgrammeCode} - {e.SpecializationName} ({e.StatusName})").ToList());
+
+        // Per-enrolment date columns are sourced from the status-note
+        // timeline and the released-letter document rows. Application date
+        // is "first time this enrolment moved past Draft" (min); approved /
+        // graduated dates use the max so a re-bounce reports its latest
+        // transition. Letter dates use the most recent uploaded letter doc.
+        var enrolmentIds = enrolmentRaw.Select(e => e.StudentEnrollmentId).ToList();
+
+        var noteAgg = enrolmentIds.Count == 0
+            ? new()
+            : await db.Set<EnrollmentStatusNote>()
+                .Where(n => enrolmentIds.Contains(n.EnrollmentId))
+                .GroupBy(n => new { n.EnrollmentId, n.StatusId })
+                .Select(g => new
+                {
+                    g.Key.EnrollmentId,
+                    g.Key.StatusId,
+                    MinAt = g.Min(x => x.CreatedAt),
+                    MaxAt = g.Max(x => x.CreatedAt),
+                })
+                .ToListAsync(ct);
+
+        DateTime? FirstAt(Guid enrolmentId, Guid statusId) =>
+            noteAgg.FirstOrDefault(n => n.EnrollmentId == enrolmentId && n.StatusId == statusId)?.MinAt;
+        DateTime? LastAt(Guid enrolmentId, Guid statusId) =>
+            noteAgg.FirstOrDefault(n => n.EnrollmentId == enrolmentId && n.StatusId == statusId)?.MaxAt;
+
+        var letterTypes = new[]
+        {
+            SystemDocumentTypeIds.OfferLetter,
+            SystemDocumentTypeIds.AdmissionLetter,
+            SystemDocumentTypeIds.Transcript,
+            SystemDocumentTypeIds.Certificate,
+        };
+        var letterAgg = enrolmentIds.Count == 0
+            ? new()
+            : await db.StudentDocuments
+                .Where(d => d.EnrollmentId != null
+                    && enrolmentIds.Contains(d.EnrollmentId!.Value)
+                    && d.DeletedAt == null
+                    && letterTypes.Contains(d.DocumentTypeId))
+                .GroupBy(d => new { d.EnrollmentId, d.DocumentTypeId })
+                .Select(g => new
+                {
+                    EnrollmentId = g.Key.EnrollmentId!.Value,
+                    g.Key.DocumentTypeId,
+                    MaxAt = g.Max(x => x.UploadedAt),
+                })
+                .ToListAsync(ct);
+        DateTime? LetterAt(Guid enrolmentId, Guid docTypeId) =>
+            letterAgg.FirstOrDefault(d => d.EnrollmentId == enrolmentId && d.DocumentTypeId == docTypeId)?.MaxAt;
+
+        var enrolmentsByStudent = enrolmentRaw
+            .GroupBy(e => e.StudentId)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(e => e.CommencementDate ?? DateTime.MaxValue)
+                .ThenBy(e => e.ProgrammeCode)
+                .Select(e => new ExportEnrolment(
+                    e.StudentEnrollmentId,
+                    e.ProgrammeCode,
+                    e.ProgrammeName,
+                    e.SpecializationName,
+                    e.ModeOfStudyName,
+                    e.StatusCode,
+                    e.StatusName,
+                    e.CommencementDate,
+                    e.DurationOfStudyMonths,
+                    FirstAt(e.StudentEnrollmentId, EnrollmentStatusIds.ApplicationSubmitted),
+                    LastAt(e.StudentEnrollmentId, EnrollmentStatusIds.ApplicationApprovedAdmission),
+                    LastAt(e.StudentEnrollmentId, EnrollmentStatusIds.GradesApproved),
+                    LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.OfferLetter),
+                    LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.AdmissionLetter),
+                    LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.Transcript),
+                    LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.Certificate)))
+                .ToList());
 
         return students.Select(s =>
         {
@@ -205,21 +310,19 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
             string? countryName = null;
             if (!string.IsNullOrWhiteSpace(s.Address?.Country))
             {
-                // Country column stores the ISO-style code (e.g. "VN").
                 var match = nationalityMap.Values.FirstOrDefault(n =>
                     string.Equals(n.Code, s.Address.Country, StringComparison.OrdinalIgnoreCase));
                 countryName = match?.Name ?? s.Address.Country;
             }
 
-            // The UserLanguages table keys on Student.StudentId per existing
-            // codebase convention (see PartnerV1MyStudentsDetailEndpoint).
-            // Both the GUID-shaped UserId column and StudentId resolve to the
-            // same value for the student records we're exporting.
             var langStrings = languagesByStudent.GetValueOrDefault(s.StudentId);
             var langJoined = langStrings is null ? null : string.Join("; ", langStrings);
 
-            var enrStrings = enrByStudent.GetValueOrDefault(s.StudentId);
-            var enrJoined = enrStrings is null ? null : string.Join("; ", enrStrings);
+            var enrs = enrolmentsByStudent.GetValueOrDefault(s.StudentId) ?? new();
+            string? enrJoined = enrs.Count == 0
+                ? null
+                : string.Join("; ", enrs.Select(e =>
+                    $"{e.ProgrammeCode} - {e.SpecializationName} ({e.StatusName})"));
 
             return new ExportRow(
                 s.StudentId,
@@ -241,7 +344,8 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                 s.YearsWorkExperience,
                 langJoined,
                 enrJoined,
-                s.PartnerName);
+                s.PartnerName,
+                enrs);
         }).ToList();
     }
 
@@ -254,50 +358,84 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         _ => p.ToString(),
     };
 
+    private sealed record Column(string Id, string Header, bool IsEnrolmentLevel, Func<ExportRow, ExportEnrolment?, object?> Get);
+
+    private static string? Iso(DateTime? d) => d?.ToString("yyyy-MM-dd");
+
     // Stable column order. The frontend sends a subset of these field IDs;
     // we render columns in the order below regardless of incoming order so
     // exports stay diffable across runs.
-    private static readonly (string Id, string Header, Func<ExportRow, object?> Get)[] Columns = new (string, string, Func<ExportRow, object?>)[]
+    private static readonly Column[] Columns = new Column[]
     {
-        ("studentNumber",       "Student #",        r => r.StudentNumber),
-        ("partnerName",         "Partner",          r => r.PartnerName),
-        ("username",            "Username",         r => r.Username),
-        ("email",               "Email",            r => r.Email),
-        ("emailVerified",       "Email verified",   r => r.EmailVerified ? "Yes" : "No"),
-        ("firstName",           "First name",       r => r.FirstName),
-        ("lastName",            "Last name",        r => r.LastName),
-        ("dateOfBirth",         "Date of birth",    r => r.DateOfBirth?.ToString("yyyy-MM-dd")),
-        ("passportId",          "Passport / ID",    r => r.PassportId),
-        ("nationalityName",     "Nationality",      r => r.NationalityName),
-        ("addressLine1",        "Address",          r => r.AddressLine1),
-        ("city",                "City",             r => r.City),
-        ("stateRegion",         "State / Region",   r => r.StateRegion),
-        ("postalCode",          "Postal code",      r => r.PostalCode),
-        ("countryName",         "Country",          r => r.CountryName),
-        ("highestDegree",       "Highest degree",   r => r.HighestDegree),
-        ("yearsWorkExperience", "Years experience", r => r.YearsWorkExperience),
-        ("languages",           "Languages",        r => r.LanguagesJoined),
-        ("enrolments",          "Enrolments",       r => r.EnrolmentsJoined),
+        new("studentNumber",       "Student #",        false, (r, _) => r.StudentNumber),
+        new("partnerName",         "Partner",          false, (r, _) => r.PartnerName),
+        new("username",            "Username",         false, (r, _) => r.Username),
+        new("email",               "Email",            false, (r, _) => r.Email),
+        new("emailVerified",       "Email verified",   false, (r, _) => r.EmailVerified ? "Yes" : "No"),
+        new("firstName",           "First name",       false, (r, _) => r.FirstName),
+        new("lastName",            "Last name",        false, (r, _) => r.LastName),
+        new("dateOfBirth",         "Date of birth",    false, (r, _) => Iso(r.DateOfBirth)),
+        new("passportId",          "Passport / ID",    false, (r, _) => r.PassportId),
+        new("nationalityName",     "Nationality",      false, (r, _) => r.NationalityName),
+        new("addressLine1",        "Address",          false, (r, _) => r.AddressLine1),
+        new("city",                "City",             false, (r, _) => r.City),
+        new("stateRegion",         "State / Region",   false, (r, _) => r.StateRegion),
+        new("postalCode",          "Postal code",      false, (r, _) => r.PostalCode),
+        new("countryName",         "Country",          false, (r, _) => r.CountryName),
+        new("highestDegree",       "Highest degree",   false, (r, _) => r.HighestDegree),
+        new("yearsWorkExperience", "Years experience", false, (r, _) => r.YearsWorkExperience),
+        new("languages",           "Languages",        false, (r, _) => r.LanguagesJoined),
+        new("enrolments",          "Enrolments",       false, (r, _) => r.EnrolmentsJoined),
+        new("programmeCode",       "Programme code",   true,  (_, e) => e?.ProgrammeCode),
+        new("programmeName",       "Programme",        true,  (_, e) => e?.ProgrammeName),
+        new("specializationName",  "Specialisation",   true,  (_, e) => e?.SpecializationName),
+        new("modeOfStudy",         "Mode of study",    true,  (_, e) => e?.ModeOfStudy),
+        new("statusCode",          "Status code",      true,  (_, e) => e?.StatusCode),
+        new("statusName",          "Status",           true,  (_, e) => e?.StatusName),
+        new("commencementDate",    "Start date",       true,  (_, e) => Iso(e?.CommencementDate)),
+        new("durationMonths",      "Duration (months)",true,  (_, e) => e?.DurationMonths),
+        new("applicationDate",     "Application date", true,  (_, e) => Iso(e?.ApplicationDate)),
+        new("approvedDate",        "Approved date",    true,  (_, e) => Iso(e?.ApprovedDate)),
+        new("graduatedDate",       "Graduated date",   true,  (_, e) => Iso(e?.GraduatedDate)),
+        new("offerLetterDate",     "Offer letter date",true,  (_, e) => Iso(e?.OfferLetterDate)),
+        new("admissionLetterDate", "Admission letter date", true, (_, e) => Iso(e?.AdmissionLetterDate)),
+        new("transcriptDate",      "Transcript date",  true,  (_, e) => Iso(e?.TranscriptDate)),
+        new("certificateDate",     "Certificate date", true,  (_, e) => Iso(e?.CertificateDate)),
     };
 
     private static IEnumerable<string> AllFieldIds() => Columns.Select(c => c.Id);
+
+    // Enumerate output rows respecting the per-enrolment expansion rule.
+    // Per-enrolment selected + no enrolments → emit one row with null
+    // enrolment so the student still shows up in the export.
+    private static IEnumerable<(ExportRow Row, ExportEnrolment? Enr)> Expand(List<ExportRow> rows, bool perEnrolment)
+    {
+        foreach (var r in rows)
+        {
+            if (!perEnrolment) { yield return (r, null); continue; }
+            if (r.Enrolments.Count == 0) { yield return (r, null); continue; }
+            foreach (var e in r.Enrolments) yield return (r, e);
+        }
+    }
 
     private static byte[] BuildXlsx(List<ExportRow> rows, HashSet<string> fields)
     {
         using var wb = new XLWorkbook();
         var ws = wb.AddWorksheet("Students");
         var active = Columns.Where(c => fields.Contains(c.Id)).ToList();
+        var perEnrolment = active.Any(c => c.IsEnrolmentLevel);
 
         for (int i = 0; i < active.Count; i++)
             ws.Cell(1, i + 1).Value = active[i].Header;
         ws.Range(1, 1, 1, Math.Max(1, active.Count)).Style.Font.Bold = true;
 
-        for (int r = 0; r < rows.Count; r++)
+        int outRow = 2;
+        foreach (var (r, e) in Expand(rows, perEnrolment))
         {
             for (int c = 0; c < active.Count; c++)
             {
-                var v = active[c].Get(rows[r]);
-                ws.Cell(r + 2, c + 1).Value = v switch
+                var v = active[c].Get(r, e);
+                ws.Cell(outRow, c + 1).Value = v switch
                 {
                     null => XLCellValue.FromObject(null),
                     int i => i,
@@ -307,6 +445,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                     _ => v.ToString() ?? "",
                 };
             }
+            outRow++;
         }
 
         ws.Columns().AdjustToContents();
@@ -318,16 +457,16 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
     private static byte[] BuildCsv(List<ExportRow> rows, HashSet<string> fields)
     {
         var active = Columns.Where(c => fields.Contains(c.Id)).ToList();
+        var perEnrolment = active.Any(c => c.IsEnrolmentLevel);
         var sb = new StringBuilder();
 
-        // UTF-8 BOM so Excel opens it without mojibake when the user
-        // double-clicks the .csv on Windows.
+        // UTF-8 BOM so Excel opens it without mojibake on a double-click.
         sb.Append('﻿');
 
         sb.AppendLine(string.Join(",", active.Select(c => CsvEscape(c.Header))));
-        foreach (var row in rows)
+        foreach (var (r, e) in Expand(rows, perEnrolment))
         {
-            sb.AppendLine(string.Join(",", active.Select(c => CsvEscape(c.Get(row)?.ToString() ?? ""))));
+            sb.AppendLine(string.Join(",", active.Select(c => CsvEscape(c.Get(r, e)?.ToString() ?? ""))));
         }
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
@@ -337,5 +476,4 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         if (value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) < 0) return value;
         return "\"" + value.Replace("\"", "\"\"") + "\"";
     }
-
 }
