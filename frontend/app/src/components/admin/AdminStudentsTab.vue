@@ -449,7 +449,14 @@
       </div>
     </transition>
 
-    <AdminReviewWizard v-if="reviewingStudent" :student="reviewingStudent"
+    <!-- Partner-stage review: admin steps into the partner queue using the
+         full partner wizard, but POSTs to the admin-side endpoint so audit
+         attributes the action to Admission Office. -->
+    <StudentReviewWizard v-if="reviewingStudent && reviewingMode === 'partner-stage'"
+      :student="reviewingStudent"
+      :review-endpoint="adminReviewEndpoint"
+      @close="closeReview" @submitted="onReviewSubmitted" />
+    <AdminReviewWizard v-else-if="reviewingStudent" :student="reviewingStudent"
       @close="closeReview" @submitted="onReviewSubmitted" />
 
     <!-- Export students wizard -->
@@ -596,6 +603,7 @@ import { ref, computed, onMounted, watch, reactive } from 'vue'
 import Fuse from 'fuse.js'
 import api from '../../api/client.js'
 import AdminReviewWizard from './AdminReviewWizard.vue'
+import StudentReviewWizard from '../partner/StudentReviewWizard.vue'
 import EnrollmentActivityLog from '../letters/EnrollmentActivityLog.vue'
 import AdditionalDocumentUploadDialog from '../letters/AdditionalDocumentUploadDialog.vue'
 import { ACCEPTED_DOC_ACCEPT_ATTR } from '../../utils/uploadPolicy.js'
@@ -636,11 +644,15 @@ const reviewToast = ref('')
 const languages = ref([])
 const nationalities = ref([])
 
-// Admin can review only when the enrolment is in the Admission queue
-// (ApplicationAwaitingReviewByAdmission). Disabled otherwise so admin can't
-// approve a previously-rejected doc directly.
+// Admin can review when the enrolment is in either review queue: the
+// partner stage (ApplicationSubmitted / ApplicationAwaitingReviewByPartner)
+// — where admin steps in on behalf of a slow partner — or the admission
+// stage (ApplicationAwaitingReviewByAdmission). Disabled otherwise so
+// admin can't approve a previously-rejected doc directly.
 function canAdminReview(e) {
   return e.statusCode === 'ApplicationAwaitingReviewByAdmission'
+    || e.statusCode === 'ApplicationSubmitted'
+    || e.statusCode === 'ApplicationAwaitingReviewByPartner'
 }
 
 function statusClass(code) {
@@ -1382,12 +1394,18 @@ function adaptForWizard(d, targetEnrollmentId = null) {
         modeOfStudy: e.modeOfStudyName,
         selectedPathway: e.pathwayName ?? null,
         commencementDate: e.commencementDate?.slice(0, 10) ?? '',
-        durationMonths: e.durationOfStudyMonths ?? null,
+        durationMonths: e.approvedDurationMonths ?? e.durationOfStudyMonths ?? null,
+        programmeMinDurationMonths: e.programmeMinDurationMonths ?? null,
+        programmeMaxDurationMonths: e.programmeMaxDurationMonths ?? null,
         tuitionFeeUsd: Number(e.tuitionFeeUsd ?? 0),
         paymentPlan: null,
       })),
   })
 }
+
+const reviewingMode = ref(null) // 'partner-stage' | 'admission-stage'
+const adminReviewEndpoint = (studentGuid, enrollmentId) =>
+  `/v1/admin/students/${studentGuid}/enrollments/${enrollmentId}/review`
 
 async function openReview(studentId, enrollmentId = null) {
   loadError.value = ''
@@ -1401,12 +1419,20 @@ async function openReview(studentId, enrollmentId = null) {
       nationalities.value = nats.data.items ?? []
     }
     const res = await api.get(`/v1/admin/students/${studentId}`)
-    reviewingStudent.value = adaptForWizard(res.data, enrollmentId)
+    const adapted = adaptForWizard(res.data, enrollmentId)
+    const targetEnr = (res.data.enrollments || []).find(e =>
+      !enrollmentId || e.studentEnrollmentId === enrollmentId)
+      ?? res.data.enrollments?.[0]
+    reviewingMode.value = (targetEnr?.statusCode === 'ApplicationSubmitted'
+      || targetEnr?.statusCode === 'ApplicationAwaitingReviewByPartner')
+      ? 'partner-stage'
+      : 'admission-stage'
+    reviewingStudent.value = adapted
   } catch (e) {
     loadError.value = e.response?.data?.error ?? e.message ?? 'Failed to load student'
   }
 }
-function closeReview() { reviewingStudent.value = null }
+function closeReview() { reviewingStudent.value = null; reviewingMode.value = null }
 async function onReviewSubmitted(s) {
   reviewToast.value = `Review submitted for ${s.firstName} ${s.lastName}`
   setTimeout(() => { reviewToast.value = '' }, 3200)

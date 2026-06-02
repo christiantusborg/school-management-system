@@ -332,6 +332,11 @@ import api from '../../api/client.js'
 
 const props = defineProps({
   student: { type: Object, required: true },
+  // Endpoint to POST the review to. Defaults to the partner path; the admin
+  // students tab can pass the admin-side equivalent when admin steps into
+  // the partner queue.
+  reviewEndpoint: { type: Function, default: (studentGuid, enrollmentId) =>
+    `/v1/partner/my-students/${studentGuid}/enrollments/${enrollmentId}/review` },
 })
 const emit = defineEmits(['close', 'submitted'])
 
@@ -678,7 +683,7 @@ async function submit() {
 
   try {
     await api.post(
-      `/v1/partner/my-students/${s.studentGuid}/enrollments/${e.id}/review`,
+      props.reviewEndpoint(s.studentGuid, e.id),
       {
         documents,
         enrolment: {

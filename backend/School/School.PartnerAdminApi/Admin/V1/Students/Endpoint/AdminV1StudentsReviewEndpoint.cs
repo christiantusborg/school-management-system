@@ -37,10 +37,30 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
         public string? FreeTextReason { get; init; }
     }
 
+    public sealed class EnrolmentBlock
+    {
+        public DateTime? CommencementDate { get; init; }
+        public int? DurationMonths { get; init; }
+    }
+
     public sealed class ReviewRequest
     {
         public List<DocumentDecision>? Documents { get; init; }
+        /// <summary>
+        /// Commencement date + duration captured by the wizard. Only honoured
+        /// during the partner-stage path (when admin is acting in the partner
+        /// queue); the admission-stage path ignores them.
+        /// </summary>
+        public EnrolmentBlock? Enrolment { get; init; }
     }
+
+    // States the admin can step in for. Includes the partner queue so
+    // admin can hand-run the partner stage when the partner is slow.
+    private static readonly HashSet<Guid> PartnerStageStatuses = new()
+    {
+        EnrollmentStatusIds.ApplicationSubmitted,
+        EnrollmentStatusIds.ApplicationAwaitingReviewByPartner,
+    };
 
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId, [FromBody] ReviewRequest body,
@@ -58,16 +78,14 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
                 && e.DeletedAt == null, ct);
         if (enrollment is null) return Results.NotFound();
 
-        // Status gate: admin can only review applications the partner has
-        // already approved (status = ApplicationAwaitingReviewByAdmission).
-        // Refuses when the enrolment is awaiting student action (Rejected)
-        // or hasn't reached the admission stage yet — same anti-bypass
-        // reasoning as the partner endpoint.
-        if (enrollment.StatusId != EnrollmentStatusIds.ApplicationAwaitingReviewByAdmission)
+        var isPartnerStage = PartnerStageStatuses.Contains(enrollment.StatusId);
+        var isAdmissionStage = enrollment.StatusId == EnrollmentStatusIds.ApplicationAwaitingReviewByAdmission;
+
+        if (!isPartnerStage && !isAdmissionStage)
         {
             return Results.BadRequest(new
             {
-                error = "This application isn't awaiting Admission review. The student must resubmit and the partner must re-approve before it can be reviewed again.",
+                error = "This application isn't reviewable in its current status. The student must resubmit before review.",
             });
         }
 
@@ -78,8 +96,6 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
         if (docDecisions.Count > 0)
         {
             var docIds = docDecisions.Select(d => d.StudentDocumentId).ToList();
-            // Per-application guard: only docs that belong to THIS enrolment
-            // are reviewable from THIS wizard. See partner equivalent.
             var docs = await db.StudentDocuments
                 .Where(d => d.StudentId == studentId
                     && d.EnrollmentId == enrollmentId
@@ -95,9 +111,13 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
                 var isRejected = string.Equals(input.Decision, "rejected", StringComparison.OrdinalIgnoreCase);
                 if (!isApproved && !isRejected) continue;
 
-                var newDocStatusId = isApproved
-                    ? DocumentStatusIds.VerifiedByEnrolment
-                    : DocumentStatusIds.RejectedByEnrolment;
+                // Partner stage: VerifiedByPartner / RejectedByPartner.
+                // Admission stage: VerifiedByEnrolment / RejectedByEnrolment.
+                Guid newDocStatusId;
+                if (isPartnerStage)
+                    newDocStatusId = isApproved ? DocumentStatusIds.VerifiedByPartner : DocumentStatusIds.RejectedByPartner;
+                else
+                    newDocStatusId = isApproved ? DocumentStatusIds.VerifiedByEnrolment : DocumentStatusIds.RejectedByEnrolment;
                 doc.CurrentStatusId = newDocStatusId;
 
                 var noteText = isRejected ? BuildDocumentRejectionNote(input) : null;
@@ -113,14 +133,33 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
             }
         }
 
-        // The offer is released at partner-approval; here admission's
-        // all-approved transition jumps straight to AwaitingGradesSubmit
-        // (skipping the now-retired ApplicationApprovedAdmission and the
-        // orphan AcceptAdmission). The Admission Letter PDF still releases
-        // here. Partner's next action: submit grades.
-        var newEnrollmentStatusId = anyRejected
-            ? EnrollmentStatusIds.ApplicationRejectedByAdmission
-            : EnrollmentStatusIds.AwaitingGradesSubmit;
+        // Partner stage routes to AcceptOffer (offer letter) on full approve
+        // or ApplicationRejectedByPartner; admission stage routes to
+        // AwaitingGradesSubmit (admission letter) on full approve or
+        // ApplicationRejectedByAdmission. Both stages keep their existing
+        // letter releases.
+        Guid newEnrollmentStatusId;
+        string approvedNote;
+        string rejectedTitle;
+        LetterType letterToRelease;
+        if (isPartnerStage)
+        {
+            newEnrollmentStatusId = anyRejected
+                ? EnrollmentStatusIds.ApplicationRejectedByPartner
+                : EnrollmentStatusIds.AcceptOffer;
+            approvedNote = "Admission Office reviewed documents on behalf of the partner. Offer presented to student.";
+            rejectedTitle = "Admission Office rejected the following documents (acting on behalf of partner):";
+            letterToRelease = LetterType.OfferLetter;
+        }
+        else
+        {
+            newEnrollmentStatusId = anyRejected
+                ? EnrollmentStatusIds.ApplicationRejectedByAdmission
+                : EnrollmentStatusIds.AwaitingGradesSubmit;
+            approvedNote = "Admission auto-approved documents and confirmed payment. Admission letter released — awaiting grades from partner.";
+            rejectedTitle = "Admission Office rejected the following documents:";
+            letterToRelease = LetterType.AdmissionLetter;
+        }
 
         if (enrollment.StatusId != newEnrollmentStatusId)
         {
@@ -131,11 +170,37 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
                 EnrollmentId = enrollmentId,
                 StatusId = newEnrollmentStatusId,
                 Note = anyRejected
-                    ? BuildRejectionNote(docDecisions)
-                    : "Admission auto-approved documents and confirmed payment. Admission letter released — awaiting grades from partner.",
+                    ? BuildRejectionNote(docDecisions, rejectedTitle)
+                    : approvedNote,
                 ByUserId = ParseUserGuid(callerId),
                 CreatedAt = now,
             });
+        }
+
+        // Partner-stage path also persists commencement + duration the same
+        // way the partner review endpoint does.
+        if (isPartnerStage && !anyRejected)
+        {
+            if (body.Enrolment?.CommencementDate is { } commencement)
+                enrollment.CommencementDate = commencement;
+
+            if (body.Enrolment?.DurationMonths is int months)
+            {
+                var range = await db.Specializations
+                    .Where(s => s.SpecializationId == enrollment.SpecializationId)
+                    .Select(s => new { s.Programmes.MinDurationMonths, s.Programmes.MaxDurationMonths })
+                    .FirstOrDefaultAsync(ct);
+                if (range is not null
+                    && range.MaxDurationMonths > 0
+                    && (months < range.MinDurationMonths || months > range.MaxDurationMonths))
+                {
+                    return Results.BadRequest(new
+                    {
+                        error = $"Duration {months} months is outside the programme range ({range.MinDurationMonths}–{range.MaxDurationMonths}).",
+                    });
+                }
+                enrollment.ApprovedDurationMonths = months;
+            }
         }
 
         await db.SaveChangesAsync(ct);
@@ -144,11 +209,11 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
         {
             try
             {
-                await letterRelease.ReleaseAsync(enrollmentId, LetterType.AdmissionLetter, ct);
+                await letterRelease.ReleaseAsync(enrollmentId, letterToRelease, ct);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "[Letters] Admission letter release failed for enrollment {EnrollmentId}", enrollmentId);
+                logger.LogError(ex, "[Letters] {LetterType} release failed for enrollment {EnrollmentId}", letterToRelease, enrollmentId);
             }
         }
 
@@ -171,10 +236,10 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
         return free;
     }
 
-    private static string BuildRejectionNote(List<DocumentDecision> decisions)
+    private static string BuildRejectionNote(List<DocumentDecision> decisions, string title = "Admission Office rejected the following documents:")
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Admission Office rejected the following documents:");
+        sb.AppendLine(title);
         foreach (var d in decisions.Where(x => string.Equals(x.Decision, "rejected", StringComparison.OrdinalIgnoreCase)))
         {
             var label = string.IsNullOrWhiteSpace(d.DocumentLabel) ? "Document" : d.DocumentLabel.Trim();
