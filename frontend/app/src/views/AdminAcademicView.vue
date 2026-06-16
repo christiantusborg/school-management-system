@@ -218,7 +218,7 @@
               <div class="add-subj-row">
                 <input v-model="sf[maj.specializationId + '_code']" class="inp-code col-code" placeholder="Code" />
                 <input v-model="sf[maj.specializationId + '_n']" class="inp-name col-name" placeholder="Module name" @keyup.enter="addSubject(maj.specializationId)" />
-                <input v-model.number="sf[maj.specializationId + '_e']" class="inp-ects col-ects" type="number" min="1" placeholder="15" />
+                <input v-model.number="sf[maj.specializationId + '_e']" class="inp-ects col-ects" type="number" min="0.5" step="0.5" placeholder="15" />
                 <span class="col-act"><button class="btn-add" @click="addSubject(maj.specializationId)">+ Add</button></span>
               </div>
               <p v-if="sf[maj.specializationId + '_err']" class="form-error">{{ sf[maj.specializationId + '_err'] }}</p>

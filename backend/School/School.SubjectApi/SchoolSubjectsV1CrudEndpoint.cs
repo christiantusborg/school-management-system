@@ -21,7 +21,7 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
         public string? Code { get; init; }
         public string? Name { get; init; }
         public string? Description { get; init; }
-        public int? Ects { get; init; }
+        public decimal? Ects { get; init; }
     }
 
     private static async Task<IResult> CreateAsync(

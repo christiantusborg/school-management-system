@@ -9,7 +9,8 @@ public class Subject : IDeletedAtEntity
     public string Code { get; set; } = default!;
     public string Name { get; set; } = default!;
     public string Description { get; set; } = default!;
-    public int Ects { get; set; }
+    /// <summary>ECTS credits. Half-point steps allowed (e.g. 7.5).</summary>
+    public decimal Ects { get; set; }
     
     public DateTime? IsActive { get; set; }
     public DateTime? DeletedAt { get; set; }

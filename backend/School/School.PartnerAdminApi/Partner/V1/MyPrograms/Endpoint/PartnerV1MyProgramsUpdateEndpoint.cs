@@ -18,7 +18,7 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
         public Guid? SubjectId { get; init; }
         public string? Code { get; init; }
         public string? Name { get; init; }
-        public int Ects { get; init; }
+        public decimal Ects { get; init; }
     }
 
     public sealed class SpecializationInput

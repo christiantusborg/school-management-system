@@ -187,17 +187,17 @@ public sealed class LetterPdfRenderer
                 Header(table, "ECTS\nGrade Point");
                 Header(table, "Grade\nPoint");
 
-                int totalEcts = 0;
+                decimal totalEcts = 0m;
                 double totalGp = 0;
                 foreach (var row in rows)
                 {
                     var (ects, uk, gp) = MapScore(row.Score);
-                    var pts = row.Ects * gp;
+                    var pts = (double)row.Ects * gp;
                     totalEcts += row.Ects;
                     totalGp += pts;
                     Cell(table, row.Code,                     fontSize);
                     Cell(table, row.Name,                     fontSize, alignLeft: true);
-                    Cell(table, row.Ects.ToString(),          fontSize);
+                    Cell(table, row.Ects.ToString("0.##", CultureInfo.InvariantCulture), fontSize);
                     Cell(table, ects,                         fontSize);
                     Cell(table, uk,                           fontSize);
                     Cell(table, gp.ToString("0.0", CultureInfo.InvariantCulture), fontSize);
@@ -213,14 +213,14 @@ public sealed class LetterPdfRenderer
 
                 // Total row
                 table.Cell().ColumnSpan(2).Border(0.5f).BorderColor(Colors.Black).Padding(3).Text("Total").Bold().FontSize(fontSize);
-                Cell(table, totalEcts.ToString(), fontSize, bold: true);
+                Cell(table, totalEcts.ToString("0.##", CultureInfo.InvariantCulture), fontSize, bold: true);
                 Cell(table, "", fontSize);
                 Cell(table, "", fontSize);
                 Cell(table, "", fontSize);
                 Cell(table, totalGp.ToString("0.0", CultureInfo.InvariantCulture), fontSize, bold: true);
 
                 // GPA row
-                var gpa = totalEcts > 0 ? totalGp / totalEcts : 0;
+                var gpa = totalEcts > 0 ? totalGp / (double)totalEcts : 0;
                 table.Cell().ColumnSpan(6).Border(0.5f).BorderColor(Colors.Black).Padding(3).AlignRight()
                     .Text("Grade Point Average").Bold().FontSize(fontSize);
                 Cell(table, gpa.ToString("0.00", CultureInfo.InvariantCulture), fontSize, bold: true);

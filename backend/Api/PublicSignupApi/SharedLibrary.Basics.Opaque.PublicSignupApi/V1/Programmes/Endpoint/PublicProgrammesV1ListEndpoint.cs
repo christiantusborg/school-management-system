@@ -146,5 +146,5 @@ public sealed class PublicSubjectItem
     public required Guid SubjectId { get; init; }
     public required string Code { get; init; }
     public required string Name { get; init; }
-    public required int Ects { get; init; }
+    public required decimal Ects { get; init; }
 }

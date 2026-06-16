@@ -6,7 +6,7 @@ using SharedLibrary.Basics.Opaque.Domains;
 
 namespace Odin.Api.Base.Letters;
 
-public sealed record TranscriptGradeRow(string Code, string Name, int Ects, decimal Score);
+public sealed record TranscriptGradeRow(string Code, string Name, decimal Ects, decimal Score);
 
 public sealed class LetterTagResolver(OdinDbContext db)
 {
@@ -180,12 +180,12 @@ public sealed class LetterTagResolver(OdinDbContext db)
             g.GradedAt)).ToList();
 
         result["[transcript]"] = BuildTranscriptHtml(transcriptRows);
-        result["[ects achieved]"] = transcriptRows.Sum(r => r.Ects).ToString(CultureInfo.InvariantCulture);
+        result["[ects achieved]"] = transcriptRows.Sum(r => r.Ects).ToString("0.##", CultureInfo.InvariantCulture);
 
         return result;
     }
 
-    private sealed record TranscriptRow(string Code, string Name, int Ects, decimal Score, DateTime? GradedAt);
+    private sealed record TranscriptRow(string Code, string Name, decimal Ects, decimal Score, DateTime? GradedAt);
 
     /// <summary>
     /// Maps a numeric exam score (0–100) onto the IBSS grading scale described
@@ -228,28 +228,28 @@ public sealed class LetterTagResolver(OdinDbContext db)
             return sb.ToString();
         }
 
-        var totalEcts = 0;
+        var totalEcts = 0m;
         var totalGradePoint = 0.0;
         foreach (var r in rows)
         {
             var (ects, uk, gp) = MapScore(r.Score);
-            var rowGradePoint = r.Ects * gp;
+            var rowGradePoint = (double)r.Ects * gp;
             totalEcts += r.Ects;
             totalGradePoint += rowGradePoint;
             sb.Append("<tr>")
                 .Append($"<td style='padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.Code)}</td>")
                 .Append($"<td style='padding:4px;'>{System.Net.WebUtility.HtmlEncode(r.Name)}</td>")
-                .Append($"<td style='padding:4px;text-align:right;'>{r.Ects}</td>")
+                .Append($"<td style='padding:4px;text-align:right;'>{r.Ects.ToString("0.##", CultureInfo.InvariantCulture)}</td>")
                 .Append($"<td style='padding:4px;text-align:center;'>{ects}</td>")
                 .Append($"<td style='padding:4px;text-align:center;'>{uk}</td>")
                 .Append($"<td style='padding:4px;text-align:right;'>{gp.ToString("0.0", CultureInfo.InvariantCulture)}</td>")
                 .Append($"<td style='padding:4px;text-align:right;'>{rowGradePoint.ToString("0.0", CultureInfo.InvariantCulture)}</td>")
                 .Append("</tr>");
         }
-        var gpa = totalEcts > 0 ? totalGradePoint / totalEcts : 0.0;
+        var gpa = totalEcts > 0 ? totalGradePoint / (double)totalEcts : 0.0;
         sb.Append("<tr style='border-top:1px solid #999;'>")
             .Append("<td colspan='2' style='padding:4px;'><strong>Total</strong></td>")
-            .Append($"<td style='padding:4px;text-align:right;'><strong>{totalEcts}</strong></td>")
+            .Append($"<td style='padding:4px;text-align:right;'><strong>{totalEcts.ToString("0.##", CultureInfo.InvariantCulture)}</strong></td>")
             .Append("<td colspan='3'></td>")
             .Append($"<td style='padding:4px;text-align:right;'><strong>{totalGradePoint.ToString("0.0", CultureInfo.InvariantCulture)}</strong></td>")
             .Append("</tr>");
