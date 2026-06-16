@@ -190,8 +190,8 @@ async function onPick(event, enr, doc) {
   const file = event.target.files?.[0]
   event.target.value = ''
   if (!file) return
-  if (file.size > 10 * 1024 * 1024) {
-    loadError.value = 'File is larger than 10 MB.'
+  if (file.size > 100 * 1024 * 1024) {
+    loadError.value = 'File is larger than 100 MB.'
     return
   }
   loadError.value = ''

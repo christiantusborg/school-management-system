@@ -8,7 +8,7 @@ namespace Odin.Api.Base.Documents;
 /// </summary>
 public static class DocumentUploadPolicy
 {
-    public const long MaxBytes = 10 * 1024 * 1024;
+    public const long MaxBytes = 100 * 1024 * 1024;
 
     public static readonly HashSet<string> AllowedMimes = new(StringComparer.OrdinalIgnoreCase)
     {

@@ -79,6 +79,18 @@ Log.Logger = new LoggerConfiguration()
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
 
+// Allow document uploads up to DocumentUploadPolicy.MaxBytes (100 MB). The
+// framework defaults (Kestrel 30 MB request body, 128 MB multipart) would
+// otherwise reject a large file before the endpoint's own size check runs,
+// surfacing in the browser as an opaque "Network Error". Add a little headroom
+// over the policy limit for the multipart envelope (boundaries + field headers).
+var maxUploadBytes = Odin.Api.Base.Documents.DocumentUploadPolicy.MaxBytes + (5 * 1024 * 1024);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = maxUploadBytes);
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = maxUploadBytes;
+});
+
 // Npgsql 6+ maps `DateTime` to `timestamp with time zone` and rejects values
 // with Kind != Utc. Plenty of our DateTime fields come from user input (DOB,
 // passport expiry, contract dates) where the Kind is Unspecified. Enabling the

@@ -714,7 +714,7 @@ async function onUpload(ev, specializationId, documentTypeId) {
   const file = ev.target.files?.[0]
   ev.target.value = ''
   if (!file) return
-  if (file.size > 10 * 1024 * 1024) { error.value = 'File is larger than 10 MB.'; return }
+  if (file.size > 100 * 1024 * 1024) { error.value = 'File is larger than 100 MB.'; return }
   const existing = uploadedFor(specializationId, documentTypeId)
   if (existing) {
     try { await api.delete(`/v1/public/draft-signup/documents/${existing.studentDocumentId}`, { headers: authHeaders() }) }
