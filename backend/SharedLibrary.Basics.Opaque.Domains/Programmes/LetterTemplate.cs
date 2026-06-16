@@ -6,6 +6,14 @@ public class LetterTemplate : IDeletedAtEntity
 {
     public Guid LetterTemplateId { get; set; } = Guid.NewGuid();
     public Guid ProgrammeId { get; set; }
+
+    /// <summary>
+    /// Owning partner. Templates are per (programme, partner, letter type) so
+    /// each partner offering a shared core programme has its own independent
+    /// PDF design. No cross-partner fallback.
+    /// </summary>
+    public Guid PartnerId { get; set; }
+
     public LetterType LetterType { get; set; }
 
     public string? BodyHtml { get; set; }

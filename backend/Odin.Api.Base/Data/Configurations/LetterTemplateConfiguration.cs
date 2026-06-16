@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
+using SharedLibrary.Basics.Opaque.Domains.Partners;
 
 namespace Odin.Api.Base.Data.Configurations;
 
@@ -23,13 +24,18 @@ public class LetterTemplateConfiguration : IEntityTypeConfiguration<LetterTempla
             .IsRequired()
             .HasDefaultValue(false);
 
-        builder.HasIndex(e => new { e.ProgrammeId, e.LetterType })
+        builder.HasIndex(e => new { e.ProgrammeId, e.PartnerId, e.LetterType })
             .HasFilter("\"DeletedAt\" IS NULL")
             .IsUnique();
 
         builder.HasOne(e => e.Programme)
             .WithMany()
             .HasForeignKey(e => e.ProgrammeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Partner>()
+            .WithMany()
+            .HasForeignKey(e => e.PartnerId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

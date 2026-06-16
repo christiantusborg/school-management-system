@@ -35,6 +35,7 @@ public sealed class LetterReleaseService(
                 e.StudentEnrollmentId,
                 e.StudentId,
                 e.SpecializationId,
+                e.PartnerId,
                 ProgrammeId = db.Specializations
                     .Where(s => s.SpecializationId == e.SpecializationId)
                     .Select(s => s.ProgrammeId)
@@ -48,16 +49,20 @@ public sealed class LetterReleaseService(
             return null;
         }
 
+        // Templates are per (programme, partner, letter type). Resolve the
+        // partner from the enrolment; no cross-partner fallback, so a partner
+        // that hasn't authored this letter simply releases nothing.
         var template = await db.LetterTemplates
             .FirstOrDefaultAsync(t =>
                 t.ProgrammeId == enrollment.ProgrammeId &&
+                t.PartnerId == enrollment.PartnerId &&
                 t.LetterType == letterType &&
                 t.DeletedAt == null, ct);
 
         if (template is null)
         {
-            logger.LogWarning("[Letters] No template for programme {ProgrammeId} type {LetterType}",
-                enrollment.ProgrammeId, letterType);
+            logger.LogWarning("[Letters] No template for programme {ProgrammeId} partner {PartnerId} type {LetterType}",
+                enrollment.ProgrammeId, enrollment.PartnerId, letterType);
             return null;
         }
 

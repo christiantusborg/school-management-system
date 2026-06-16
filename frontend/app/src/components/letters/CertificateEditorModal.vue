@@ -245,6 +245,7 @@ const props = defineProps({
   open: { type: Boolean, required: true },
   programmeId: { type: String, default: '' },
   programmeName: { type: String, default: '' },
+  partnerId: { type: String, default: '' },
   letterType: { type: String, default: 'Certificate' },
 })
 const emit = defineEmits(['close', 'saved'])
@@ -766,7 +767,9 @@ async function copyFromProgramme() {
   if (!confirm(`Replace this ${titleFor(props.letterType)} with the one from "${srcLabel}"? Unsaved changes will be lost.`)) return
   copying.value = true
   try {
-    const r = await apiClient.get(`/v1/admin/programmes/${copyFromProgrammeId.value}/letter-templates`)
+    const r = await apiClient.get(`/v1/admin/programmes/${copyFromProgrammeId.value}/letter-templates`, {
+      params: { partnerId: props.partnerId },
+    })
     const source = (r.data.items ?? []).find(t => t.letterType === props.letterType)
     if (!source || !source.certificateLayoutJson) {
       alert(`"${srcLabel}" has no saved ${titleFor(props.letterType)}.`)
@@ -789,7 +792,9 @@ async function copyFromSibling() {
   if (!confirm(`Replace this template with the ${other === 'Certificate' ? 'Certificate' : 'Provisional Certificate'} layout? Unsaved changes will be lost.`)) return
   copying.value = true
   try {
-    const r = await apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`)
+    const r = await apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`, {
+      params: { partnerId: props.partnerId },
+    })
     const sibling = (r.data.items ?? []).find(t => t.letterType === other)
     if (!sibling || !sibling.certificateLayoutJson) {
       alert(`No saved layout found for ${other}. Save the source template first.`)
@@ -867,12 +872,14 @@ async function deleteAsset(asset) {
 }
 
 async function load() {
-  if (!props.open || !props.programmeId) return
+  if (!props.open || !props.programmeId || !props.partnerId) return
   loading.value = true
   loadError.value = ''
   try {
     const [tplRes, tagRes, assetRes] = await Promise.all([
-      apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`),
+      apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`, {
+        params: { partnerId: props.partnerId },
+      }),
       apiClient.get('/v1/admin/letter-tags'),
       apiClient.get('/v1/admin/letter-assets'),
     ])
@@ -994,7 +1001,8 @@ async function onSave() {
   saveError.value = ''
   try {
     const payload = buildLayoutPayload()
-    await apiClient.put(`/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}`, payload)
+    await apiClient.put(`/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}`, payload,
+      { params: { partnerId: props.partnerId } })
     emit('saved')
     emit('close')
   } catch (e) {

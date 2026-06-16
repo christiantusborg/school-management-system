@@ -52,6 +52,7 @@ public sealed class LetterEmailService(
             .Select(e => new
             {
                 e.StudentId,
+                e.PartnerId,
                 ProgrammeId = db.Specializations
                     .Where(s => s.SpecializationId == e.SpecializationId)
                     .Select(s => s.ProgrammeId)
@@ -66,8 +67,11 @@ public sealed class LetterEmailService(
         if (enrollment is null)
             return new LetterEmailResult(LetterEmailOutcome.NoTemplate, Error: "Enrolment not found.");
 
+        // Per (programme, partner, letter type); partner comes from the
+        // enrolment. No fallback: a partner with no template sends nothing.
         var template = await db.LetterEmailTemplates.FirstOrDefaultAsync(t =>
             t.ProgrammeId == enrollment.ProgrammeId &&
+            t.PartnerId == enrollment.PartnerId &&
             t.LetterType == letterType &&
             t.DeletedAt == null, ct);
 

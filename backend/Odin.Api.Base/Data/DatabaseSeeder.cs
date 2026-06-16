@@ -603,95 +603,89 @@ public static class DatabaseSeeder
     }
 
     /// <summary>
-    /// Inserts the IBSS default <c>AdmissionLetter</c> body into every
-    /// existing <see cref="Programme"/> that does not already have one.
-    /// Never overwrites a row admins have edited.
+    /// Every (programme, partner) pair that should own a letter template: each
+    /// partner a shared core programme is granted to (ProgrammePartners), plus
+    /// the owner of a partner-owned programme (Programme.OwnerId). Templates are
+    /// per-partner, so the per-programme seeders fan out across these pairs.
     /// </summary>
-    private static async Task SeedDefaultAdmissionLetterAsync(OdinDbContext context, ILogger logger)
+    private static async Task<List<(Guid ProgrammeId, Guid PartnerId)>> LetterTemplatePairsAsync(OdinDbContext context)
     {
-        var programmeIds = await context.Programmes
-            .Where(p => p.DeletedAt == null)
-            .Select(p => p.ProgrammeId)
+        var shared = await context.ProgrammePartners
+            .Where(pp => pp.IsActive != null)
+            .Select(pp => new { pp.ProgrammeId, pp.PartnerId })
             .ToListAsync();
-        if (programmeIds.Count == 0) return;
-
-        var alreadyHave = await context.LetterTemplates
-            .Where(t => t.LetterType == LetterType.AdmissionLetter && t.DeletedAt == null)
-            .Select(t => t.ProgrammeId)
+        var owned = await context.Programmes
+            .Where(p => p.DeletedAt == null && p.OwnerId != null)
+            .Select(p => new { p.ProgrammeId, PartnerId = p.OwnerId!.Value })
             .ToListAsync();
-        var alreadySet = alreadyHave.ToHashSet();
+        return shared.Concat(owned)
+            .Select(x => (x.ProgrammeId, x.PartnerId))
+            .Distinct()
+            .ToList();
+    }
 
-        var html = DefaultAdmissionLetterHtml;
+    /// <summary>
+    /// Ensures an unpublished default template of <paramref name="type"/> exists
+    /// for every (programme, partner) pair that lacks one. Idempotent on
+    /// (ProgrammeId, PartnerId, LetterType); never overwrites an existing row.
+    /// <paramref name="configure"/> fills the type-specific body/layout.
+    /// </summary>
+    private static async Task EnsureTemplatePerPairAsync(
+        OdinDbContext context, ILogger logger, LetterType type, string label, Action<LetterTemplate> configure)
+    {
+        var pairs = await LetterTemplatePairsAsync(context);
+        if (pairs.Count == 0) return;
+
+        var have = (await context.LetterTemplates
+            .Where(t => t.LetterType == type && t.DeletedAt == null)
+            .Select(t => new { t.ProgrammeId, t.PartnerId })
+            .ToListAsync())
+            .Select(x => (x.ProgrammeId, x.PartnerId))
+            .ToHashSet();
+
         var added = 0;
-        foreach (var pid in programmeIds)
+        foreach (var pair in pairs)
         {
-            if (alreadySet.Contains(pid)) continue;
-            context.LetterTemplates.Add(new LetterTemplate
+            if (have.Contains(pair)) continue;
+            var t = new LetterTemplate
             {
                 LetterTemplateId = Guid.NewGuid(),
-                ProgrammeId = pid,
-                LetterType = LetterType.AdmissionLetter,
-                BodyHtml = html,
+                ProgrammeId = pair.ProgrammeId,
+                PartnerId = pair.PartnerId,
+                LetterType = type,
                 UpdatedAt = DateTime.UtcNow,
-            });
+            };
+            configure(t);
+            context.LetterTemplates.Add(t);
             added++;
         }
 
         if (added > 0)
         {
             await context.SaveChangesAsync();
-            logger.LogInformation("[Seeder] Default admission letter: +{Count} programmes seeded", added);
+            logger.LogInformation("[Seeder] {Label}: +{Count} (programme,partner) pairs seeded", label, added);
         }
         else
         {
-            logger.LogInformation("[Seeder] Default admission letter: every programme already has one — skipping");
+            logger.LogInformation("[Seeder] {Label}: every (programme,partner) pair already has one — skipping", label);
         }
     }
 
     /// <summary>
-    /// Inserts the IBSS default <c>OfferLetter</c> body into every existing
-    /// <see cref="Programme"/> that does not already have one. Idempotent.
+    /// Inserts the IBSS default <c>AdmissionLetter</c> body for every
+    /// (programme, partner) pair that does not already have one. Idempotent.
     /// </summary>
-    private static async Task SeedDefaultOfferLetterAsync(OdinDbContext context, ILogger logger)
-    {
-        var programmeIds = await context.Programmes
-            .Where(p => p.DeletedAt == null)
-            .Select(p => p.ProgrammeId)
-            .ToListAsync();
-        if (programmeIds.Count == 0) return;
+    private static Task SeedDefaultAdmissionLetterAsync(OdinDbContext context, ILogger logger)
+        => EnsureTemplatePerPairAsync(context, logger, LetterType.AdmissionLetter,
+            "Default admission letter", t => t.BodyHtml = DefaultAdmissionLetterHtml);
 
-        var alreadyHave = await context.LetterTemplates
-            .Where(t => t.LetterType == LetterType.OfferLetter && t.DeletedAt == null)
-            .Select(t => t.ProgrammeId)
-            .ToListAsync();
-        var alreadySet = alreadyHave.ToHashSet();
-
-        var html = DefaultOfferLetterHtml;
-        var added = 0;
-        foreach (var pid in programmeIds)
-        {
-            if (alreadySet.Contains(pid)) continue;
-            context.LetterTemplates.Add(new LetterTemplate
-            {
-                LetterTemplateId = Guid.NewGuid(),
-                ProgrammeId = pid,
-                LetterType = LetterType.OfferLetter,
-                BodyHtml = html,
-                UpdatedAt = DateTime.UtcNow,
-            });
-            added++;
-        }
-
-        if (added > 0)
-        {
-            await context.SaveChangesAsync();
-            logger.LogInformation("[Seeder] Default offer letter: +{Count} programmes seeded", added);
-        }
-        else
-        {
-            logger.LogInformation("[Seeder] Default offer letter: every programme already has one — skipping");
-        }
-    }
+    /// <summary>
+    /// Inserts the IBSS default <c>OfferLetter</c> body for every
+    /// (programme, partner) pair that does not already have one. Idempotent.
+    /// </summary>
+    private static Task SeedDefaultOfferLetterAsync(OdinDbContext context, ILogger logger)
+        => EnsureTemplatePerPairAsync(context, logger, LetterType.OfferLetter,
+            "Default offer letter", t => t.BodyHtml = DefaultOfferLetterHtml);
 
     /// <summary>
     /// Pre-fills <c>CertificateLayoutJson</c> with the canonical Konva layout
@@ -769,47 +763,9 @@ public static class DatabaseSeeder
     /// references the pre-seeded background asset and contains the static
     /// "Hereby Awards To…" script text plus the four data fields.
     /// </summary>
-    private static async Task SeedDefaultCertificateAsync(OdinDbContext context, ILogger logger)
-    {
-        var programmeIds = await context.Programmes
-            .Where(p => p.DeletedAt == null)
-            .Select(p => p.ProgrammeId)
-            .ToListAsync();
-        if (programmeIds.Count == 0) return;
-
-        var alreadyHave = await context.LetterTemplates
-            .Where(t => t.LetterType == LetterType.Certificate && t.DeletedAt == null)
-            .Select(t => t.ProgrammeId)
-            .ToListAsync();
-        var alreadySet = alreadyHave.ToHashSet();
-
-        var layoutJson = DefaultCertificateLayoutJson;
-        var added = 0;
-        foreach (var pid in programmeIds)
-        {
-            if (alreadySet.Contains(pid)) continue;
-            context.LetterTemplates.Add(new LetterTemplate
-            {
-                LetterTemplateId = Guid.NewGuid(),
-                ProgrammeId = pid,
-                LetterType = LetterType.Certificate,
-                BodyHtml = null,
-                CertificateLayoutJson = layoutJson,
-                UpdatedAt = DateTime.UtcNow,
-            });
-            added++;
-        }
-
-        if (added > 0)
-        {
-            await context.SaveChangesAsync();
-            logger.LogInformation("[Seeder] Default certificate layout: +{Count} programmes seeded", added);
-        }
-        else
-        {
-            logger.LogInformation("[Seeder] Default certificate layout: every programme already has one — skipping");
-        }
-    }
+    private static Task SeedDefaultCertificateAsync(OdinDbContext context, ILogger logger)
+        => EnsureTemplatePerPairAsync(context, logger, LetterType.Certificate,
+            "Default certificate layout", t => t.CertificateLayoutJson = DefaultCertificateLayoutJson);
 
     /// <summary>
     /// Seeds a starting layout for the Provisional Certificate (the
@@ -817,47 +773,9 @@ public static class DatabaseSeeder
     /// JSON so admins get the same field placement to start from; they swap
     /// the background image / remove signature fields per programme. Idempotent.
     /// </summary>
-    private static async Task SeedDefaultProvisionalCertificateAsync(OdinDbContext context, ILogger logger)
-    {
-        var programmeIds = await context.Programmes
-            .Where(p => p.DeletedAt == null)
-            .Select(p => p.ProgrammeId)
-            .ToListAsync();
-        if (programmeIds.Count == 0) return;
-
-        var alreadyHave = await context.LetterTemplates
-            .Where(t => t.LetterType == LetterType.ProvisionalCertificate && t.DeletedAt == null)
-            .Select(t => t.ProgrammeId)
-            .ToListAsync();
-        var alreadySet = alreadyHave.ToHashSet();
-
-        var layoutJson = DefaultCertificateLayoutJson;
-        var added = 0;
-        foreach (var pid in programmeIds)
-        {
-            if (alreadySet.Contains(pid)) continue;
-            context.LetterTemplates.Add(new LetterTemplate
-            {
-                LetterTemplateId = Guid.NewGuid(),
-                ProgrammeId = pid,
-                LetterType = LetterType.ProvisionalCertificate,
-                BodyHtml = null,
-                CertificateLayoutJson = layoutJson,
-                UpdatedAt = DateTime.UtcNow,
-            });
-            added++;
-        }
-
-        if (added > 0)
-        {
-            await context.SaveChangesAsync();
-            logger.LogInformation("[Seeder] Default provisional certificate layout: +{Count} programmes seeded", added);
-        }
-        else
-        {
-            logger.LogInformation("[Seeder] Default provisional certificate layout: every programme already has one — skipping");
-        }
-    }
+    private static Task SeedDefaultProvisionalCertificateAsync(OdinDbContext context, ILogger logger)
+        => EnsureTemplatePerPairAsync(context, logger, LetterType.ProvisionalCertificate,
+            "Default provisional certificate layout", t => t.CertificateLayoutJson = DefaultCertificateLayoutJson);
 
     private static string DefaultCertificateLayoutJson { get; } = $@"{{
   ""backgroundAssetId"": ""{SystemLetterAssetIds.IbssCertificateBg}"",
@@ -881,46 +799,9 @@ public static class DatabaseSeeder
     /// Inserts the IBSS default <c>Transcript</c> body into every existing
     /// <see cref="Programme"/> that does not already have one. Idempotent.
     /// </summary>
-    private static async Task SeedDefaultTranscriptAsync(OdinDbContext context, ILogger logger)
-    {
-        var programmeIds = await context.Programmes
-            .Where(p => p.DeletedAt == null)
-            .Select(p => p.ProgrammeId)
-            .ToListAsync();
-        if (programmeIds.Count == 0) return;
-
-        var alreadyHave = await context.LetterTemplates
-            .Where(t => t.LetterType == LetterType.Transcript && t.DeletedAt == null)
-            .Select(t => t.ProgrammeId)
-            .ToListAsync();
-        var alreadySet = alreadyHave.ToHashSet();
-
-        var html = DefaultTranscriptHtml;
-        var added = 0;
-        foreach (var pid in programmeIds)
-        {
-            if (alreadySet.Contains(pid)) continue;
-            context.LetterTemplates.Add(new LetterTemplate
-            {
-                LetterTemplateId = Guid.NewGuid(),
-                ProgrammeId = pid,
-                LetterType = LetterType.Transcript,
-                BodyHtml = html,
-                UpdatedAt = DateTime.UtcNow,
-            });
-            added++;
-        }
-
-        if (added > 0)
-        {
-            await context.SaveChangesAsync();
-            logger.LogInformation("[Seeder] Default transcript: +{Count} programmes seeded", added);
-        }
-        else
-        {
-            logger.LogInformation("[Seeder] Default transcript: every programme already has one — skipping");
-        }
-    }
+    private static Task SeedDefaultTranscriptAsync(OdinDbContext context, ILogger logger)
+        => EnsureTemplatePerPairAsync(context, logger, LetterType.Transcript,
+            "Default transcript", t => t.BodyHtml = DefaultTranscriptHtml);
 
     private static string DefaultTranscriptHtml { get; } = $@"
 <p><img data-asset-id=""{SystemLetterAssetIds.IbssLogo}"" alt=""IBSS"" /></p>

@@ -169,7 +169,17 @@
 
           <div class="section-label">LETTERS</div>
           <div class="pathway-edit-block">
-            <LetterButtonsRow :programme-id="prog.programmeId" :programme-name="prog.name" />
+            <div class="letter-partner-row">
+              <label>Editing letters for partner:</label>
+              <select v-model="letterPartner[prog.programmeId]" class="letter-partner-select">
+                <option :value="''">— Select a partner —</option>
+                <option v-for="p in lettersPartnersFor(prog)" :key="p.partnerId" :value="p.partnerId">{{ p.name }}</option>
+              </select>
+            </div>
+            <LetterButtonsRow v-if="letterPartner[prog.programmeId]"
+              :programme-id="prog.programmeId" :programme-name="prog.name"
+              :partner-id="letterPartner[prog.programmeId]" />
+            <p v-else class="letter-partner-hint">Letters are per partner. Pick a partner above to edit their offer/admission/transcript/certificate.</p>
           </div>
 
           <div class="section-label">SPECIALIZATIONS &amp; SUBJECTS</div>
@@ -445,6 +455,16 @@ async function loadPartnersForOwner() {
     partnersForOwner.value = r.data.items ?? []
   } catch { partnersForOwner.value = [] }
 }
+
+// Per-programme partner selection for the letters editor — templates are
+// per (programme, partner). For an owned programme only its owner is relevant;
+// for a core programme any partner may have its own letters.
+const letterPartner = reactive({})   // programmeId → partnerId
+function lettersPartnersFor(prog) {
+  const ownerId = prog.ownerPartnerId ?? prog.ownerId ?? null
+  if (ownerId) return partnersForOwner.value.filter(p => p.partnerId === ownerId)
+  return partnersForOwner.value
+}
 const educationLevels = ref([])
 const progAward = reactive({})       // programmeId → awardEducationLevelId | null
 const awardBusy = reactive({})       // programmeId → bool
@@ -513,6 +533,7 @@ function toggleShowDeleted() {
 }
 
 onMounted(loadAll)
+onMounted(loadPartnersForOwner)
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const awardNameFor = id => id ? (educationLevels.value.find(e => e.educationLevelId === id)?.name ?? null) : null
@@ -988,6 +1009,10 @@ async function permanentDeleteProgramme(prog) {
 .section-arrow { color: #888; font-size: 0.78rem; width: 10px; flex-shrink: 0; }
 
 .pathway-edit-block { padding: 0 1.4rem 0.75rem; }
+.letter-partner-row { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.letter-partner-row label { font-size: .8rem; font-weight: 600; color: #44506a; }
+.letter-partner-select { padding: .35rem .55rem; border: 1px solid #d8dde5; border-radius: 6px; font-size: .85rem; min-width: 240px; }
+.letter-partner-hint { font-size: .78rem; color: #6b7888; margin: .2rem 0 0; }
 .pathway-grid {
   display: flex; flex-direction: column; gap: 0.3rem;
   border: 1px solid #e8edf4; border-radius: 6px; padding: 0.55rem 0.75rem;

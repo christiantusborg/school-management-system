@@ -63,6 +63,7 @@ const props = defineProps({
   open: { type: Boolean, required: true },
   programmeId: { type: String, default: '' },
   programmeName: { type: String, default: '' },
+  partnerId: { type: String, default: '' },
   letterType: { type: String, default: '' },
 })
 const emit = defineEmits(['close', 'saved'])
@@ -126,12 +127,14 @@ function parseList(json) {
 }
 
 async function load() {
-  if (!props.open || !props.programmeId || !props.letterType) return
+  if (!props.open || !props.programmeId || !props.letterType || !props.partnerId) return
   loading.value = true
   loadError.value = ''
   try {
     const [tplRes, tagRes] = await Promise.all([
-      apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-email-templates`),
+      apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-email-templates`, {
+        params: { partnerId: props.partnerId },
+      }),
       apiClient.get('/v1/admin/letter-tags'),
     ])
     tags.value = tagRes.data.items ?? []
@@ -160,7 +163,8 @@ async function onSave() {
         bodyHtml: form.bodyHtml,
         ccRecipientsJson: JSON.stringify(cc),
         bccRecipientsJson: JSON.stringify(bcc),
-      })
+      },
+      { params: { partnerId: props.partnerId } })
     emit('saved')
     emit('close')
   } catch (err) {
@@ -170,7 +174,7 @@ async function onSave() {
   }
 }
 
-watch(() => [props.open, props.programmeId, props.letterType], () => { if (props.open) load() }, { immediate: true })
+watch(() => [props.open, props.programmeId, props.partnerId, props.letterType], () => { if (props.open) load() }, { immediate: true })
 </script>
 
 <style scoped>

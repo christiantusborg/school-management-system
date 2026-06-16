@@ -15,6 +15,7 @@
       :open="modalOpen"
       :programme-id="programmeId"
       :programme-name="programmeName"
+      :partner-id="partnerId"
       :letter-type="activeType"
       @close="modalOpen = false"
       @saved="onSaved"
@@ -23,6 +24,7 @@
       :open="emailModalOpen"
       :programme-id="programmeId"
       :programme-name="programmeName"
+      :partner-id="partnerId"
       :letter-type="activeType"
       @close="emailModalOpen = false"
       @saved="emit('saved')"
@@ -39,6 +41,7 @@ import LetterEmailEditorModal from './LetterEmailEditorModal.vue'
 const props = defineProps({
   programmeId: { type: String, required: true },
   programmeName: { type: String, default: '' },
+  partnerId: { type: String, default: '' },
 })
 const emit = defineEmits(['saved'])
 
@@ -66,9 +69,11 @@ function badgeClass(code) {
 }
 
 async function loadPublishStatus() {
-  if (!props.programmeId) return
+  if (!props.programmeId || !props.partnerId) return
   try {
-    const r = await apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`)
+    const r = await apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`, {
+      params: { partnerId: props.partnerId },
+    })
     const next = Object.fromEntries(TYPES.map(t => [t.code, false]))
     for (const row of (r.data.items ?? [])) {
       if (row.letterType in next) next[row.letterType] = !!row.isPublished
@@ -88,7 +93,7 @@ function onSaved() {
   emit('saved')
 }
 
-watch(() => props.programmeId, loadPublishStatus, { immediate: true })
+watch(() => [props.programmeId, props.partnerId], loadPublishStatus, { immediate: true })
 </script>
 
 <style scoped>

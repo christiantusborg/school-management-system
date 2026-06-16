@@ -27,7 +27,7 @@
             <span v-if="partnerDisabled(m.specializationId)" class="pill pill-muted" title="Partner has disabled this specialization from their portal">Partner-disabled</span>
           </div>
           <p v-if="specializationsByProg(p.programmeId).length === 0" class="empty-note">No specializations defined.</p>
-          <LetterButtonsRow :programme-id="p.programmeId" :programme-name="p.name" />
+          <LetterButtonsRow :programme-id="p.programmeId" :programme-name="p.name" :partner-id="partnerId" />
         </div>
       </div>
     </div>

@@ -94,6 +94,8 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
                 {
                     LetterTemplateId = Guid.NewGuid(),
                     ProgrammeId = newProgrammeId,
+                    // Owned programme: templates belong to the creating partner.
+                    PartnerId = partnerId!.Value,
                     LetterType = l.LetterType,
                     BodyHtml = l.BodyHtml,
                     CertificateBackgroundPath = l.CertificateBackgroundPath,

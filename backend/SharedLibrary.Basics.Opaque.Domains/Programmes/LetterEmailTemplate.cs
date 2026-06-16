@@ -12,6 +12,14 @@ public class LetterEmailTemplate : IDeletedAtEntity
 {
     public Guid LetterEmailTemplateId { get; set; } = Guid.NewGuid();
     public Guid ProgrammeId { get; set; }
+
+    /// <summary>
+    /// Owning partner. Templates are per (programme, partner, letter type) so
+    /// each partner offering a shared core programme has its own independent
+    /// email (recipients + body). No cross-partner fallback.
+    /// </summary>
+    public Guid PartnerId { get; set; }
+
     public LetterType LetterType { get; set; }
 
     /// <summary>

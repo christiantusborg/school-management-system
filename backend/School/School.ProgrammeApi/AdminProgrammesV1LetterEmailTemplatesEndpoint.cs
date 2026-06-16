@@ -33,17 +33,22 @@ public sealed class AdminProgrammesV1LetterEmailTemplatesEndpoint : IEndpointMar
     }
 
     private static async Task<IResult> ListAsync(
-        OdinDbContext db, Guid programmeId, CancellationToken ct)
+        OdinDbContext db, Guid programmeId, CancellationToken ct,
+        [FromQuery] Guid? partnerId = null)
     {
         var programmeExists = await db.Programmes.AnyAsync(p => p.ProgrammeId == programmeId, ct);
         if (!programmeExists) return Results.NotFound(new { message = "programme not found" });
 
+        // Per (programme, partner, type); the editor always scopes to a partner.
+        if (partnerId is null) return Results.Ok(new { items = Array.Empty<object>(), total = 0 });
+
         var rows = await db.LetterEmailTemplates
-            .Where(t => t.ProgrammeId == programmeId && t.DeletedAt == null)
+            .Where(t => t.ProgrammeId == programmeId && t.PartnerId == partnerId && t.DeletedAt == null)
             .Select(t => new
             {
                 letterEmailTemplateId = t.LetterEmailTemplateId,
                 programmeId = t.ProgrammeId,
+                partnerId = t.PartnerId,
                 letterType = t.LetterType.ToString(),
                 isEmailEnabled = t.IsEmailEnabled,
                 subject = t.Subject,
@@ -62,18 +67,21 @@ public sealed class AdminProgrammesV1LetterEmailTemplatesEndpoint : IEndpointMar
         Guid programmeId,
         string type,
         [FromBody] WriteRequest body,
-        CancellationToken ct)
+        CancellationToken ct,
+        [FromQuery] Guid? partnerId = null)
     {
         if (!Enum.TryParse<LetterType>(type, ignoreCase: true, out var letterType))
             return Results.BadRequest(new { message = "unknown letter type" });
         if (!Emailable.Contains(letterType))
             return Results.BadRequest(new { message = "only Offer and Admission letters support email" });
+        if (partnerId is null) return Results.BadRequest(new { message = "partnerId is required" });
 
         var programmeExists = await db.Programmes.AnyAsync(p => p.ProgrammeId == programmeId, ct);
         if (!programmeExists) return Results.NotFound(new { message = "programme not found" });
 
         var entity = await db.LetterEmailTemplates.FirstOrDefaultAsync(t =>
             t.ProgrammeId == programmeId &&
+            t.PartnerId == partnerId &&
             t.LetterType == letterType &&
             t.DeletedAt == null, ct);
 
@@ -83,6 +91,7 @@ public sealed class AdminProgrammesV1LetterEmailTemplatesEndpoint : IEndpointMar
             {
                 LetterEmailTemplateId = Guid.NewGuid(),
                 ProgrammeId = programmeId,
+                PartnerId = partnerId.Value,
                 LetterType = letterType,
             };
             db.LetterEmailTemplates.Add(entity);

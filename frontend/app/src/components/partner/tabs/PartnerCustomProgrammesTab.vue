@@ -97,7 +97,7 @@
           </div>
         </div>
 
-        <LetterButtonsRow :programme-id="c.programmeId" :programme-name="c.name" />
+        <LetterButtonsRow :programme-id="c.programmeId" :programme-name="c.name" :partner-id="partnerId" />
       </div>
     </div>
   </div>
