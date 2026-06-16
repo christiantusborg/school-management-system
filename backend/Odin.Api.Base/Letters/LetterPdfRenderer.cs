@@ -37,6 +37,19 @@ public sealed class LetterPdfRenderer
         {
             foreach (var pageDef in layout.GetPages())
             {
+                // A page carrying the auto-generated grades table is rendered as
+                // a flowing Header/Content/Footer page so the table paginates
+                // across as many pages as needed (full letterhead on each),
+                // instead of being clipped at the page edge.
+                var transcriptField = (pageDef.Fields ?? new()).FirstOrDefault(f =>
+                    string.Equals((f.Kind ?? "text").Trim(), "transcriptTable", StringComparison.OrdinalIgnoreCase));
+                if (transcriptField is not null)
+                {
+                    RenderFlowingTranscriptPage(container, pageDef, transcriptField, pageSize, sx, sy, lw, lh,
+                        tagValues, assets, transcriptRows ?? Array.Empty<TranscriptGradeRow>());
+                    continue;
+                }
+
                 container.Page(page =>
                 {
                     page.Size(pageSize);
@@ -151,6 +164,243 @@ public sealed class LetterPdfRenderer
                 });
             }
         }).GeneratePdf();
+    }
+
+    /// <summary>
+    /// Renders the transcript page with the grades table in a flowing
+    /// Content region between a repeated Header (letterhead + student details)
+    /// and a repeated Footer (accreditation band). The table paginates onto as
+    /// many pages as needed, repeating its column header; the signature block
+    /// flows in after the last grade row. Zones are derived from the stored
+    /// field geometry: everything above the table is the header band, the bottom
+    /// accreditation image(s) are the footer band, and fields between the table
+    /// and the footer (signature/stamp) flow after the table.
+    /// </summary>
+    private void RenderFlowingTranscriptPage(
+        IDocumentContainer container,
+        CertificatePage pageDef,
+        CertificateField tableField,
+        PageSize pageSize,
+        float sx, float sy,
+        int canvasW, int canvasH,
+        IReadOnlyDictionary<string, string> tagValues,
+        IReadOnlyDictionary<Guid, byte[]> assets,
+        IReadOnlyList<TranscriptGradeRow> rows)
+    {
+        var pw = pageSize.Width;
+        var fields = pageDef.Fields ?? new();
+        var tableTopY = (float)tableField.Y;
+
+        static bool IsTable(CertificateField f)
+        {
+            var k = (f.Kind ?? "text").Trim().ToLowerInvariant();
+            return k == "transcripttable" || k == "gradestandardtable";
+        }
+
+        // Footer band = the bottom accreditation image(s): a tall image field in
+        // the lower half of the canvas. Thin divider lines (height 2) and text
+        // are excluded so they stay with the signature block.
+        var footerFields = fields.Where(f =>
+            string.Equals((f.Kind ?? "").Trim(), "image", StringComparison.OrdinalIgnoreCase)
+            && f.Height >= 30 && f.Y > canvasH * 0.5).ToList();
+        var footerTopY = footerFields.Count > 0 ? (float)footerFields.Min(f => f.Y) : (float)canvasH;
+
+        var headerFields = fields.Where(f => f.Y < tableTopY && !IsTable(f)).ToList();
+        var afterFields = fields.Where(f => f.Y >= tableTopY && f.Y < footerTopY && !IsTable(f)).ToList();
+
+        var bgBytes = pageDef.BackgroundAssetId is { } bgId && assets.TryGetValue(bgId, out var bg)
+            ? bg : Array.Empty<byte>();
+        var tableFontSize = Math.Max(6f, tableField.FontSize <= 0 ? 9f : tableField.FontSize * sy);
+        var headerHeight = tableTopY * sy;
+        var footerHeight = ((float)canvasH - footerTopY) * sy;
+
+        container.Page(page =>
+        {
+            page.Size(pageSize);
+            page.Margin(0);
+            page.PageColor(Colors.White);
+            if (bgBytes is { Length: > 0 }) page.Background().Image(bgBytes).FitArea();
+
+            page.Header().Height(headerHeight).Layers(layers =>
+            {
+                layers.PrimaryLayer().Background(Colors.Transparent);
+                foreach (var f in headerFields) RenderFieldLayer(layers, f, sx, sy, tagValues, assets, pw, 0f);
+            });
+
+            if (footerFields.Count > 0)
+            {
+                page.Footer().Height(footerHeight).Layers(layers =>
+                {
+                    layers.PrimaryLayer().Background(Colors.Transparent);
+                    foreach (var f in footerFields) RenderFieldLayer(layers, f, sx, sy, tagValues, assets, pw, footerTopY * sy);
+                });
+            }
+
+            page.Content().PaddingTop(6).Column(col =>
+            {
+                col.Item()
+                   .PaddingLeft((float)tableField.X * sx)
+                   .Width((tableField.Width <= 0 ? 500 : tableField.Width) * sx)
+                   .Element(c => BuildTranscriptTableContent(c, rows, tableFontSize));
+
+                if (afterFields.Count > 0)
+                {
+                    var sigTop = (float)afterFields.Min(f => f.Y);
+                    var sigBottom = (float)afterFields.Max(f => f.Y);
+                    var sigHeight = (sigBottom - sigTop + 30) * sy;
+                    col.Item().PaddingTop(24).Height(sigHeight).Layers(layers =>
+                    {
+                        layers.PrimaryLayer().Background(Colors.Transparent);
+                        foreach (var f in afterFields) RenderFieldLayer(layers, f, sx, sy, tagValues, assets, pw, sigTop * sy);
+                    });
+                }
+            });
+        });
+    }
+
+    /// <summary>
+    /// Renders a single text or image field into a layers container at its
+    /// absolute (x, y), minus <paramref name="offsetYpx"/> so header/footer/
+    /// signature bands can re-base their fields to the band's top. Mirrors the
+    /// absolute-field rendering used for non-flowing pages.
+    /// </summary>
+    private static void RenderFieldLayer(
+        LayersDescriptor layers,
+        CertificateField field,
+        float sx, float sy,
+        IReadOnlyDictionary<string, string> tagValues,
+        IReadOnlyDictionary<Guid, byte[]> assets,
+        float pageWidth,
+        float offsetYpx)
+    {
+        var kind = (field.Kind ?? "text").Trim().ToLowerInvariant();
+        var topPx = Math.Max(0f, (float)field.Y * sy - offsetYpx);
+
+        if (kind == "image")
+        {
+            if (field.ImageAssetId is not { } id || !assets.TryGetValue(id, out var bytes) || bytes is null || bytes.Length == 0)
+                return;
+            var fw = (field.Width <= 0 ? 200 : field.Width) * sx;
+            var fh = (field.Height <= 0 ? 200 : field.Height) * sy;
+            layers.Layer()
+                .PaddingTop(topPx)
+                .PaddingLeft((float)field.X * sx)
+                .Width(fw).Height(fh)
+                .Image(bytes).FitArea();
+            return;
+        }
+
+        var textVal = ResolveFieldText(field, tagValues);
+        if (string.IsNullOrWhiteSpace(textVal)) return;
+
+        var l = layers.Layer();
+        var hasExplicitWidth = field.Width > 0;
+        var align = field.Align?.Trim().ToLowerInvariant();
+        IContainer aligned;
+        if (hasExplicitWidth)
+        {
+            aligned = l.PaddingTop(topPx).PaddingLeft((float)field.X * sx).Width(field.Width * sx);
+            aligned = align switch
+            {
+                "center" => aligned.AlignCenter(),
+                "right"  => aligned.AlignRight(),
+                _        => aligned.AlignLeft(),
+            };
+        }
+        else
+        {
+            aligned = align switch
+            {
+                "center" => l.PaddingTop(topPx).Width(pageWidth).AlignCenter(),
+                "right"  => l.PaddingTop(topPx).Width((float)field.X * sx).AlignRight(),
+                _        => l.PaddingTop(topPx).PaddingLeft((float)field.X * sx),
+            };
+        }
+
+        var fontSize = Math.Max(4f, field.FontSize * sy);
+        var color = string.IsNullOrWhiteSpace(field.Color) ? "#000000" : field.Color;
+        if (!string.IsNullOrWhiteSpace(field.HtmlText) && field.Tag is null)
+            aligned.Element(c => RenderHtmlBlocks(c, field.HtmlText!, fontSize, color, field.Bold, field.Italic));
+        else
+            aligned.Text(t =>
+            {
+                var span = t.Span(textVal);
+                span.FontSize(fontSize);
+                span.FontColor(color);
+                if (field.Bold) span.Bold();
+                if (field.Italic) span.Italic();
+            });
+    }
+
+    /// <summary>
+    /// Builds the grades table as flowing content (not a fixed layer). The
+    /// column header repeats on every page via <c>table.Header</c>; the Total
+    /// and GPA rows render once after the last grade row.
+    /// </summary>
+    private static void BuildTranscriptTableContent(
+        IContainer container,
+        IReadOnlyList<TranscriptGradeRow> rows,
+        float fontSize)
+    {
+        container.Table(table =>
+        {
+            table.ColumnsDefinition(cols =>
+            {
+                cols.RelativeColumn(2);  // Code
+                cols.RelativeColumn(4);  // Module
+                cols.RelativeColumn(2);  // ECTS credit hours
+                cols.RelativeColumn(2);  // ECTS Grade
+                cols.RelativeColumn(2);  // IBSS Grade
+                cols.RelativeColumn(2);  // ECTS Grade Point
+                cols.RelativeColumn(2);  // Grade Point
+            });
+
+            table.Header(header =>
+            {
+                void H(string text) => header.Cell().Border(0.5f).BorderColor(Colors.Black)
+                    .Padding(3).AlignCenter().AlignMiddle().Text(text).Bold().FontSize(fontSize);
+                H("Code"); H("Module"); H("ECTS\ncredit hours"); H("ECTS\nGrade");
+                H("IBSS\nGrade"); H("ECTS\nGrade Point"); H("Grade\nPoint");
+            });
+
+            void Cell(string text, bool left = false, bool bold = false)
+            {
+                var c = table.Cell().Border(0.5f).BorderColor(Colors.Black).Padding(3).MinHeight(16);
+                var span = (left ? c.AlignLeft() : c.AlignCenter()).AlignMiddle().Text(text).FontSize(fontSize);
+                if (bold) span.Bold();
+            }
+
+            decimal totalEcts = 0m;
+            double totalGp = 0;
+            foreach (var r in rows)
+            {
+                var (ects, uk, gp) = MapScore(r.Score);
+                var pts = (double)r.Ects * gp;
+                totalEcts += r.Ects;
+                totalGp += pts;
+                Cell(r.Code);
+                Cell(r.Name, left: true);
+                Cell(r.Ects.ToString("0.##", CultureInfo.InvariantCulture));
+                Cell(ects);
+                Cell(uk);
+                Cell(gp.ToString("0.0", CultureInfo.InvariantCulture));
+                Cell(pts.ToString("0.0", CultureInfo.InvariantCulture));
+            }
+
+            // Total row (once, after the last grade row).
+            table.Cell().ColumnSpan(2).Border(0.5f).BorderColor(Colors.Black).Padding(3).Text("Total").Bold().FontSize(fontSize);
+            Cell(totalEcts.ToString("0.##", CultureInfo.InvariantCulture), bold: true);
+            Cell("");
+            Cell("");
+            Cell("");
+            Cell(totalGp.ToString("0.0", CultureInfo.InvariantCulture), bold: true);
+
+            // GPA row.
+            var gpa = totalEcts > 0 ? totalGp / (double)totalEcts : 0;
+            table.Cell().ColumnSpan(6).Border(0.5f).BorderColor(Colors.Black).Padding(3).AlignRight()
+                .Text("Grade Point Average").Bold().FontSize(fontSize);
+            Cell(gpa.ToString("0.00", CultureInfo.InvariantCulture), bold: true);
+        });
     }
 
     private static void RenderTranscriptTable(
