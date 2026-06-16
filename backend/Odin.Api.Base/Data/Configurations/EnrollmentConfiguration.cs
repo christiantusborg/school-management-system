@@ -10,6 +10,12 @@ public class EnrollmentConfiguration : IEntityTypeConfiguration<Enrollment>
     {
         builder.HasKey(e => e.StudentEnrollmentId);
 
+        // Stable letter reference code. Unique so a verify lookup resolves to
+        // exactly one enrolment; Postgres treats nulls as distinct, so the
+        // many enrolments that have not yet released a letter coexist fine.
+        builder.Property(e => e.LetterReferenceCode).HasMaxLength(16);
+        builder.HasIndex(e => e.LetterReferenceCode).IsUnique();
+
         builder.HasOne(e => e.Student)
             .WithMany(s => s.Enrollments)
             .HasForeignKey(e => e.StudentId)

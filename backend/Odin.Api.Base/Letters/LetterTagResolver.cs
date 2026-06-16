@@ -48,7 +48,7 @@ public sealed class LetterTagResolver(OdinDbContext db)
     /// so a partially-complete student still produces a renderable letter.
     /// </summary>
     public async Task<IReadOnlyDictionary<string, string>> ResolveAsync(
-        Guid enrollmentId, CancellationToken ct)
+        Guid enrollmentId, CancellationToken ct, string? reference = null)
     {
         var enrollment = await db.Enrollments
             .Where(e => e.StudentEnrollmentId == enrollmentId)
@@ -60,6 +60,7 @@ public sealed class LetterTagResolver(OdinDbContext db)
                 e.SpecializationId,
                 e.CommencementDate,
                 e.ModeOfStudyId,
+                e.ApprovedDurationMonths,
                 Student = db.Students
                     .Where(s => s.StudentId == e.StudentId)
                     .Select(s => new
@@ -91,6 +92,11 @@ public sealed class LetterTagResolver(OdinDbContext db)
         foreach (var tag in LetterTagRegistry.All)
             result[tag.Token] = string.Empty;
 
+        // The reference code is composed (with its letter-type prefix) and
+        // persisted by LetterReleaseService, then passed in here — the
+        // resolver only echoes it into the [ref] tag.
+        result["[ref]"] = reference ?? string.Empty;
+
         if (enrollment is null) return result;
 
         // ── Student profile ──────────────────────────────────────────────
@@ -115,12 +121,16 @@ public sealed class LetterTagResolver(OdinDbContext db)
         result["[passport id]"]       = enrollment.Student?.PassportId ?? string.Empty;
         result["[date]"]              = DateTime.UtcNow.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture);
         result["[commencement date]"] = enrollment.CommencementDate?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
-        result["[duration of study]"] = enrollment.Specialization is null
-            ? string.Empty
-            : $"{enrollment.Specialization.DurationOfStudyMonths} months";
+        // Approved (per-enrolment) duration wins over the specialization
+        // default, so an admin override shifts the completion date too.
+        var durationMonths = enrollment.ApprovedDurationMonths
+            ?? enrollment.Specialization?.DurationOfStudyMonths;
+        result["[duration of study]"] = durationMonths is { } dm
+            ? $"{dm} months"
+            : string.Empty;
         result["[instruction language]"] = enrollment.Specialization?.InstructionLanguage ?? string.Empty;
-        var calculatedCompletion = (enrollment.CommencementDate is { } start && enrollment.Specialization is { } sp)
-            ? start.AddMonths(sp.DurationOfStudyMonths)
+        var calculatedCompletion = (enrollment.CommencementDate is { } start && durationMonths is { } months)
+            ? start.AddMonths(months)
             : (DateTime?)null;
         result["[completion date]"] = calculatedCompletion?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
         result["[graduation date]"] = calculatedCompletion?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;

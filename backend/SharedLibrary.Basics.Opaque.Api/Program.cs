@@ -172,7 +172,10 @@ builder.Services.AddSingleton<SharedLibrary.Basics.OpaqueService.OpaqueServer>()
 
 // Senders (stub implementations for local development)
 builder.Services.AddScoped<ISmsSender, NullSmsSender>();
-builder.Services.AddScoped<IEmailSender, BrevoEmailSender>();
+// Brevo SMTP for system mail; RoutingEmailSender layers Gmail on top for
+// letter emails when configured in System Config → Email.
+builder.Services.AddScoped<BrevoEmailSender>();
+builder.Services.AddScoped<IEmailSender, RoutingEmailSender>();
 
 // Repositories
 
@@ -205,6 +208,7 @@ builder.Services.AddScoped<IDocumentTypeRepository, DocumentTypeRepository>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.LetterTagResolver>();
 builder.Services.AddSingleton<Odin.Api.Base.Letters.LetterPdfRenderer>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.LetterReleaseService>();
+builder.Services.AddScoped<Odin.Api.Base.Letters.LetterEmailService>();
 
 // Per-enrollment activity log reader — used by admin/partner/student
 // activity endpoints to flatten EnrollmentStatusNote + StudentDocumentNote.

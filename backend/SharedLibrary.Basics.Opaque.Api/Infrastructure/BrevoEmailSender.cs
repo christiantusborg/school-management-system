@@ -14,13 +14,12 @@ internal sealed class BrevoEmailSender(IConfiguration configuration) : IEmailSen
     private readonly string _fromEmail = configuration["Brevo:FromEmail"]    ?? "noreply@example.com";
     private readonly string _fromName  = configuration["Brevo:FromName"]     ?? "Odin";
 
-    public async Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken = default)
+    public Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken = default)
+        => SendAsync(new EmailMessage(to, subject, body), cancellationToken);
+
+    public async Task SendAsync(EmailMessage msg, CancellationToken cancellationToken = default)
     {
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(_fromName, _fromEmail));
-        message.To.Add(MailboxAddress.Parse(to));
-        message.Subject = subject;
-        message.Body = new TextPart("html") { Text = body };
+        var message = EmailMimeBuilder.Build(msg, _fromEmail, _fromName);
 
         using var client = new SmtpClient();
         await client.ConnectAsync(_host, _port, SecureSocketOptions.StartTls, cancellationToken).ConfigureAwait(false);

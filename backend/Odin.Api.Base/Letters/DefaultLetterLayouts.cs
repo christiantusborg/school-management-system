@@ -89,7 +89,7 @@ internal static class DefaultLetterLayouts
             Body(LeftX, 110, ContentW, "Offer Letter", bold: true, fontSize: 18, align: "center"),
 
             Body(LeftX, 145, ContentW, prefix: "Date: ",  tag: "[date]"),
-            Body(LeftX, 145 + LineH,     ContentW, text:   "Ref: "),
+            Body(LeftX, 145 + LineH,     ContentW, prefix: "Ref: ", tag: "[ref]"),
             Body(LeftX, 175 + LineH,     ContentW, prefix: "Name: ",             tag: "[student full name]", bold: true),
             Body(LeftX, 175 + LineH * 2, ContentW, prefix: "Passport/ID No.: ",  tag: "[passport id]",       bold: true),
             Body(LeftX, 175 + LineH * 3, ContentW, prefix: "Address: ",          tag: "[student address]",   bold: true),
@@ -200,7 +200,7 @@ internal static class DefaultLetterLayouts
             Body(LeftX, 110, ContentW, "Admission Letter", bold: true, fontSize: 18, align: "center"),
 
             Body(LeftX, 145, ContentW, prefix: "Date: ", tag: "[date]"),
-            Body(LeftX, 145 + LineH,     ContentW, text:   "Ref: "),
+            Body(LeftX, 145 + LineH,     ContentW, prefix: "Ref: ", tag: "[ref]"),
             Body(LeftX, 175 + LineH,     ContentW, prefix: "Name: ",            tag: "[student full name]", bold: true),
             Body(LeftX, 175 + LineH * 2, ContentW, prefix: "Passport/ID No.: ", tag: "[passport id]",       bold: true),
             Body(LeftX, 175 + LineH * 3, ContentW, prefix: "Address: ",         tag: "[student address]",   bold: true),

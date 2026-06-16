@@ -20,6 +20,7 @@ public sealed class LetterReleaseService(
     IFileStorage storage,
     LetterTagResolver tagResolver,
     LetterPdfRenderer renderer,
+    LetterEmailService letterEmail,
     ILogger<LetterReleaseService> logger)
 {
     public async Task<Guid?> ReleaseAsync(
@@ -59,6 +60,16 @@ public sealed class LetterReleaseService(
                 enrollment.ProgrammeId, letterType);
             return null;
         }
+
+        // Ensure a stable reference code for this enrolment. Generated once on
+        // the first release (first 8 hex chars of a GUID) and reused for every
+        // letter type and every regeneration after, so a printed reference
+        // never changes. Saved with the document below in the same SaveChanges.
+        var enrollmentEntity = await db.Enrollments
+            .FirstAsync(e => e.StudentEnrollmentId == enrollmentId, ct);
+        if (string.IsNullOrEmpty(enrollmentEntity.LetterReferenceCode))
+            enrollmentEntity.LetterReferenceCode = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var reference = $"IBSS-{LetterTypeCode(letterType)}-{enrollmentEntity.LetterReferenceCode}";
 
         // Gate release on the admin having explicitly published this template.
         // Seeded defaults sit in the DB as a starting canvas for the editor;
@@ -103,7 +114,7 @@ public sealed class LetterReleaseService(
         byte[] pdfBytes;
         if (layout is not null)
         {
-            var tags = await tagResolver.ResolveAsync(enrollmentId, ct);
+            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference);
             var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractCertificateAssetIds(layout));
             // Only fetch transcript rows if a layout actually contains a
             // transcriptTable field — saves a round-trip on offer/admission
@@ -118,7 +129,7 @@ public sealed class LetterReleaseService(
         }
         else if (!string.IsNullOrWhiteSpace(template.BodyHtml))
         {
-            var tags = await tagResolver.ResolveAsync(enrollmentId, ct);
+            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference);
             var pages = TryParseHtmlPages(template.BodyHtml);
             var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractAssetIds(pages));
             pdfBytes = renderer.RenderHtml(pages, tags, assets);
@@ -149,26 +160,88 @@ public sealed class LetterReleaseService(
             _ => throw new ArgumentOutOfRangeException(nameof(letterType)),
         };
 
-        var document = new StudentDocument
+        // A unique index allows only one active document per
+        // (Enrollment, DocumentType). On regeneration the letter already
+        // exists, so update that row in place rather than inserting a
+        // duplicate (which violates the index). The document id stays stable
+        // across regenerations, keeping existing download links valid; the
+        // superseded PDF blob is left in storage.
+        var existing = await db.StudentDocuments
+            .FirstOrDefaultAsync(d => d.EnrollmentId == enrollmentId
+                && d.DocumentTypeId == documentTypeId
+                && d.DeletedAt == null, ct);
+
+        Guid resultId;
+        if (existing is not null)
         {
-            StudentDocumentId = Guid.NewGuid(),
-            StudentId = enrollment.StudentId,
-            EnrollmentId = enrollmentId,
-            DocumentTypeId = documentTypeId,
-            FileName = fileName,
-            MimeType = "application/pdf",
-            UploadedAt = DateTime.UtcNow,
-            StoragePath = storagePath,
-            CurrentStatusId = DocumentStatusIds.VerifiedByEnrolment,
-        };
-        db.StudentDocuments.Add(document);
+            existing.FileName = fileName;
+            existing.MimeType = "application/pdf";
+            existing.UploadedAt = DateTime.UtcNow;
+            existing.StoragePath = storagePath;
+            existing.CurrentStatusId = DocumentStatusIds.VerifiedByEnrolment;
+            resultId = existing.StudentDocumentId;
+        }
+        else
+        {
+            var document = new StudentDocument
+            {
+                StudentDocumentId = Guid.NewGuid(),
+                StudentId = enrollment.StudentId,
+                EnrollmentId = enrollmentId,
+                DocumentTypeId = documentTypeId,
+                FileName = fileName,
+                MimeType = "application/pdf",
+                UploadedAt = DateTime.UtcNow,
+                StoragePath = storagePath,
+                CurrentStatusId = DocumentStatusIds.VerifiedByEnrolment,
+            };
+            db.StudentDocuments.Add(document);
+            resultId = document.StudentDocumentId;
+        }
         await db.SaveChangesAsync(ct);
 
-        logger.LogInformation("[Letters] Released {LetterType} for enrollment {EnrollmentId} → {StudentDocumentId}",
-            letterType, enrollmentId, document.StudentDocumentId);
+        logger.LogInformation("[Letters] Released {LetterType} for enrollment {EnrollmentId} → {StudentDocumentId} ({Mode})",
+            letterType, enrollmentId, resultId, existing is null ? "new" : "regenerated");
 
-        return document.StudentDocumentId;
+        // Auto-send the accompanying email (offer/admission only) when the
+        // admin enabled it for this programme. Best-effort: a send failure
+        // logs but never rolls back or fails the release.
+        if (letterType is LetterType.OfferLetter or LetterType.AdmissionLetter)
+        {
+            try
+            {
+                var emailResult = await letterEmail.SendForLetterAsync(
+                    enrollmentId, letterType, adHocCc: null, adHocBcc: null, requireEnabled: true, ct);
+                if (emailResult.Outcome == LetterEmailOutcome.Sent)
+                    logger.LogInformation("[Letters] Auto-emailed {LetterType} for enrolment {EnrollmentId} to {To}",
+                        letterType, enrollmentId, emailResult.To);
+                else if (emailResult.Outcome != LetterEmailOutcome.Disabled)
+                    logger.LogInformation("[Letters] Auto-email not sent for {LetterType} enrolment {EnrollmentId}: {Outcome}",
+                        letterType, enrollmentId, emailResult.Outcome);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[Letters] Auto-email failed for {LetterType} enrolment {EnrollmentId}", letterType, enrollmentId);
+            }
+        }
+
+        return resultId;
     }
+
+    /// <summary>
+    /// Short code embedded in a letter reference (<c>IBSS-{code}-{enrolment}</c>).
+    /// Also used by the verify endpoint to report which letter type a scanned
+    /// reference belongs to.
+    /// </summary>
+    public static string LetterTypeCode(LetterType letterType) => letterType switch
+    {
+        LetterType.OfferLetter            => "OL",
+        LetterType.AdmissionLetter        => "AL",
+        LetterType.Transcript             => "TR",
+        LetterType.Certificate            => "CERT",
+        LetterType.ProvisionalCertificate => "PCERT",
+        _ => "DOC",
+    };
 
     private static IReadOnlyList<string> TryParseHtmlPages(string body)
     {

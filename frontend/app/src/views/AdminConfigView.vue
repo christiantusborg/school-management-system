@@ -26,7 +26,8 @@
 
     <div class="container">
       <template v-for="t in entities" :key="t.key">
-        <PathwayManager v-if="t.key === 'pathways'" v-show="activeTab === t.key" />
+        <EmailSettingsPanel v-if="t.key === 'email'" v-show="activeTab === t.key" />
+        <PathwayManager v-else-if="t.key === 'pathways'" v-show="activeTab === t.key" />
         <CrudManager v-else v-show="activeTab === t.key" :config="t.config" />
       </template>
     </div>
@@ -39,6 +40,7 @@ import { useRouter } from 'vue-router'
 import { auth } from '../store/auth.js'
 import CrudManager from '../components/crud/CrudManager.vue'
 import PathwayManager from '../components/admin/PathwayManager.vue'
+import EmailSettingsPanel from '../components/admin/EmailSettingsPanel.vue'
 
 const router = useRouter()
 
@@ -52,6 +54,7 @@ const entities = [
   { key: 'educationLevels', label: 'Education Levels', config: { title: 'Education Levels', endpoint: '/v1/school/system-config/education-levels' } },
   { key: 'modesOfStudy',    label: 'Modes of Study',   config: { title: 'Modes of Study',   endpoint: '/v1/school/system-config/modes-of-study' } },
   { key: 'pathways',        label: 'Pathways',         config: { title: 'Pathways',         endpoint: '/v1/school/system-config/pathways' } },
+  { key: 'email',           label: 'Email' },
 ]
 
 const activeTab = ref(entities[0].key)

@@ -15,6 +15,7 @@ public static class LetterTagRegistry
         new LetterTag("[grade]",               "enrollment.finalGrade"),
         new LetterTag("[transcript]",          "enrollment.transcriptTable"),
         new LetterTag("[date]",                "today"),
+        new LetterTag("[ref]",                 "letter.reference"),
         new LetterTag("[passport id]",         "student.passportId"),
         new LetterTag("[commencement date]",   "enrollment.commencementDate"),
         new LetterTag("[duration of study]",   "specialization.durationOfStudyMonths"),

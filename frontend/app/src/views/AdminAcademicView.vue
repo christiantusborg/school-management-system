@@ -137,15 +137,22 @@
           <div class="pathway-edit-block">
             <div class="duration-row">
               <label>Min
-                <input type="number" min="1" :value="prog.minDurationMonths"
-                       @change="setDurationForProg(prog, 'min', Number($event.target.value))" />
+                <input type="number" min="1"
+                       :value="durationDraft[prog.programmeId]?.min ?? prog.minDurationMonths"
+                       @input="setDurationDraft(prog, 'min', $event.target.value)" />
               </label>
               <label>Max
-                <input type="number" min="1" :value="prog.maxDurationMonths"
-                       @change="setDurationForProg(prog, 'max', Number($event.target.value))" />
+                <input type="number" min="1"
+                       :value="durationDraft[prog.programmeId]?.max ?? prog.maxDurationMonths"
+                       @input="setDurationDraft(prog, 'max', $event.target.value)" />
               </label>
+              <button class="btn-primary-sm"
+                      :disabled="durationBusy[prog.programmeId] || !durationDraft[prog.programmeId]"
+                      @click="saveDurationForProg(prog)">
+                {{ durationBusy[prog.programmeId] ? 'Saving…' : 'Save' }}
+              </button>
               <span v-if="durationErr[prog.programmeId]" class="form-error-inline">{{ durationErr[prog.programmeId] }}</span>
-              <span v-else-if="durationBusy[prog.programmeId]" class="form-error-inline">Saving…</span>
+              <span v-else-if="durationSaved[prog.programmeId]" class="duration-saved">✓ Saved</span>
             </div>
           </div>
 
@@ -609,12 +616,30 @@ async function togglePathwayForProg(prog, pathwayId) {
 
 const durationBusy = reactive({}) // id → bool
 const durationErr = reactive({})
+const durationSaved = reactive({}) // id → bool, brief "✓ Saved" confirmation
+const durationDraft = reactive({}) // id → { min, max } typed but not yet saved
 
-async function setDurationForProg(prog, which, value) {
+function setDurationDraft(prog, which, raw) {
   const id = prog.programmeId
-  const newMin = which === 'min' ? value : prog.minDurationMonths
-  const newMax = which === 'max' ? value : prog.maxDurationMonths
-  if (!newMin || newMin < 1 || !newMax || newMax < newMin) {
+  const draft = durationDraft[id] ?? (durationDraft[id] = {
+    min: prog.minDurationMonths,
+    max: prog.maxDurationMonths,
+  })
+  draft[which] = raw === '' ? null : Number(raw)
+  durationErr[id] = ''
+  durationSaved[id] = false
+}
+
+async function saveDurationForProg(prog) {
+  const id = prog.programmeId
+  const draft = durationDraft[id]
+  if (!draft) return
+  const { min: newMin, max: newMax } = draft
+  if (!newMin || !newMax) {
+    durationErr[id] = 'Enter both min and max.'
+    return
+  }
+  if (newMin < 1 || newMax < newMin) {
     durationErr[id] = 'Need 1 ≤ min ≤ max.'
     return
   }
@@ -629,6 +654,9 @@ async function setDurationForProg(prog, which, value) {
     })
     prog.minDurationMonths = newMin
     prog.maxDurationMonths = newMax
+    delete durationDraft[id]
+    durationSaved[id] = true
+    setTimeout(() => { durationSaved[id] = false }, 3000)
   } catch (e) {
     durationErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save'
   } finally {
@@ -949,6 +977,8 @@ async function permanentDeleteProgramme(prog) {
 
 .form-error { color: #b91c1c; font-size: 0.82rem; margin: 0.3rem 0 0; }
 .form-error-inline { color: #b91c1c; font-size: 0.82rem; }
+.duration-row { display: flex; align-items: center; gap: 0.6rem; }
+.duration-saved { color: #15803d; font-size: 0.82rem; }
 
 .section-label-toggle {
   display: flex; align-items: center; gap: 0.5rem;

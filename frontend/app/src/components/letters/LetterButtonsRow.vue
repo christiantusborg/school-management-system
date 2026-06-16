@@ -1,13 +1,16 @@
 <template>
   <div class="letters-row">
     <span class="letters-label">Letters:</span>
-    <button v-for="t in TYPES" :key="t.code"
-            class="lbtn" :class="badgeClass(t.code)"
-            @click="open(t.code)"
-            :title="published[t.code] ? 'Published — releases are live' : 'Draft — no releases until you save'">
-      <span class="lbtn-dot">{{ published[t.code] ? '🟢' : '🟠' }}</span>
-      {{ t.label }}
-    </button>
+    <span v-for="t in TYPES" :key="t.code" class="lbtn-group">
+      <button class="lbtn" :class="badgeClass(t.code)"
+              @click="open(t.code)"
+              :title="published[t.code] ? 'Published — releases are live' : 'Draft — no releases until you save'">
+        <span class="lbtn-dot">{{ published[t.code] ? '🟢' : '🟠' }}</span>
+        {{ t.label }}
+      </button>
+      <button v-if="EMAILABLE.includes(t.code)" class="lbtn lbtn-email"
+              @click="openEmail(t.code)" title="Edit the email sent with this letter">✉</button>
+    </span>
     <CertificateEditorModal
       :open="modalOpen"
       :programme-id="programmeId"
@@ -16,6 +19,14 @@
       @close="modalOpen = false"
       @saved="onSaved"
     />
+    <LetterEmailEditorModal
+      :open="emailModalOpen"
+      :programme-id="programmeId"
+      :programme-name="programmeName"
+      :letter-type="activeType"
+      @close="emailModalOpen = false"
+      @saved="emit('saved')"
+    />
   </div>
 </template>
 
@@ -23,6 +34,7 @@
 import { ref, watch } from 'vue'
 import apiClient from '../../api/client.js'
 import CertificateEditorModal from './CertificateEditorModal.vue'
+import LetterEmailEditorModal from './LetterEmailEditorModal.vue'
 
 const props = defineProps({
   programmeId: { type: String, required: true },
@@ -38,9 +50,16 @@ const TYPES = [
   { code: 'ProvisionalCertificate', label: 'Provisional Cert.' },
 ]
 
+const EMAILABLE = ['OfferLetter', 'AdmissionLetter']
 const modalOpen = ref(false)
+const emailModalOpen = ref(false)
 const activeType = ref('')
 const published = ref(Object.fromEntries(TYPES.map(t => [t.code, false])))
+
+function openEmail(type) {
+  activeType.value = type
+  emailModalOpen.value = true
+}
 
 function badgeClass(code) {
   return published.value[code] ? 'lbtn-pub' : 'lbtn-draft'
@@ -82,4 +101,7 @@ watch(() => props.programmeId, loadPublishStatus, { immediate: true })
 .lbtn-pub:hover { background: #eaf6ec; }
 .lbtn-draft { border-color: #b66a00; color: #b66a00; }
 .lbtn-draft:hover { background: #fff4e6; }
+.lbtn-group { display: inline-flex; align-items: center; gap: .15rem; }
+.lbtn-email { padding: .25rem .5rem; border-color: #6b4ea3; color: #6b4ea3; }
+.lbtn-email:hover { background: #f1ecf9; }
 </style>

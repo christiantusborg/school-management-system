@@ -44,6 +44,8 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<PartnerProgrammeStatus> PartnerProgrammeStatuses => Set<PartnerProgrammeStatus>();
     public DbSet<SpecializationModeOfStudy> SpecializationModesOfStudy => Set<SpecializationModeOfStudy>();
     public DbSet<LetterTemplate> LetterTemplates => Set<LetterTemplate>();
+    public DbSet<LetterEmailTemplate> LetterEmailTemplates => Set<LetterEmailTemplate>();
+    public DbSet<Odin.Api.Base.Email.MailSettings> MailSettings => Set<Odin.Api.Base.Email.MailSettings>();
     public DbSet<LetterAsset> LetterAssets => Set<LetterAsset>();
 
     // ── Pathway ───────────────────────────────────────────────────────────

@@ -33,6 +33,17 @@ public class Enrollment : IDeletedAtEntity
     /// </summary>
     public int? ApprovedDurationMonths { get; set; }
 
+    /// <summary>
+    /// Stable per-enrolment reference code: the first 8 hex characters of a
+    /// GUID, generated once on the first letter release and reused for every
+    /// letter and every regeneration thereafter. Letters render it as
+    /// <c>IBSS-{type}-{code}</c> (e.g. <c>IBSS-OL-1A2B3C4D</c> for the offer
+    /// letter); the public verify endpoint looks an enrolment up by this code
+    /// so a printed reference can be confirmed genuine. Null until the first
+    /// letter is released.
+    /// </summary>
+    public string? LetterReferenceCode { get; set; }
+
     public Pathway? Pathway { get; set; } = default!;
     public ModeOfStudy ModeOfStudy { get; set; } = default!;
     public Specialization Specialization { get; set; } = default!;

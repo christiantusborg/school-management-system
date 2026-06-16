@@ -65,7 +65,14 @@
               </button>
             </div>
           </td>
-          <td></td>
+          <td>
+            <button v-if="canDeleteStudent" class="btn-delete-student"
+                    :disabled="deletingStudentId === s.studentId"
+                    title="Remove this applicant"
+                    @click.stop="deleteStudent(s)">
+              {{ deletingStudentId === s.studentId ? 'Deleting…' : 'Delete' }}
+            </button>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -333,7 +340,18 @@
                     <dt>Programme</dt><dd>{{ activeEnrollment.programmeName }}</dd>
                     <dt>Specialisation</dt><dd>{{ activeEnrollment.specializationName }}</dd>
                     <dt>Mode</dt><dd>{{ activeEnrollment.modeOfStudyName ?? '—' }}</dd>
-                    <dt>Commencement</dt><dd>{{ formatDate(activeEnrollment.commencementDate) || '—' }}</dd>
+                    <dt>Commencement</dt>
+                    <dd v-if="canEditDuration">
+                      <input type="date" class="dur-input" style="width:150px;" v-model="commencementDraft" />
+                      <button class="btn-row-details btn-row-details-sm" :disabled="savingCommencement"
+                              @click="saveCommencement">
+                        {{ savingCommencement ? 'Saving…' : 'Save' }}
+                      </button>
+                      <span v-if="commencementSaveError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ commencementSaveError }}</span>
+                      <span v-else-if="commencementSaveOk" class="ok-banner" style="display:inline-block;margin-left:.5rem;">Saved</span>
+                      <div v-if="commencementPastWarning" class="dur-warn">⚠ {{ commencementPastWarning }}</div>
+                    </dd>
+                    <dd v-else>{{ formatDate(activeEnrollment.commencementDate) || '—' }}</dd>
                     <dt>Default duration</dt><dd>{{ activeEnrollment.durationOfStudyMonths ?? '—' }} months</dd>
                     <dt>Programme range</dt>
                     <dd v-if="activeEnrollment.programmeMaxDurationMonths">
@@ -341,10 +359,8 @@
                     </dd>
                     <dd v-else>—</dd>
                     <dt>Approved duration</dt>
-                    <dd>
-                      <input type="number" class="dur-input"
-                             :min="activeEnrollment.programmeMinDurationMonths || 1"
-                             :max="activeEnrollment.programmeMaxDurationMonths || 999"
+                    <dd v-if="canEditDuration">
+                      <input type="number" class="dur-input" min="1"
                              v-model.number="approvedDurationDraft" />
                       months
                       <button class="btn-row-details btn-row-details-sm" :disabled="savingDuration"
@@ -353,7 +369,21 @@
                       </button>
                       <span v-if="durationSaveError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ durationSaveError }}</span>
                       <span v-else-if="durationSaveOk" class="ok-banner" style="display:inline-block;margin-left:.5rem;">Saved</span>
+                      <div v-if="durationRangeWarning" class="dur-warn">⚠ {{ durationRangeWarning }}</div>
+                      <div v-if="showRegenOffer" class="dur-regen">
+                        Letters released earlier still show the old completion date.
+                        <button class="btn-mini" :disabled="regeneratingLetters" @click="regenerateLetters">
+                          {{ regeneratingLetters ? 'Regenerating…' : 'Regenerate letters' }}
+                        </button>
+                        <span v-if="regenResult" style="margin-left:.5rem;">{{ regenResult }}</span>
+                      </div>
                     </dd>
+                    <dd v-else>
+                      {{ activeEnrollment.approvedDurationMonths ?? activeEnrollment.durationOfStudyMonths ?? '—' }} months
+                      <span class="muted">(Administrator level required to change)</span>
+                    </dd>
+                    <dt>Expected completion</dt>
+                    <dd>{{ expectedCompletion || '—' }}</dd>
                     <dt>Status</dt><dd><span :class="['s-badge', statusClass(activeEnrollment.statusCode)]">{{ activeEnrollment.statusName }}</span></dd>
                   </dl>
                 </div>
@@ -431,8 +461,45 @@
                       <template v-else>Not yet released</template>
                     </div>
                   </div>
-                  <button class="btn-mini" :disabled="!activeEnrollment.letters?.[t.key]"
-                          @click="downloadLetter(activeEnrollment.letters?.[t.key])">Download</button>
+                  <div class="letter-actions">
+                    <button class="btn-mini" :disabled="!activeEnrollment.letters?.[t.key]"
+                            @click="downloadLetter(activeEnrollment.letters?.[t.key])">Download</button>
+                    <button v-if="canRegenerateLetters" class="btn-mini btn-mini-ghost"
+                            :disabled="!activeEnrollment.letters?.[t.key] || regeneratingLetterKey === t.key"
+                            @click="regenerateLetter(t)">
+                      {{ regeneratingLetterKey === t.key ? 'Regenerating…' : 'Regenerate' }}
+                    </button>
+                    <button v-if="canRegenerateLetters && EMAILABLE_KEYS.includes(t.key)" class="btn-mini btn-mini-email"
+                            :disabled="!activeEnrollment.letters?.[t.key]"
+                            @click="openSendEmail(t)">✉ Send</button>
+                  </div>
+                </div>
+                <p v-if="letterRegenResult" class="muted" style="margin-top:.4rem;">{{ letterRegenResult }}</p>
+              </div>
+
+              <!-- Ad-hoc send dialog -->
+              <div v-if="emailSend.open" class="email-send-pop">
+                <div class="email-send-card">
+                  <div class="esp-head">
+                    <strong>Send {{ emailSend.label }} email</strong>
+                    <button class="btn-close" @click="emailSend.open = false">✕</button>
+                  </div>
+                  <p class="muted" style="font-size:.78rem;">
+                    Sends the saved email template (PDF attached) to the student plus the template's
+                    enabled CC/BCC. Add one-off addresses below (comma-separated) if needed.
+                  </p>
+                  <label class="esp-label">Extra CC</label>
+                  <input v-model="emailSend.cc" type="text" placeholder="a@x.com, b@y.com" />
+                  <label class="esp-label">Extra BCC</label>
+                  <input v-model="emailSend.bcc" type="text" placeholder="c@z.com" />
+                  <div v-if="emailSend.error" class="err-banner" style="margin-top:.4rem;">{{ emailSend.error }}</div>
+                  <div v-if="emailSend.ok" class="ok-banner" style="margin-top:.4rem;">{{ emailSend.ok }}</div>
+                  <div class="esp-actions">
+                    <button class="btn-mini btn-mini-ghost" @click="emailSend.open = false">Cancel</button>
+                    <button class="btn-mini btn-mini-email" :disabled="emailSend.sending" @click="sendLetterEmail">
+                      {{ emailSend.sending ? 'Sending…' : 'Send now' }}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -602,6 +669,7 @@
 import { ref, computed, onMounted, watch, reactive } from 'vue'
 import Fuse from 'fuse.js'
 import api from '../../api/client.js'
+import { auth } from '../../store/auth.js'
 import AdminReviewWizard from './AdminReviewWizard.vue'
 import StudentReviewWizard from '../partner/StudentReviewWizard.vue'
 import EnrollmentActivityLog from '../letters/EnrollmentActivityLog.vue'
@@ -720,17 +788,114 @@ const savingDuration = ref(false)
 const durationSaveError = ref('')
 const durationSaveOk = ref(false)
 
+// Commencement (start date) override, gated to the same top admin levels as
+// duration since it also shifts the expected completion date.
+const commencementDraft = computed({
+  get() { return activeEnrollment.value?.commencementDate?.slice(0, 10) ?? '' },
+  set(v) { if (activeEnrollment.value) activeEnrollment.value.commencementDate = v },
+})
+const savingCommencement = ref(false)
+const commencementSaveError = ref('')
+const commencementSaveOk = ref(false)
+const commencementPastWarning = computed(() => {
+  const v = commencementDraft.value
+  if (!v) return ''
+  return v < new Date().toISOString().slice(0, 10) ? 'This start date is in the past.' : ''
+})
+const showRegenOffer = ref(false)
+const regeneratingLetters = ref(false)
+const regenResult = ref('')
+// Per-row regenerate (Letters tab): which letter key is currently rebuilding.
+const regeneratingLetterKey = ref('')
+const letterRegenResult = ref('')
+// Offer/Admission letters can also email the student (PDF attached).
+const EMAILABLE_KEYS = ['offerLetter', 'admissionLetter']
+const emailSend = ref({ open: false, key: '', label: '', cc: '', bcc: '', sending: false, error: '', ok: '' })
+
+// Duration override is reserved for the top two admin levels: changing it
+// shifts an admitted student's completion date.
+const canEditDuration = computed(() =>
+  ['SuperAdministrator', 'Administrator'].includes(auth.adminLevel))
+
+// Deleting an applicant is destructive, so it matches the backend gate:
+// Administrator and SuperAdministrator only.
+const canDeleteStudent = canEditDuration
+const deletingStudentId = ref(null)
+
+async function deleteStudent(s) {
+  if (deletingStudentId.value) return
+  const name = `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() || s.studentNumber
+  if (!confirm(
+    `Remove applicant "${name}" (${s.studentNumber})?\n\n`
+    + 'This removes the student, all their enrolments, and disables their login. '
+    + 'Use this only for wrongly-created applicants. Continue?')) return
+  deletingStudentId.value = s.studentId
+  loadError.value = ''
+  try {
+    await api.delete(`/v1/admin/students/${s.studentId}`)
+    // Drop it from the current list without a full round-trip; load() also
+    // refreshes the chip counts.
+    list.value = list.value.filter(x => x.studentId !== s.studentId)
+    if (detailModal.value?.studentId === s.studentId) detailModal.value = null
+    await load()
+  } catch (err) {
+    loadError.value = err.response?.data?.error ?? err.message ?? 'Failed to delete student'
+  } finally {
+    deletingStudentId.value = null
+  }
+}
+
+// Regenerating a released letter re-renders its PDF with current data, so it
+// is gated to the same top two admin levels as the duration override.
+const canRegenerateLetters = canEditDuration
+
+// Admins may save outside the programme range; warn but don't block.
+const durationRangeWarning = computed(() => {
+  const e = activeEnrollment.value
+  const v = approvedDurationDraft.value
+  if (!e || !v || !e.programmeMaxDurationMonths) return ''
+  if (v < e.programmeMinDurationMonths || v > e.programmeMaxDurationMonths)
+    return `Outside the programme range (${e.programmeMinDurationMonths}–${e.programmeMaxDurationMonths} months). You can still save.`
+  return ''
+})
+
+const expectedCompletion = computed(() => {
+  const e = activeEnrollment.value
+  const months = e?.approvedDurationMonths ?? e?.durationOfStudyMonths
+  if (!e?.commencementDate || !months) return ''
+  const d = new Date(e.commencementDate)
+  d.setMonth(d.getMonth() + months)
+  return formatDate(d.toISOString())
+})
+
+// Level 300 = Approved by Admission; anything at or past it is "admitted".
+const isAdmittedOrLater = computed(() => (activeEnrollment.value?.statusLevel ?? 0) >= 300)
+const hasReleasedLetters = computed(() => {
+  const letters = activeEnrollment.value?.letters
+  return !!letters && Object.values(letters).some(Boolean)
+})
+
 async function saveApprovedDuration() {
   if (!detailModal.value?.studentId || !activeEnrollment.value) return
+  if (isAdmittedOrLater.value) {
+    const ok = confirm(
+      'This student is already admitted.\n\n'
+      + 'Changing the duration moves the expected completion date, and any letters '
+      + 'released earlier (offer, admission, transcript, certificate) will still show '
+      + 'the old date until regenerated.\n\nContinue?')
+    if (!ok) return
+  }
   savingDuration.value = true
   durationSaveError.value = ''
   durationSaveOk.value = false
+  regenResult.value = ''
   try {
     await api.patch(
       `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/duration`,
       { approvedDurationMonths: activeEnrollment.value.approvedDurationMonths })
     durationSaveOk.value = true
     setTimeout(() => { durationSaveOk.value = false }, 2500)
+    showRegenOffer.value = isAdmittedOrLater.value && hasReleasedLetters.value
     await refreshDetailModal()
   } catch (err) {
     durationSaveError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
@@ -738,6 +903,111 @@ async function saveApprovedDuration() {
     savingDuration.value = false
   }
 }
+
+async function saveCommencement() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value) return
+  const v = commencementDraft.value
+  if (!v) { commencementSaveError.value = 'Pick a date first.'; return }
+  // Backdating is allowed but confirmed so a past start date isn't a typo.
+  if (v < new Date().toISOString().slice(0, 10)) {
+    const pretty = new Date(v + 'T00:00:00').toLocaleDateString()
+    if (!confirm(`The commencement date (${pretty}) is in the past. Save this backdated start date?`)) return
+  }
+  savingCommencement.value = true
+  commencementSaveError.value = ''
+  commencementSaveOk.value = false
+  regenResult.value = ''
+  try {
+    await api.patch(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/commencement`,
+      { commencementDate: v })
+    commencementSaveOk.value = true
+    setTimeout(() => { commencementSaveOk.value = false }, 2500)
+    showRegenOffer.value = isAdmittedOrLater.value && hasReleasedLetters.value
+    await refreshDetailModal()
+  } catch (err) {
+    commencementSaveError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
+  } finally {
+    savingCommencement.value = false
+  }
+}
+
+async function regenerateLetters() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value) return
+  regeneratingLetters.value = true
+  regenResult.value = ''
+  try {
+    const res = await api.post(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/regenerate`)
+    const types = res.data?.regenerated ?? []
+    regenResult.value = types.length
+      ? `Regenerated: ${types.join(', ')}`
+      : 'Nothing regenerated (no published templates).'
+    await refreshDetailModal()
+  } catch (err) {
+    regenResult.value = err.response?.data?.error ?? err.message ?? 'Regenerate failed'
+  } finally {
+    regeneratingLetters.value = false
+  }
+}
+
+// Regenerate a single released letter (per-row button). camelCase key →
+// PascalCase LetterType the backend enum expects (offerLetter → OfferLetter).
+async function regenerateLetter(t) {
+  if (!detailModal.value?.studentId || !activeEnrollment.value) return
+  if (!activeEnrollment.value.letters?.[t.key]) return
+  regeneratingLetterKey.value = t.key
+  letterRegenResult.value = ''
+  try {
+    const enumName = t.key.charAt(0).toUpperCase() + t.key.slice(1)
+    const res = await api.post(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/regenerate`,
+      null, { params: { letterType: enumName } })
+    letterRegenResult.value = (res.data?.regenerated ?? []).length
+      ? `${t.label} regenerated.`
+      : `Nothing regenerated for ${t.label} (template not published).`
+    await refreshDetailModal()
+  } catch (err) {
+    letterRegenResult.value = err.response?.data?.error ?? err.message ?? 'Regenerate failed'
+  } finally {
+    regeneratingLetterKey.value = ''
+  }
+}
+
+function openSendEmail(t) {
+  emailSend.value = { open: true, key: t.key, label: t.label, cc: '', bcc: '', sending: false, error: '', ok: '' }
+}
+
+function splitEmails(s) {
+  return (s || '').split(/[,;\s]+/).map(x => x.trim()).filter(Boolean)
+}
+
+async function sendLetterEmail() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value) return
+  const es = emailSend.value
+  es.sending = true; es.error = ''; es.ok = ''
+  try {
+    const enumName = es.key.charAt(0).toUpperCase() + es.key.slice(1)
+    const res = await api.post(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/${enumName}/send-email`,
+      { ccAdHoc: splitEmails(es.cc), bccAdHoc: splitEmails(es.bcc) })
+    const to = res.data?.to ?? 'student'
+    es.ok = `Sent to ${to}${(res.data?.cc?.length ? ` (cc ${res.data.cc.length})` : '')}.`
+    setTimeout(() => { emailSend.value.open = false }, 2000)
+  } catch (err) {
+    es.error = err.response?.data?.error
+      ?? (err.response?.data?.outcome ? `Not sent: ${err.response.data.outcome}` : null)
+      ?? err.message ?? 'Send failed'
+  } finally {
+    es.sending = false
+  }
+}
+
+watch(() => detailModal.value?.activeEnrollmentId, () => {
+  showRegenOffer.value = false
+  regenResult.value = ''
+  durationSaveError.value = ''
+})
 
 const awaitingOfferAcceptance = computed(() =>
   (detailModal.value?.data?.enrollments ?? []).filter(e => e.statusCode === 'AcceptOffer'))
@@ -1843,6 +2113,9 @@ async function runExport() {
 .btn-row-details { padding: .25rem .65rem; border: 1px solid #1a4d8c; background: #fff; color: #1a4d8c; border-radius: 4px; font-size: .75rem; font-weight: 600; cursor: pointer; }
 .btn-row-details:hover { background: #eef3fb; }
 .btn-row-details-sm { padding: .15rem .5rem; font-size: .7rem; }
+.btn-delete-student { padding: .2rem .6rem; border: 1px solid #c0392b; background: #fff; color: #c0392b; border-radius: 4px; font-size: .72rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn-delete-student:hover:not(:disabled) { background: #c0392b; color: #fff; }
+.btn-delete-student:disabled { opacity: .6; cursor: not-allowed; }
 
 /* Student detail modal (3 tabs) — fixed height so switching tabs
    doesn't make the modal grow or shrink. Tab content scrolls within. */
@@ -1905,8 +2178,23 @@ async function runExport() {
 .btn-mini { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }
 .btn-mini:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }
 .btn-mini:hover:not(:disabled) { background: #143b6c; }
+.letter-actions { display: flex; gap: .4rem; flex-shrink: 0; }
+.btn-mini-ghost { background: #fff; color: #1a4d8c; }
+.btn-mini-ghost:hover:not(:disabled) { background: #eef4fb; }
+.btn-mini-ghost:disabled { background: #f1f5f9; color: #94a3b8; }
+.btn-mini-email { background: #fff; color: #6b4ea3; border-color: #6b4ea3; }
+.btn-mini-email:hover:not(:disabled) { background: #f1ecf9; }
+.btn-mini-email:disabled { background: #f1f5f9; color: #94a3b8; border-color: #cbd5e1; }
+.email-send-pop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 1200; }
+.email-send-card { background: #fff; border-radius: 9px; width: min(420px, 92%); padding: 1rem 1.1rem; box-shadow: 0 8px 30px rgba(0,0,0,.2); }
+.esp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .3rem; }
+.esp-label { display: block; font-size: .74rem; font-weight: 700; color: #6b7888; text-transform: uppercase; letter-spacing: .04em; margin: .5rem 0 .2rem; }
+.email-send-card input { width: 100%; padding: .4rem .5rem; border: 1px solid #d8dde5; border-radius: 5px; font-size: .82rem; }
+.esp-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
 
 .dur-input { width: 70px; padding: .2rem .35rem; border: 1px solid #d8dde5; border-radius: 4px; font-size: .82rem; }
+.dur-warn { margin-top: .3rem; color: #b45309; font-size: .8rem; }
+.dur-regen { margin-top: .4rem; padding: .4rem .55rem; background: #fff7ed; border: 1px solid #fdba74; border-radius: 5px; font-size: .8rem; color: #7c2d12; }
 .btn-export { margin-left: auto; padding: .35rem .85rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .82rem; font-weight: 600; cursor: pointer; }
 .btn-export:hover { background: #143b6c; }
 

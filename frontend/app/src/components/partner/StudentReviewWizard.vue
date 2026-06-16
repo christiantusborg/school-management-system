@@ -666,6 +666,17 @@ async function submit() {
     return
   }
 
+  // Backdating is allowed (a programme may have started before the partner
+  // reached the review), but confirm it so a past date isn't a typo.
+  const start = enrolmentDraft.commencementDate
+  if (start && start < new Date().toISOString().slice(0, 10)) {
+    const pretty = new Date(start + 'T00:00:00').toLocaleDateString()
+    if (!confirm(`The commencement date (${pretty}) is in the past. Save this backdated start date?`)) {
+      submitting.value = false
+      return
+    }
+  }
+
   // Map per-doc decisions to backend payload, attaching the StudentDocument
   // GUID resolved by document type. Documents that have no upload are
   // skipped silently — the backend will simply not stamp anything.
