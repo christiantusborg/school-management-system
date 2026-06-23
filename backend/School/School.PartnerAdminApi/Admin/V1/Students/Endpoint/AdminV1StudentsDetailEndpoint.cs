@@ -24,6 +24,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             {
                 s.StudentId,
                 s.StudentNumber,
+                s.IsLegacyStudent,
                 s.UserId,
                 s.PassportId,
                 s.DateOfBirth,
@@ -241,6 +242,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
         {
             studentId = student.StudentId,
             studentNumber = student.StudentNumber,
+            isLegacyStudent = student.IsLegacyStudent,
             partner = new { partnerId = student.PartnerId, name = student.PartnerName },
             account = new
             {

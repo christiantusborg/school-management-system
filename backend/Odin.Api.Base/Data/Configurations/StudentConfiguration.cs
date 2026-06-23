@@ -11,6 +11,7 @@ public class StudentConfiguration : IEntityTypeConfiguration<Student>
         builder.HasKey(e => e.StudentId);
         builder.HasIndex(e => e.UserId).IsUnique();
         builder.HasIndex(e => e.StudentNumber).IsUnique();
+        builder.Property(e => e.IsLegacyStudent).IsRequired().HasDefaultValue(false);
         builder.HasOne(e => e.User)
             .WithMany()
             .HasForeignKey(e => e.UserId)

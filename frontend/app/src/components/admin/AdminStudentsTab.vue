@@ -232,7 +232,33 @@
                     <dt>Email</dt><dd>{{ detailModal.data.account?.email ?? '—' }}<span v-if="!detailModal.data.account?.emailVerified" class="s-badge unverified">unverified</span></dd>
                     <dt>First name</dt><dd>{{ detailModal.data.account?.firstName ?? '—' }}</dd>
                     <dt>Last name</dt><dd>{{ detailModal.data.account?.lastName ?? '—' }}</dd>
+                    <dt>Student ID</dt>
+                    <dd>
+                      <span class="mono">{{ detailModal.studentNumber }}</span>
+                      <span v-if="detailModal.data.isLegacyStudent" class="s-badge st-active">Old student</span>
+                    </dd>
                   </dl>
+
+                  <!-- Admission-Office-only manual Student ID + Old-student flag,
+                       for students migrated from the old system. -->
+                  <div v-if="canEditLegacyId" class="legacy-box">
+                    <label class="legacy-check">
+                      <input type="checkbox" v-model="legacyDraft.isLegacy" />
+                      <span><strong>Old student</strong> (migrated from the old system — set their existing Student ID manually)</span>
+                    </label>
+                    <div v-if="legacyDraft.isLegacy" class="legacy-id-row">
+                      <label>Student ID</label>
+                      <input v-model="legacyDraft.studentNumber" class="legacy-id-input" placeholder="e.g. IBSS-2019-0123" />
+                      <button class="btn-row-details btn-row-details-sm" :disabled="savingLegacy" @click="saveLegacyId">
+                        {{ savingLegacy ? 'Saving…' : 'Save ID' }}
+                      </button>
+                    </div>
+                    <button v-else class="btn-row-details btn-row-details-sm" :disabled="savingLegacy" @click="saveLegacyId">
+                      {{ savingLegacy ? 'Saving…' : 'Save' }}
+                    </button>
+                    <span v-if="legacyError" class="err-banner" style="display:block;margin-top:.4rem;">{{ legacyError }}</span>
+                    <span v-else-if="legacyOk" class="ok-banner" style="display:block;margin-top:.4rem;">Saved — recorded in the Activity log</span>
+                  </div>
                   <div class="reset-pw-row">
                     <button class="btn-row-details" :disabled="resettingStudentPw" @click="resetStudentPassword">
                       {{ resettingStudentPw ? 'Resetting…' : '🔑 Reset student password' }}
@@ -822,6 +848,38 @@ const canEditDuration = computed(() =>
 const canDeleteStudent = canEditDuration
 const deletingStudentId = ref(null)
 
+// Manual Student ID + Old-student flag — Admission Office (Administrator+) only,
+// matching the backend gate.
+const canEditLegacyId = canEditDuration
+const legacyDraft = reactive({ isLegacy: false, studentNumber: '' })
+const savingLegacy = ref(false)
+const legacyError = ref('')
+const legacyOk = ref(false)
+
+async function saveLegacyId() {
+  if (!detailModal.value?.studentId || savingLegacy.value) return
+  const num = (legacyDraft.studentNumber || '').trim()
+  if (legacyDraft.isLegacy && !num) { legacyError.value = 'Enter the student’s existing ID.'; return }
+  savingLegacy.value = true
+  legacyError.value = ''
+  legacyOk.value = false
+  try {
+    const res = await api.patch(`/v1/admin/students/${detailModal.value.studentId}/legacy-id`, {
+      studentNumber: legacyDraft.isLegacy ? num : detailModal.value.studentNumber,
+      isLegacyStudent: legacyDraft.isLegacy,
+    })
+    detailModal.value.studentNumber = res.data.studentNumber
+    if (detailModal.value.data) detailModal.value.data.isLegacyStudent = res.data.isLegacyStudent
+    legacyOk.value = true
+    setTimeout(() => { legacyOk.value = false }, 2500)
+    load() // refresh the row's student number in the list
+  } catch (err) {
+    legacyError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
+  } finally {
+    savingLegacy.value = false
+  }
+}
+
 async function deleteStudent(s) {
   if (deletingStudentId.value) return
   const name = `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() || s.studentNumber
@@ -1104,6 +1162,11 @@ async function openStudentDetail(s, preselectEnrollmentId = null) {
     }
     const res = await api.get(`/v1/admin/students/${s.studentId}`)
     detailModal.value.data = normaliseDetailForEdit(res.data)
+    // Seed the legacy-ID editor from the loaded student.
+    legacyDraft.isLegacy = !!res.data.isLegacyStudent
+    legacyDraft.studentNumber = res.data.studentNumber ?? ''
+    legacyError.value = ''
+    legacyOk.value = false
     // Pin the active enrolment to the most-actionable / first one returned.
     if (!detailModal.value.activeEnrollmentId && res.data.enrollments?.length) {
       detailModal.value.activeEnrollmentId = res.data.enrollments[0].studentEnrollmentId
@@ -2113,6 +2176,11 @@ async function runExport() {
 .btn-row-details { padding: .25rem .65rem; border: 1px solid #1a4d8c; background: #fff; color: #1a4d8c; border-radius: 4px; font-size: .75rem; font-weight: 600; cursor: pointer; }
 .btn-row-details:hover { background: #eef3fb; }
 .btn-row-details-sm { padding: .15rem .5rem; font-size: .7rem; }
+.legacy-box { margin-top: .7rem; padding: .6rem .7rem; border: 1px solid #e6ebf2; border-radius: 7px; background: #f8fafc; }
+.legacy-check { display: flex; align-items: flex-start; gap: .45rem; font-size: .82rem; color: #44506a; cursor: pointer; }
+.legacy-id-row { display: flex; align-items: center; gap: .5rem; margin-top: .55rem; flex-wrap: wrap; }
+.legacy-id-row > label { font-size: .8rem; font-weight: 600; color: #44506a; }
+.legacy-id-input { padding: .35rem .5rem; border: 1px solid #d8dde5; border-radius: 6px; font-size: .85rem; font-family: ui-monospace, monospace; min-width: 200px; }
 .btn-delete-student { padding: .2rem .6rem; border: 1px solid #c0392b; background: #fff; color: #c0392b; border-radius: 4px; font-size: .72rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .btn-delete-student:hover:not(:disabled) { background: #c0392b; color: #fff; }
 .btn-delete-student:disabled { opacity: .6; cursor: not-allowed; }

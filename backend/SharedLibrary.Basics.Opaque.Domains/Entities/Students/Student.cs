@@ -9,7 +9,14 @@ public class Student
     public string UserId { get; set; } = default!;
 
     public string StudentNumber { get; set; } = default!;
-    
+
+    /// <summary>
+    /// True for students migrated from the old system. Their Student ID was
+    /// assigned externally and set manually by the Admission Office, and they
+    /// skip the offer/admission letter flow. Defaults false for new applicants.
+    /// </summary>
+    public bool IsLegacyStudent { get; set; }
+
     public Guid PartnerId { get; set; }
     public string? PassportId { get; set; }
     public DateTime? DateOfBirth { get; set; }

@@ -46,6 +46,56 @@ public static class StudentEditService
         public int Proficiency { get; init; }
     }
 
+    /// <summary>
+    /// Admission-Office-only: set a migrated student's externally-assigned
+    /// Student ID and the legacy flag. The change is recorded in the normal
+    /// enrolment Activity log (an <see cref="EnrollmentStatusNote"/> with no
+    /// status transition) on each of the student's active enrolments, so it
+    /// shows alongside every other event with the acting admin and timestamp.
+    /// Caller enforces the Administrator+ gate and Student-ID uniqueness.
+    /// </summary>
+    public static async Task UpdateLegacyIdAsync(
+        OdinDbContext db, Student student, string newStudentNumber, bool isLegacy,
+        Guid actorUserId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var oldNumber = student.StudentNumber;
+        var oldLegacy = student.IsLegacyStudent;
+
+        student.StudentNumber = newStudentNumber;
+        student.IsLegacyStudent = isLegacy;
+
+        var parts = new List<string>();
+        if (!string.Equals(oldNumber, newStudentNumber, StringComparison.Ordinal))
+            parts.Add($"Student ID changed from \"{oldNumber}\" to \"{newStudentNumber}\"");
+        if (oldLegacy != isLegacy)
+            parts.Add(isLegacy ? "marked as Old student" : "unmarked as Old student");
+        if (parts.Count == 0) { await db.SaveChangesAsync(ct); return; }
+        var summary = string.Join("; ", parts);
+
+        // Record on every active enrolment so the entry is visible in the
+        // Activity log tab regardless of which enrolment is selected.
+        var enrollmentIds = await db.Enrollments
+            .Where(e => e.StudentId == student.StudentId && e.DeletedAt == null)
+            .Select(e => e.StudentEnrollmentId)
+            .ToListAsync(ct);
+
+        foreach (var enrollmentId in enrollmentIds)
+        {
+            db.Set<EnrollmentStatusNote>().Add(new EnrollmentStatusNote
+            {
+                EnrollmentStatusNoteId = Guid.NewGuid(),
+                EnrollmentId = enrollmentId,
+                StatusId = null, // not a status transition
+                Note = summary,
+                ByUserId = actorUserId,
+                CreatedAt = now,
+            });
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
     public static async Task UpdatePersonalAsync(
         OdinDbContext db, Student student, PersonalDto dto, string actorLabel, CancellationToken ct)
     {
