@@ -75,19 +75,27 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
                 })
                 .ToListAsync(ct);
 
-            // Letter templates are programme-scoped; clone them so the new
-            // partner-owned programme starts with the IBSS-authored letters.
-            // Admin can edit them afterwards from the partner manage drawer.
-            var sourceLetters = await db.LetterTemplates
+            // Clone the source programme's letters so the new partner-owned
+            // programme starts with a set. Templates are now per (programme,
+            // partner, type), so a shared source has one row per partner per
+            // type; collapse to exactly one per LetterType (preferring the
+            // creating partner's own version) so the new programme gets a single
+            // template per type and doesn't violate the unique index.
+            var sourceLettersRaw = await db.LetterTemplates
                 .Where(t => t.ProgrammeId == sourceId && t.DeletedAt == null)
                 .Select(t => new
                 {
+                    t.PartnerId,
                     t.LetterType,
                     t.BodyHtml,
                     t.CertificateBackgroundPath,
                     t.CertificateLayoutJson,
                 })
                 .ToListAsync(ct);
+            var sourceLetters = sourceLettersRaw
+                .GroupBy(t => t.LetterType)
+                .Select(g => g.FirstOrDefault(t => t.PartnerId == partnerId) ?? g.First())
+                .ToList();
             foreach (var l in sourceLetters)
             {
                 db.LetterTemplates.Add(new LetterTemplate
