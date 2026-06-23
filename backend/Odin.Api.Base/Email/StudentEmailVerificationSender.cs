@@ -22,14 +22,22 @@ public sealed class StudentEmailVerificationSender(
         var origin = config["App:StudentOrigin"] ?? "http://localhost:5173";
         var link = $"{origin.TrimEnd('/')}/#/apply/verify-email?userId={Uri.EscapeDataString(userId)}&token={Uri.EscapeDataString(token)}";
 
-        var body =
-            "Welcome to IBSS — please confirm your email and finish your application.\n\n" +
-            "Click the link below to confirm your email. You can also use it any time to " +
-            "return to your application and continue where you left off:\n\n" +
-            $"{link}\n\n" +
-            "If you did not request this, you can ignore this email.";
+        var htmlBody =
+            "<p>Welcome to IBSS — please confirm your email and finish your application.</p>" +
+            "<p>Click the button below to confirm your email. You can also use it any time to " +
+            "return to your application and continue where you left off:</p>" +
+            $"<p><a href=\"{link}\" style=\"display:inline-block;padding:10px 18px;background:#1a4d8c;" +
+            "color:#fff;text-decoration:none;border-radius:6px;font-weight:600;\">Confirm my email</a></p>" +
+            $"<p>Or paste this link into your browser:<br><a href=\"{link}\">{link}</a></p>" +
+            "<p style=\"color:#6b7888;font-size:13px;\">If you did not request this, you can ignore this email.</p>";
 
-        await emailSender.SendAsync(email, "Verify your IBSS application email", body, ct);
+        // Route through the same transport the admin configured for letter
+        // emails (Gmail/SMTP/Brevo) via the EmailMessage overload, instead of
+        // the always-Brevo simple overload. The From identity is resolved by
+        // the transport from the portal mail settings.
+        await emailSender.SendAsync(
+            new EmailMessage(To: email, Subject: "Verify your IBSS application email", HtmlBody: htmlBody),
+            ct);
         return token;
     }
 
