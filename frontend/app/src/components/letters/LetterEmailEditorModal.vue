@@ -30,10 +30,9 @@
           </div>
 
           <div class="em-field em-field-col">
-            <label>Body (HTML supported — paste your signature here)</label>
-            <textarea v-model="form.bodyHtml" rows="12"
-              placeholder="Dear [student full name],&#10;&#10;Congratulations…"></textarea>
-            <select class="em-tag em-tag-block" @change="insertTag('bodyHtml', $event)">
+            <label>Body</label>
+            <RichTextInline ref="bodyEditor" v-model="form.bodyHtml" />
+            <select class="em-tag em-tag-block" @change="insertBodyTag($event)">
               <option value="">+ insert tag…</option>
               <option v-for="t in tags" :key="t.token" :value="t.token">{{ t.token }}</option>
             </select>
@@ -58,6 +57,7 @@
 <script setup>
 import { ref, reactive, watch, h } from 'vue'
 import apiClient from '../../api/client.js'
+import RichTextInline from './RichTextInline.vue'
 
 const props = defineProps({
   open: { type: Boolean, required: true },
@@ -111,11 +111,22 @@ function titleFor(t) {
   return t === 'OfferLetter' ? 'Offer Letter' : t === 'AdmissionLetter' ? 'Admission Letter' : t
 }
 
+const bodyEditor = ref(null)
+
+// Subject is a plain input: append the token.
 function insertTag(field, ev) {
   const token = ev.target.value
   ev.target.value = ''
   if (!token) return
   form[field] = (form[field] || '') + token
+}
+
+// Body is the rich editor: insert the token at the caret.
+function insertBodyTag(ev) {
+  const token = ev.target.value
+  ev.target.value = ''
+  if (!token) return
+  bodyEditor.value?.insertText(token)
 }
 
 function parseList(json) {
