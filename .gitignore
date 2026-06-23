@@ -56,3 +56,6 @@ desktop.ini
 
 # ── Claude Code (track config, ignore runtime locks) ──────────────────────────
 .claude/scheduled_tasks.lock
+
+# Deploy script holds production secrets — keep out of git
+backend/deploy.sh
