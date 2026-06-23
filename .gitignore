@@ -59,3 +59,7 @@ desktop.ini
 
 # Deploy script holds production secrets — keep out of git
 backend/deploy.sh
+
+# Local secrets sourced by deploy.sh
+backend/.env
+.env
