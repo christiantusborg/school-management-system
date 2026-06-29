@@ -68,6 +68,7 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
                     s.Code,
                     s.Description,
                     s.DurationOfStudyMonths,
+                    s.InstructionLanguage,
                     Subjects = db.Subjects
                         .Where(sub => sub.SpecializationId == s.SpecializationId && sub.DeletedAt == null)
                         .Select(sub => new { sub.Name, sub.Code, sub.Description, sub.Ects })
@@ -123,6 +124,7 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
                     Code = $"{s.Code}-{newSpecId.ToString()[..8]}",
                     Description = s.Description,
                     DurationOfStudyMonths = s.DurationOfStudyMonths,
+                    InstructionLanguage = s.InstructionLanguage,
                 });
                 foreach (var sub in s.Subjects)
                 {
