@@ -49,8 +49,8 @@ const TYPES = [
   { code: 'OfferLetter',            label: 'Offer Letter' },
   { code: 'AdmissionLetter',        label: 'Admission Letter' },
   { code: 'Transcript',             label: 'Transcript' },
-  { code: 'Certificate',            label: 'Certificate' },
-  { code: 'ProvisionalCertificate', label: 'Provisional Cert.' },
+  { code: 'Certificate',            label: 'Digital Certificate' },
+  { code: 'ProvisionalCertificate', label: 'Printable Cert' },
 ]
 
 const EMAILABLE = ['OfferLetter', 'AdmissionLetter']

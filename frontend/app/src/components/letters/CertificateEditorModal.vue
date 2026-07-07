@@ -34,6 +34,14 @@
         <div class="cert-toolbar">
           <button class="tb-btn" @click="addTextField">+ Text</button>
           <button class="tb-btn" @click="openImageFieldPicker">+ Image</button>
+          <span v-if="letterType === 'Transcript'" class="tb-range-wrap">
+            <button type="button" class="tb-btn" @click="rangeMenuOpen = !rangeMenuOpen">+ Grades Table ▾</button>
+            <div v-if="rangeMenuOpen" class="tb-range-menu" @click.stop>
+              <button type="button" v-for="r in GRADE_RANGES" :key="r[0]" class="tb-range-item"
+                      @click="addRangeTable(r[0], r[1])">Grades Table {{ r[0] }}-{{ r[1] }}</button>
+              <button type="button" class="tb-range-item" @click="addTotalsField">Total / GPA section</button>
+            </div>
+          </span>
           <button class="tb-btn" :disabled="!selectedField" @click="removeSelected">Delete</button>
           <button class="tb-btn" @click="openBgPicker">🖼 Background</button>
           <button v-if="copySiblingLabel" class="tb-btn tb-copy" :disabled="copying" @click="copyFromSibling">
@@ -59,7 +67,7 @@
                     <KGroup :config="groupConfig(f)" :draggable="true" @click="selectField(f)" @tap="selectField(f)" @dragend="onDragEnd($event, f)">
                       <KRect :config="hitRectConfig(f)" />
                       <KImage v-if="f.kind === 'image' && fieldImages[f.imageAssetId]" :config="imageConfig(f)" />
-                      <template v-else-if="f.kind === 'transcriptTable' || f.kind === 'gradeStandardTable'">
+                      <template v-else-if="f.kind === 'transcriptTable' || f.kind === 'gradeStandardTable' || f.kind === 'transcriptTotals'">
                         <KRect :config="placeholderRectConfig(f)" />
                         <KText :config="placeholderLabelConfig(f)" />
                       </template>
@@ -70,7 +78,7 @@
               </KStage>
               <div class="cert-html-overlay">
                 <div
-                  v-for="f in currentPage.fields.filter(x => x.htmlText && x.kind !== 'image' && x.kind !== 'transcriptTable' && x.kind !== 'gradeStandardTable')"
+                  v-for="f in currentPage.fields.filter(x => x.htmlText && x.kind !== 'image' && x.kind !== 'transcriptTable' && x.kind !== 'gradeStandardTable' && x.kind !== 'transcriptTotals')"
                   :key="`html-${f.id}`"
                   class="cert-html-field"
                   :style="htmlFieldStyle(f)"
@@ -107,8 +115,11 @@
               </div>
               <p class="cert-side-hint">Click a field on the canvas to edit it, or use + Text / + Image above.</p>
 
-              <h4 class="mt-row">Copy from programme</h4>
-              <select v-model="copyFromProgrammeId" class="copy-prog-select">
+              <h4 class="mt-row">Copy from another partner</h4>
+              <select v-model="copyFromPartnerId" class="copy-prog-select" @change="copyFromProgrammeId = ''">
+                <option v-for="p in copyPartners" :key="p.partnerId" :value="p.partnerId">{{ p.name }}</option>
+              </select>
+              <select v-model="copyFromProgrammeId" class="copy-prog-select" style="margin-top:.35rem;">
                 <option value="">— pick a programme —</option>
                 <option v-for="p in otherProgrammes" :key="p.programmeId" :value="p.programmeId">
                   {{ p.code ? p.code + ' — ' : '' }}{{ p.name }} ({{ p.ownerLabel }})
@@ -255,8 +266,8 @@ function titleFor(t) {
     case 'OfferLetter':            return 'Offer Letter'
     case 'AdmissionLetter':        return 'Admission Letter'
     case 'Transcript':             return 'Transcript'
-    case 'Certificate':            return 'Certificate'
-    case 'ProvisionalCertificate': return 'Provisional Certificate (no stamp/signature)'
+    case 'Certificate':            return 'Digital Certificate'
+    case 'ProvisionalCertificate': return 'Printable Cert (no stamp/signature)'
     default: return t || 'Letter'
   }
 }
@@ -307,17 +318,32 @@ const zoom = ref(1)
 const richOpen = ref(false)
 const copying = ref(false)
 const programmes = ref([])
+const GRADE_RANGES = [[1, 10], [11, 20], [21, 30], [31, 40], [41, 50]]
+const rangeMenuOpen = ref(false)
 const copyFromProgrammeId = ref('')
+const copyFromPartnerId = ref('')
 const partnerNames = ref({}) // partnerId → partner display name
+const partners = ref([])     // [{ partnerId, name }]
+
+// Partner dropdown for copy-from, with the current partner first (default).
+const copyPartners = computed(() => {
+  const list = [...partners.value].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+  const cur = list.findIndex(p => p.partnerId === props.partnerId)
+  if (cur > 0) { const [c] = list.splice(cur, 1); list.unshift(c) }
+  return list
+})
+
+// Programmes available to copy from for the selected partner: core programmes
+// (every partner has a per-partner template on them) plus that partner's own.
 const otherProgrammes = computed(() => {
   return programmes.value
-    .filter(p => p.programmeId !== props.programmeId)
+    .filter(p => !p.ownerId || p.ownerId === copyFromPartnerId.value)
+    .filter(p => !(p.programmeId === props.programmeId && copyFromPartnerId.value === props.partnerId))
     .map(p => ({
       ...p,
       ownerLabel: p.ownerId ? (partnerNames.value[p.ownerId] ?? '?') : 'Core',
     }))
     .sort((a, b) => {
-      // Core programmes first, then partners alphabetically.
       const ac = a.ownerId ? 1 : 0
       const bc = b.ownerId ? 1 : 0
       if (ac !== bc) return ac - bc
@@ -418,6 +444,47 @@ function addTextField() {
   }
   currentPage.value.fields.push(f)
   selectedFieldId.value = f.id
+}
+
+// Insert a fixed-range grades table (e.g. 1-10). Each renders only its slice
+// of the student's grades; the renderer appends Total/GPA under the range that
+// holds the last grade. Add only the ranges a programme needs.
+function addRangeTable(from, to) {
+  const f = {
+    id: uid(),
+    kind: 'transcriptTable',
+    rowStart: from,
+    rowEnd: to,
+    tag: null,
+    text: `Grades Table (${from}-${to})`,
+    prefix: '', suffix: '',
+    x: 50, y: 340,
+    fontSize: 9,
+    color: '#000000',
+    align: 'left',
+    bold: false, italic: false,
+    imageAssetId: null,
+    width: 500, height: 250,
+  }
+  currentPage.value.fields.push(f)
+  selectedFieldId.value = f.id
+  rangeMenuOpen.value = false
+}
+
+// Standalone Total + GPA summary block (its own section, computed over all grades).
+function addTotalsField() {
+  const f = {
+    id: uid(),
+    kind: 'transcriptTotals',
+    tag: null, text: 'Total / GPA', prefix: '', suffix: '',
+    x: 50, y: 620,
+    fontSize: 9, color: '#000000', align: 'left',
+    bold: false, italic: false, imageAssetId: null,
+    width: 500, height: 60,
+  }
+  currentPage.value.fields.push(f)
+  selectedFieldId.value = f.id
+  rangeMenuOpen.value = false
 }
 
 function openBgPicker() { pickerMode.value = 'bg'; pickerOpen.value = true }
@@ -558,7 +625,7 @@ function previewText(f) {
 function hitRectConfig(f) {
   // Invisible click-target so empty/short fields are still selectable.
   let w, h, x = 0
-  if (f.kind === 'image' || f.kind === 'transcriptTable' || f.kind === 'gradeStandardTable') {
+  if (f.kind === 'image' || f.kind === 'transcriptTable' || f.kind === 'gradeStandardTable' || f.kind === 'transcriptTotals') {
     w = (f.width || 200) * scale.value
     h = (f.height || 200) * scale.value
   } else if (f.width && f.width > 0) {
@@ -598,7 +665,11 @@ function placeholderRectConfig(f) {
   }
 }
 function placeholderLabelConfig(f) {
-  const label = f.kind === 'transcriptTable' ? 'Grades Table (auto-generated)' : 'Grade Standard Table'
+  const label = f.kind === 'transcriptTotals'
+    ? 'Total / GPA (auto)'
+    : f.kind === 'transcriptTable'
+      ? (f.rowEnd > 0 ? `Grades Table (${f.rowStart}-${f.rowEnd})` : 'Grades Table (auto-generated)')
+      : 'Grade Standard Table'
   return {
     x: 8 * scale.value,
     y: 8 * scale.value,
@@ -721,13 +792,21 @@ async function loadProgrammes() {
     for (const p of all) byId.set(p.programmeId, p)
     programmes.value = Array.from(byId.values())
     const map = {}
+    const plist = []
     for (const p of (partnersRes.data.items ?? [])) {
-      if (p.partnerId) map[p.partnerId] = p.name ?? p.displayName ?? '(unknown)'
+      if (p.partnerId) {
+        map[p.partnerId] = p.name ?? p.displayName ?? '(unknown)'
+        plist.push({ partnerId: p.partnerId, name: p.name ?? p.displayName ?? '(unknown)' })
+      }
     }
     partnerNames.value = map
+    partners.value = plist
+    // Default the copy-from partner to the partner currently being edited.
+    if (!copyFromPartnerId.value) copyFromPartnerId.value = props.partnerId || (plist[0]?.partnerId ?? '')
   } catch {
     programmes.value = []
     partnerNames.value = {}
+    partners.value = []
   }
 }
 
@@ -761,14 +840,15 @@ async function applyParsedLayout(parsed) {
 async function copyFromProgramme() {
   if (!copyFromProgrammeId.value || copying.value) return
   const src = otherProgrammes.value.find(p => p.programmeId === copyFromProgrammeId.value)
+  const partnerLabel = partnerNames.value[copyFromPartnerId.value] || 'selected partner'
   const srcLabel = src
-    ? `${src.code ? src.code + ' — ' : ''}${src.name} (${src.ownerLabel})`
+    ? `${src.code ? src.code + ' — ' : ''}${src.name} — ${partnerLabel}`
     : 'the selected programme'
   if (!confirm(`Replace this ${titleFor(props.letterType)} with the one from "${srcLabel}"? Unsaved changes will be lost.`)) return
   copying.value = true
   try {
     const r = await apiClient.get(`/v1/admin/programmes/${copyFromProgrammeId.value}/letter-templates`, {
-      params: { partnerId: props.partnerId },
+      params: { partnerId: copyFromPartnerId.value || props.partnerId },
     })
     const source = (r.data.items ?? []).find(t => t.letterType === props.letterType)
     if (!source || !source.certificateLayoutJson) {
@@ -909,7 +989,10 @@ async function load() {
       : [{ backgroundAssetId: next?.backgroundAssetId ?? null, fields: next?.fields ?? [] }]
     pages.value = rawPages.slice(0, 5).map(p => ({
       backgroundAssetId: p?.backgroundAssetId ?? null,
+      // Spread the saved field first so any properties (incl. grade-table
+      // rowStart/rowEnd ranges) survive a reload, then normalise the known ones.
       fields: (p?.fields ?? []).map(f => ({
+        ...f,
         id: f.id || uid(),
         kind: f.kind || 'text',
         tag: f.tag ?? null,
@@ -1059,6 +1142,10 @@ onBeforeUnmount(() => {
 .tb-zoom-val { font-size: .75rem; color: #5f6e85; min-width: 3rem; text-align: center; }
 .tb-info { font-size: .75rem; color: #6b7888; margin-left: auto; }
 .tb-copy { border-color: #1c7a4a; color: #1c7a4a; }
+.tb-range-wrap { position: relative; display: inline-block; }
+.tb-range-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; background: #fff; border: 1px solid #cfd7e3; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.12); padding: .25rem; display: flex; flex-direction: column; min-width: 180px; }
+.tb-range-item { text-align: left; border: none; background: transparent; padding: .35rem .55rem; border-radius: 4px; font-size: .82rem; cursor: pointer; color: #1a2d4f; }
+.tb-range-item:hover { background: #eef3fb; }
 .tb-copy:hover:not(:disabled) { background: #eaf6ec; }
 .copy-prog-select { width: 100%; padding: .35rem .5rem; border: 1px solid #cfd7e3; border-radius: 4px; font-size: .8rem; box-sizing: border-box; margin-top: .25rem; }
 .copy-prog-btn { width: 100%; margin-top: .35rem; border-color: #1c7a4a; color: #1c7a4a; }
