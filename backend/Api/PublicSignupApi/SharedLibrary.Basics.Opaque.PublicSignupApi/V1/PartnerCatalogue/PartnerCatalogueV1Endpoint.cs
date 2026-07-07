@@ -33,15 +33,28 @@ public sealed class PartnerCatalogueV1Endpoint : IEndpointMarker
             .FirstOrDefaultAsync(ct);
         if (partner is null) return Results.NotFound(new { error = "Partner not found." });
 
-        // Core programmes (no owner) ∪ programmes explicitly granted to this partner.
+        // Core programmes (no owner) ∪ programmes explicitly granted to this
+        // partner ∪ the partner's own approved-and-active custom programmes.
         var grantedProgrammeIds = await db.ProgrammePartners
             .Where(pp => pp.PartnerId == partner.PartnerId && pp.IsActive != null)
             .Select(pp => pp.ProgrammeId)
             .ToListAsync(ct);
 
+        // Owned custom programmes that are live: status Approved (2), active,
+        // and not disabled by admin — so they can accept applications.
+        const int StatusApproved = 2;
+        var ownedLiveProgrammeIds = await db.Programmes
+            .Where(p => p.OwnerId == partner.PartnerId && p.DeletedAt == null
+                && db.PartnerProgrammeStatuses.Any(s => s.ProgrammeId == p.ProgrammeId
+                    && s.Status == StatusApproved && s.IsActive && !s.IsDisabledByAdmin))
+            .Select(p => p.ProgrammeId)
+            .ToListAsync(ct);
+
         var programmes = await db.Programmes
             .Where(p => p.DeletedAt == null
-                        && (p.OwnerId == null || grantedProgrammeIds.Contains(p.ProgrammeId)))
+                        && (p.OwnerId == null
+                            || grantedProgrammeIds.Contains(p.ProgrammeId)
+                            || ownedLiveProgrammeIds.Contains(p.ProgrammeId)))
             .OrderBy(p => p.Code)
             .Select(p => new
             {
