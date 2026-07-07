@@ -43,6 +43,8 @@ public sealed class PartnerV1MyStudentsReviewEndpoint : IEndpointMarker
     {
         public DateTime? CommencementDate { get; init; }
         public int? DurationMonths { get; init; }
+        /// <summary>Optional manual teaching-language override for this enrolment.</summary>
+        public string? InstructionLanguageOverride { get; init; }
     }
 
     public sealed class PaymentBlock
@@ -189,6 +191,12 @@ public sealed class PartnerV1MyStudentsReviewEndpoint : IEndpointMarker
                 });
             }
             enrollment.ApprovedDurationMonths = months;
+        }
+
+        if (!anyRejected && body.Enrolment is not null)
+        {
+            var lang = body.Enrolment.InstructionLanguageOverride?.Trim();
+            enrollment.InstructionLanguageOverride = string.IsNullOrWhiteSpace(lang) ? null : lang;
         }
 
         await db.SaveChangesAsync(ct);

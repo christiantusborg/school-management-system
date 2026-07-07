@@ -15,6 +15,7 @@ public class EnrollmentConfiguration : IEntityTypeConfiguration<Enrollment>
         // many enrolments that have not yet released a letter coexist fine.
         builder.Property(e => e.LetterReferenceCode).HasMaxLength(16);
         builder.HasIndex(e => e.LetterReferenceCode).IsUnique();
+        builder.Property(e => e.InstructionLanguageOverride).HasMaxLength(120);
 
         builder.HasOne(e => e.Student)
             .WithMany(s => s.Enrollments)

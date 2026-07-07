@@ -34,6 +34,25 @@ public class Enrollment : IDeletedAtEntity
     public int? ApprovedDurationMonths { get; set; }
 
     /// <summary>
+    /// Per-enrolment override of the teaching/instruction language, set by admin
+    /// or partner during review (or in the detail editor). When non-blank it
+    /// wins over <see cref="Specialization.InstructionLanguage"/> in every
+    /// letter/transcript (the [instruction language] tag). Null/blank = use the
+    /// specialization's language.
+    /// </summary>
+    public string? InstructionLanguageOverride { get; set; }
+
+    /// <summary>
+    /// Admission-Office overrides for the date printed on (and the effective
+    /// release date of) the offer / admission letters. When set, the letter's
+    /// [date] tag uses this instead of the render date — e.g. to backdate an
+    /// offer that was actually made earlier. Null = use the render date.
+    /// </summary>
+    public DateTime? OfferLetterDate { get; set; }
+    public DateTime? AdmissionLetterDate { get; set; }
+    public DateTime? TranscriptDate { get; set; }
+
+    /// <summary>
     /// Stable per-enrolment reference code: the first 8 hex characters of a
     /// GUID, generated once on the first letter release and reused for every
     /// letter and every regeneration thereafter. Letters render it as

@@ -1552,6 +1552,7 @@ public static class DatabaseSeeder
                     Name = s.SpecName,
                     Description = s.SpecDescription,
                     DurationOfStudyMonths = s.DurationMonths,
+                    InstructionLanguage = "English", // IBSS is English-medium
                     IsActive = DateTime.UtcNow,
                 };
                 context.Specializations.Add(spec);

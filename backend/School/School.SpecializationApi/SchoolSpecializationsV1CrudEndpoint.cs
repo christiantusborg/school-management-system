@@ -50,7 +50,10 @@ public sealed class SchoolSpecializationsV1CrudEndpoint : IEndpointMarker
             Description = body.Description ?? string.Empty,
             DurationOfStudyMonths = body.DurationOfStudyMonths ?? 12,
             OfferAcceptanceMode = ParseOfferAcceptanceMode(body.OfferAcceptanceMode) ?? OfferAcceptanceMode.StudentAccept,
-            InstructionLanguage = string.IsNullOrWhiteSpace(body.InstructionLanguage) ? null : body.InstructionLanguage.Trim(),
+            // IBSS programmes are English-medium; default to English when the
+            // creator leaves it blank so a specialization is never languageless
+            // (which would render a blank "Language of Instruction" on letters).
+            InstructionLanguage = string.IsNullOrWhiteSpace(body.InstructionLanguage) ? "English" : body.InstructionLanguage.Trim(),
             IsActive = DateTime.UtcNow,
         };
         db.Specializations.Add(entity);

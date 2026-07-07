@@ -22,6 +22,8 @@ public class SpecializationConfiguration : IEntityTypeConfiguration<Specializati
             .HasMaxLength(32)
             .IsRequired()
             .HasDefaultValue(OfferAcceptanceMode.StudentAccept);
-        builder.Property(e => e.InstructionLanguage).HasMaxLength(120);
+        // IBSS is English-medium: default the study language to English at the
+        // DB level so a specialization is never languageless on any insert path.
+        builder.Property(e => e.InstructionLanguage).HasMaxLength(120).HasDefaultValue("English");
     }
 }

@@ -58,6 +58,10 @@ public sealed class LetterTagResolver(OdinDbContext db)
                 e.StudentId,
                 e.PartnerId,
                 e.SpecializationId,
+                e.InstructionLanguageOverride,
+                e.OfferLetterDate,
+                e.AdmissionLetterDate,
+                e.TranscriptDate,
                 e.CommencementDate,
                 e.ModeOfStudyId,
                 e.ApprovedDurationMonths,
@@ -119,7 +123,21 @@ public sealed class LetterTagResolver(OdinDbContext db)
         result["[student number]"]    = enrollment.Student?.StudentNumber ?? string.Empty;
         result["[student address]"]   = string.Empty; // No address on Student today; fill in a follow-up.
         result["[passport id]"]       = enrollment.Student?.PassportId ?? string.Empty;
-        result["[date]"]              = DateTime.UtcNow.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture);
+        // [date] is the letter's issuance date. Offer/admission letters honour
+        // an Admission-Office override (reference prefix tells which letter this
+        // is: IBSS-OL-… = offer, IBSS-AL-… = admission); everything else uses
+        // the render date.
+        var issuanceDate = DateTime.UtcNow;
+        if (reference is not null)
+        {
+            if (reference.Contains("-OL-", StringComparison.OrdinalIgnoreCase) && enrollment.OfferLetterDate is { } od)
+                issuanceDate = od;
+            else if (reference.Contains("-AL-", StringComparison.OrdinalIgnoreCase) && enrollment.AdmissionLetterDate is { } ad)
+                issuanceDate = ad;
+            else if (reference.Contains("-TR-", StringComparison.OrdinalIgnoreCase) && enrollment.TranscriptDate is { } td)
+                issuanceDate = td;
+        }
+        result["[date]"]              = issuanceDate.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture);
         result["[commencement date]"] = enrollment.CommencementDate?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
         // Approved (per-enrolment) duration wins over the specialization
         // default, so an admin override shifts the completion date too.
@@ -128,7 +146,10 @@ public sealed class LetterTagResolver(OdinDbContext db)
         result["[duration of study]"] = durationMonths is { } dm
             ? $"{dm} months"
             : string.Empty;
-        result["[instruction language]"] = enrollment.Specialization?.InstructionLanguage ?? string.Empty;
+        // Per-enrolment override wins over the specialization's language.
+        result["[instruction language]"] = !string.IsNullOrWhiteSpace(enrollment.InstructionLanguageOverride)
+            ? enrollment.InstructionLanguageOverride!
+            : enrollment.Specialization?.InstructionLanguage ?? string.Empty;
         var calculatedCompletion = (enrollment.CommencementDate is { } start && durationMonths is { } months)
             ? start.AddMonths(months)
             : (DateTime?)null;

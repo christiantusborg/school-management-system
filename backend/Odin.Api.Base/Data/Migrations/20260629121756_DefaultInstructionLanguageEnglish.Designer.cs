@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Odin.Api.Base.Data;
@@ -11,9 +12,11 @@ using Odin.Api.Base.Data;
 namespace Odin.Api.Base.Data.Migrations
 {
     [DbContext(typeof(OdinDbContext))]
-    partial class OdinDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260629121756_DefaultInstructionLanguageEnglish")]
+    partial class DefaultInstructionLanguageEnglish
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -414,9 +417,6 @@ namespace Odin.Api.Base.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("AdmissionLetterDate")
-                        .HasColumnType("timestamp without time zone");
-
                     b.Property<int?>("ApprovedDurationMonths")
                         .HasColumnType("integer");
 
@@ -426,19 +426,12 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp without time zone");
 
-                    b.Property<string>("InstructionLanguageOverride")
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
                     b.Property<string>("LetterReferenceCode")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
                     b.Property<int>("ModeOfStudyId")
                         .HasColumnType("integer");
-
-                    b.Property<DateTime?>("OfferLetterDate")
-                        .HasColumnType("timestamp without time zone");
 
                     b.Property<Guid>("PartnerId")
                         .HasColumnType("uuid");
@@ -454,9 +447,6 @@ namespace Odin.Api.Base.Data.Migrations
 
                     b.Property<Guid>("StudentId")
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("TranscriptDate")
-                        .HasColumnType("timestamp without time zone");
 
                     b.HasKey("StudentEnrollmentId");
 

@@ -41,6 +41,8 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
     {
         public DateTime? CommencementDate { get; init; }
         public int? DurationMonths { get; init; }
+        /// <summary>Optional manual teaching-language override for this enrolment.</summary>
+        public string? InstructionLanguageOverride { get; init; }
     }
 
     public sealed class ReviewRequest
@@ -201,6 +203,10 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
                 }
                 enrollment.ApprovedDurationMonths = months;
             }
+
+            var lang = body.Enrolment?.InstructionLanguageOverride?.Trim();
+            if (body.Enrolment is not null)
+                enrollment.InstructionLanguageOverride = string.IsNullOrWhiteSpace(lang) ? null : lang;
         }
 
         await db.SaveChangesAsync(ct);

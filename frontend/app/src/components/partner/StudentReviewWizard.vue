@@ -273,6 +273,12 @@
             </span>
             <p v-if="durationError" class="rw-err">{{ durationError }}</p>
           </div>
+          <div class="rw-field"><label>Teaching language</label>
+            <input type="text" v-model="enrolmentDraft.instructionLanguage" placeholder="English" />
+            <span class="rw-note">
+              Shown on all letters/transcripts. Leave blank to use the programme default (English).
+            </span>
+          </div>
         </div>
 
         <!-- ═══════ Step 7: Contract confirmation ═══════ -->
@@ -532,6 +538,7 @@ const enrollment = computed(() => props.student.enrollments?.[0] ?? null)
 const enrolmentDraft = reactive({
   commencementDate: enrollment.value?.commencementDate?.slice(0, 10) ?? '',
   durationMonths: enrollment.value?.durationMonths ?? 0,
+  instructionLanguage: enrollment.value?.instructionLanguageOverride ?? '',
 })
 
 const durationMin = computed(() => enrollment.value?.programmeMinDurationMonths || 1)
@@ -700,6 +707,7 @@ async function submit() {
         enrolment: {
           commencementDate: enrolmentDraft.commencementDate || null,
           durationMonths: enrolmentDraft.durationMonths || null,
+          instructionLanguageOverride: enrolmentDraft.instructionLanguage?.trim() || null,
         },
         // Payment block deliberately omitted — payments aren't a flow yet.
       }

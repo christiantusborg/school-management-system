@@ -104,6 +104,7 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
                         Name = name,
                         Code = $"S-{Guid.NewGuid().ToString()[..8]}",
                         Description = string.Empty,
+                        InstructionLanguage = "English", // IBSS is English-medium
                     };
                     db.Specializations.Add(spec);
                 }
