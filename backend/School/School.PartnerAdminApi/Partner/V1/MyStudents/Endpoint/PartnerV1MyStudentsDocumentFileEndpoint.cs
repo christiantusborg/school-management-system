@@ -35,9 +35,14 @@ public sealed class PartnerV1MyStudentsDocumentFileEndpoint : IEndpointMarker
 
         var doc = await db.StudentDocuments
             .Where(d => d.StudentDocumentId == documentId && d.StudentId == studentId && d.DeletedAt == null)
-            .Select(d => new { d.StoragePath, d.FileName, d.MimeType, d.StudentId })
+            .Select(d => new { d.StoragePath, d.FileName, d.MimeType, d.StudentId, d.DocumentTypeId })
             .FirstOrDefaultAsync(ct);
         if (doc is null) return Results.NotFound();
+
+        // Only the Admission Office may download the printable certificate.
+        if (doc.DocumentTypeId == SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.ProvisionalCertificate)
+            return Results.Json(new { error = "The printable certificate is available from the Admission Office only." },
+                statusCode: StatusCodes.Status403Forbidden);
 
         // Resolve the storage key. New uploads carry it; legacy rows fall
         // back to a directory scan keyed on (studentId, documentId, fileName).

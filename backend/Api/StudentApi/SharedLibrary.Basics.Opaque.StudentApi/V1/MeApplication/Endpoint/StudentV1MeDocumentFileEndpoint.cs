@@ -38,9 +38,15 @@ public sealed class StudentV1MeDocumentFileEndpoint : IEndpointMarker
             .Where(d => d.StudentDocumentId == studentDocumentId
                 && d.StudentId == student.StudentId
                 && d.DeletedAt == null)
-            .Select(d => new { d.StoragePath, d.FileName, d.MimeType })
+            .Select(d => new { d.StoragePath, d.FileName, d.MimeType, d.DocumentTypeId })
             .FirstOrDefaultAsync(ct);
         if (doc is null) return Results.NotFound();
+
+        // Only the Admission Office may download the printable certificate.
+        if (doc.DocumentTypeId == SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.ProvisionalCertificate)
+            return Results.Json(new { error = "The printable certificate is available from the Admission Office only." },
+                statusCode: StatusCodes.Status403Forbidden);
+
         if (string.IsNullOrEmpty(doc.StoragePath)) return Results.NotFound();
 
         Stream stream;
