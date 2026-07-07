@@ -167,6 +167,14 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 programmeMaxDurationMonths = e.Specialization.Programmes.MaxDurationMonths,
                 specializationId = e.SpecializationId,
                 specializationName = e.Specialization.Name,
+                // Effective language (override wins) for display; raw override for editing.
+                instructionLanguage = e.InstructionLanguageOverride != null && e.InstructionLanguageOverride != ""
+                    ? e.InstructionLanguageOverride
+                    : e.Specialization.InstructionLanguage,
+                instructionLanguageOverride = e.InstructionLanguageOverride,
+                offerLetterDate = e.OfferLetterDate,
+                admissionLetterDate = e.AdmissionLetterDate,
+                transcriptDate = e.TranscriptDate,
                 pathwayId = (int?)e.PathwayId,
                 modeOfStudyId = e.ModeOfStudyId,
                 modeOfStudyName = e.ModeOfStudy.Name,
@@ -209,6 +217,11 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             e.programmeMaxDurationMonths,
             e.specializationId,
             e.specializationName,
+            e.instructionLanguage,
+            e.instructionLanguageOverride,
+            e.offerLetterDate,
+            e.admissionLetterDate,
+            e.transcriptDate,
             e.pathwayId,
             e.modeOfStudyId,
             e.modeOfStudyName,

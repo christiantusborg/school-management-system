@@ -23,6 +23,7 @@
       </select>
       <button class="btn-refresh" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻' }}</button>
       <button class="btn-export" @click="exportModal = makeExportModal()">📥 Export students</button>
+      <button v-if="partnerId" class="btn-add-student" @click="emit('add-student')">➕ Add student</button>
     </div>
 
     <div v-if="!loading && filtered.length === 0" class="empty">No students match.</div>
@@ -139,11 +140,20 @@
               <button v-if="gradeModal.mode !== 'reject'" class="btn-link" @click="gradeModal = null">Cancel</button>
               <button v-else class="btn-link" @click="gradeModal.mode = 'view'">← Back</button>
 
-              <button v-if="gradeModal.mode === 'submit'" class="btn-confirm-manage btn-approve-final"
-                      :disabled="!canCommitAdminGrades || gradeModal.submitting"
-                      @click="confirmGradeSubmission">
-                {{ gradeModal.submitting ? 'Submitting…' : '✓ Submit grades' }}
-              </button>
+              <template v-if="gradeModal.mode === 'submit'">
+                <button class="btn-link" :disabled="gradeModal.downloadingProvisional" @click="downloadAdminProvisional">
+                  {{ gradeModal.downloadingProvisional ? 'Preparing…' : '⤓ Provisional transcript' }}
+                </button>
+                <button class="btn-confirm-manage" style="background:#003366;border-color:#003366;"
+                        :disabled="gradeModal.savingDraft" @click="saveAdminGradesDraft">
+                  {{ gradeModal.savingDraft ? 'Saving…' : 'Save grades' }}
+                </button>
+                <button class="btn-confirm-manage btn-approve-final"
+                        :disabled="!canCommitAdminGrades || gradeModal.submitting"
+                        @click="confirmGradeSubmission">
+                  {{ gradeModal.submitting ? 'Submitting…' : '✓ Submit grades' }}
+                </button>
+              </template>
               <div v-else-if="gradeModal.mode !== 'reject'" class="grade-actions">
                 <button class="btn-confirm-manage btn-reject-final"
                         :disabled="!gradeModal.subjects?.length || gradeModal.submitting"
@@ -363,8 +373,40 @@
                 <div class="detail-section" v-if="activeEnrollment">
                   <h4>Enrolment</h4>
                   <dl>
-                    <dt>Programme</dt><dd>{{ activeEnrollment.programmeName }}</dd>
-                    <dt>Specialisation</dt><dd>{{ activeEnrollment.specializationName }}</dd>
+                    <dt>Programme</dt>
+                    <dd v-if="canEditSpecialization">
+                      <select v-model="programmeDraft" class="dur-input" style="width:240px;" @change="onProgrammeDraftChange">
+                        <option v-for="p in enrolmentProgOptions" :key="p.programmeId" :value="p.programmeId">{{ p.name }}</option>
+                      </select>
+                    </dd>
+                    <dd v-else>{{ activeEnrollment.programmeName }}</dd>
+                    <dt>Specialisation</dt>
+                    <dd v-if="canEditSpecialization">
+                      <select v-model="specializationDraft" class="dur-input" style="width:220px;">
+                        <option v-for="m in enrolmentSpecOptions" :key="m.specializationId" :value="m.specializationId">{{ m.name }}</option>
+                      </select>
+                      <button class="btn-row-details btn-row-details-sm"
+                              :disabled="savingSpecialization || !specializationDraft || (programmeDraft === activeEnrollment.programmeId && specializationDraft === activeEnrollment.specializationId)"
+                              @click="saveSpecialization">
+                        {{ savingSpecialization ? 'Saving…' : 'Save' }}
+                      </button>
+                      <span v-if="specializationSaveError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ specializationSaveError }}</span>
+                      <span v-else-if="specializationSaveOk" class="ok-banner" style="display:inline-block;margin-left:.5rem;">Saved</span>
+                      <div v-if="programmeDraft !== activeEnrollment.programmeId" class="dur-warn">⚠ Changing programme moves the enrolment; subjects/grades for the new programme apply.</div>
+                    </dd>
+                    <dd v-else>{{ activeEnrollment.specializationName }}</dd>
+                    <dt>Study language</dt>
+                    <dd v-if="canEditDuration">
+                      <input type="text" class="dur-input" style="width:170px;" v-model="teachingLanguageDraft"
+                             placeholder="English (programme default)" />
+                      <button class="btn-row-details btn-row-details-sm" :disabled="savingLanguage" @click="saveTeachingLanguage">
+                        {{ savingLanguage ? 'Saving…' : 'Save' }}
+                      </button>
+                      <span v-if="languageSaveError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ languageSaveError }}</span>
+                      <span v-else-if="languageSaveOk" class="ok-banner" style="display:inline-block;margin-left:.5rem;">Saved</span>
+                      <div class="muted" style="font-size:.72rem;margin-top:.2rem;">Override on all letters; blank = programme default.</div>
+                    </dd>
+                    <dd v-else>{{ activeEnrollment.instructionLanguage || '—' }}</dd>
                     <dt>Mode</dt><dd>{{ activeEnrollment.modeOfStudyName ?? '—' }}</dd>
                     <dt>Commencement</dt>
                     <dd v-if="canEditDuration">
@@ -411,6 +453,26 @@
                     <dt>Expected completion</dt>
                     <dd>{{ expectedCompletion || '—' }}</dd>
                     <dt>Status</dt><dd><span :class="['s-badge', statusClass(activeEnrollment.statusCode)]">{{ activeEnrollment.statusName }}</span></dd>
+                    <template v-if="canEditDuration">
+                      <dt>Offer letter date</dt>
+                      <dd>
+                        <input type="date" class="dur-input" style="width:150px;" v-model="offerLetterDateDraft" />
+                      </dd>
+                      <dt>Admission letter date</dt>
+                      <dd>
+                        <input type="date" class="dur-input" style="width:150px;" v-model="admissionLetterDateDraft" />
+                      </dd>
+                      <dt>Transcript date</dt>
+                      <dd>
+                        <input type="date" class="dur-input" style="width:150px;" v-model="transcriptDateDraft" />
+                        <button class="btn-row-details btn-row-details-sm" :disabled="savingLetterDates" @click="saveLetterDates">
+                          {{ savingLetterDates ? 'Saving…' : 'Save letter dates' }}
+                        </button>
+                        <span v-if="letterDatesError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ letterDatesError }}</span>
+                        <span v-else-if="letterDatesOk" class="ok-banner" style="display:inline-block;margin-left:.5rem;">Saved</span>
+                        <div class="muted" style="font-size:.72rem;margin-top:.2rem;">Overrides the date printed on the offer/admission letter; blank = release date. Already-released letters are re-rendered.</div>
+                      </dd>
+                    </template>
                   </dl>
                 </div>
               </div>
@@ -490,10 +552,17 @@
                   <div class="letter-actions">
                     <button class="btn-mini" :disabled="!activeEnrollment.letters?.[t.key]"
                             @click="downloadLetter(activeEnrollment.letters?.[t.key])">Download</button>
+                    <button v-if="t.key === 'transcript' && !activeEnrollment.letters?.[t.key]" class="btn-mini btn-mini-ghost"
+                            :disabled="downloadingLetterProvisional"
+                            @click="downloadLetterProvisional()">
+                      {{ downloadingLetterProvisional ? '…' : '⤓ Provisional' }}
+                    </button>
                     <button v-if="canRegenerateLetters" class="btn-mini btn-mini-ghost"
-                            :disabled="!activeEnrollment.letters?.[t.key] || regeneratingLetterKey === t.key"
+                            :disabled="regeneratingLetterKey === t.key"
                             @click="regenerateLetter(t)">
-                      {{ regeneratingLetterKey === t.key ? 'Regenerating…' : 'Regenerate' }}
+                      {{ regeneratingLetterKey === t.key
+                          ? (activeEnrollment.letters?.[t.key] ? 'Regenerating…' : 'Generating…')
+                          : (activeEnrollment.letters?.[t.key] ? 'Regenerate' : 'Generate') }}
                     </button>
                     <button v-if="canRegenerateLetters && EMAILABLE_KEYS.includes(t.key)" class="btn-mini btn-mini-email"
                             :disabled="!activeEnrollment.letters?.[t.key]"
@@ -705,6 +774,7 @@ import { ACCEPTED_DOC_ACCEPT_ATTR } from '../../utils/uploadPolicy.js'
 const props = defineProps({
   partnerId: { type: String, default: '' },
 })
+const emit = defineEmits(['add-student'])
 
 // One chip per distinct workflow stage so admin can drill into any single
 // state. "Action required" is the default landing (admin's queue) and "All"
@@ -789,8 +859,8 @@ const LETTER_TYPES = [
   { key: 'offerLetter',            label: 'Offer Letter',           icon: '📄' },
   { key: 'admissionLetter',        label: 'Admission Letter',       icon: '📋' },
   { key: 'transcript',             label: 'Transcript',             icon: '📑' },
-  { key: 'certificate',            label: 'Certificate',            icon: '🎓' },
-  { key: 'provisionalCertificate', label: 'Provisional Certificate', icon: '🎓' },
+  { key: 'certificate',            label: 'Digital Certificate',    icon: '🎓' },
+  { key: 'provisionalCertificate', label: 'Printable Cert',         icon: '🎓' },
 ]
 const detailModal = ref(null)
 const detailEnrollments = computed(() => detailModal.value?.data?.enrollments ?? [])
@@ -823,6 +893,160 @@ const commencementDraft = computed({
 const savingCommencement = ref(false)
 const commencementSaveError = ref('')
 const commencementSaveOk = ref(false)
+
+// Per-enrolment programme + specialization change. Admin edit, gated to the
+// top two admin levels like the other enrolment overrides.
+const canEditSpecialization = computed(() =>
+  ['SuperAdministrator', 'Administrator'].includes(auth.adminLevel))
+const enrolmentProgOptions = ref([])
+const enrolmentSpecOptions = ref([])
+const programmeDraft = ref('')
+const specializationDraft = ref('')
+const savingSpecialization = ref(false)
+const specializationSaveError = ref('')
+const specializationSaveOk = ref(false)
+
+// Programmes the student's partner can be enrolled in: IBSS core programmes
+// plus the partner's own custom programmes. The backend re-validates on save.
+async function loadEnrolmentProgOptions() {
+  const partnerId = detailModal.value?.data?.partner?.partnerId
+  try {
+    const [coreRes, partnerRes] = await Promise.all([
+      api.get('/v1/school/programmes', { params: { ownership: 'core' } }),
+      api.get('/v1/school/programmes', { params: { ownership: 'partner' } }).catch(() => ({ data: { items: [] } })),
+    ])
+    const core = (coreRes.data.items ?? []).filter(p => !p.deletedAt)
+    const owned = (partnerRes.data.items ?? []).filter(p => !p.deletedAt && p.ownerId === partnerId)
+    const byId = new Map()
+    for (const p of [...core, ...owned]) byId.set(p.programmeId, { programmeId: p.programmeId, name: p.name })
+    enrolmentProgOptions.value = Array.from(byId.values()).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+  } catch { enrolmentProgOptions.value = [] }
+}
+
+async function loadSpecsForProgramme(programmeId, selectSpecId = null) {
+  if (!programmeId) { enrolmentSpecOptions.value = []; return }
+  try {
+    const res = await api.get('/v1/school/specializations', { params: { programmeId } })
+    enrolmentSpecOptions.value = (res.data.items ?? []).map(s => ({ specializationId: s.specializationId, name: s.name }))
+  } catch { enrolmentSpecOptions.value = [] }
+  // Keep the current selection if it belongs to this programme, else pick first.
+  const has = enrolmentSpecOptions.value.some(s => s.specializationId === selectSpecId)
+  specializationDraft.value = has ? selectSpecId : (enrolmentSpecOptions.value[0]?.specializationId ?? '')
+}
+
+async function loadEnrolmentSpecOptions() {
+  const e = activeEnrollment.value
+  if (!e?.programmeId) { enrolmentSpecOptions.value = []; enrolmentProgOptions.value = []; return }
+  programmeDraft.value = e.programmeId
+  await Promise.all([
+    loadEnrolmentProgOptions(),
+    loadSpecsForProgramme(e.programmeId, e.specializationId),
+  ])
+}
+
+// When the admin picks a different programme, load its specializations.
+function onProgrammeDraftChange() {
+  loadSpecsForProgramme(programmeDraft.value)
+}
+
+async function saveSpecialization() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || savingSpecialization.value) return
+  if (!specializationDraft.value) return
+  savingSpecialization.value = true
+  specializationSaveError.value = ''
+  specializationSaveOk.value = false
+  try {
+    const res = await api.patch(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/specialization`,
+      { specializationId: specializationDraft.value })
+    activeEnrollment.value.programmeId = res.data.programmeId
+    activeEnrollment.value.programmeName = res.data.programmeName
+    activeEnrollment.value.specializationId = res.data.specializationId
+    activeEnrollment.value.specializationName = res.data.specializationName
+    specializationSaveOk.value = true
+    setTimeout(() => { specializationSaveOk.value = false }, 2500)
+    load() // refresh row labels
+    await refreshDetailModal()
+  } catch (err) {
+    specializationSaveError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
+  } finally {
+    savingSpecialization.value = false
+  }
+}
+
+// Offer/admission letter date overrides (Admission Office only).
+const offerLetterDateDraft = computed({
+  get() { return activeEnrollment.value?.offerLetterDate?.slice(0, 10) ?? '' },
+  set(v) { if (activeEnrollment.value) activeEnrollment.value.offerLetterDate = v || null },
+})
+const admissionLetterDateDraft = computed({
+  get() { return activeEnrollment.value?.admissionLetterDate?.slice(0, 10) ?? '' },
+  set(v) { if (activeEnrollment.value) activeEnrollment.value.admissionLetterDate = v || null },
+})
+const transcriptDateDraft = computed({
+  get() { return activeEnrollment.value?.transcriptDate?.slice(0, 10) ?? '' },
+  set(v) { if (activeEnrollment.value) activeEnrollment.value.transcriptDate = v || null },
+})
+const savingLetterDates = ref(false)
+const letterDatesError = ref('')
+const letterDatesOk = ref(false)
+
+async function saveLetterDates() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || savingLetterDates.value) return
+  savingLetterDates.value = true
+  letterDatesError.value = ''
+  letterDatesOk.value = false
+  try {
+    const res = await api.patch(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letter-dates`,
+      {
+        offerLetterDate: offerLetterDateDraft.value || null,
+        admissionLetterDate: admissionLetterDateDraft.value || null,
+        transcriptDate: transcriptDateDraft.value || null,
+      })
+    activeEnrollment.value.offerLetterDate = res.data.offerLetterDate
+    activeEnrollment.value.admissionLetterDate = res.data.admissionLetterDate
+    activeEnrollment.value.transcriptDate = res.data.transcriptDate
+    letterDatesOk.value = true
+    setTimeout(() => { letterDatesOk.value = false }, 2500)
+    await refreshDetailModal()
+  } catch (err) {
+    letterDatesError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
+  } finally {
+    savingLetterDates.value = false
+  }
+}
+
+// Per-enrolment teaching-language override (blank = programme default).
+const teachingLanguageDraft = computed({
+  get() { return activeEnrollment.value?.instructionLanguageOverride ?? '' },
+  set(v) { if (activeEnrollment.value) activeEnrollment.value.instructionLanguageOverride = v },
+})
+const savingLanguage = ref(false)
+const languageSaveError = ref('')
+const languageSaveOk = ref(false)
+
+async function saveTeachingLanguage() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || savingLanguage.value) return
+  savingLanguage.value = true
+  languageSaveError.value = ''
+  languageSaveOk.value = false
+  try {
+    const res = await api.patch(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/teaching-language`,
+      { instructionLanguageOverride: (teachingLanguageDraft.value || '').trim() || null })
+    activeEnrollment.value.instructionLanguageOverride = res.data.instructionLanguageOverride
+    // Reflect the new effective value in the read-only display fields.
+    activeEnrollment.value.instructionLanguage = res.data.instructionLanguageOverride || activeEnrollment.value.instructionLanguage
+    languageSaveOk.value = true
+    setTimeout(() => { languageSaveOk.value = false }, 2500)
+    await refreshDetailModal()
+  } catch (err) {
+    languageSaveError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
+  } finally {
+    savingLanguage.value = false
+  }
+}
 const commencementPastWarning = computed(() => {
   const v = commencementDraft.value
   if (!v) return ''
@@ -1013,7 +1237,10 @@ async function regenerateLetters() {
 // PascalCase LetterType the backend enum expects (offerLetter → OfferLetter).
 async function regenerateLetter(t) {
   if (!detailModal.value?.studentId || !activeEnrollment.value) return
-  if (!activeEnrollment.value.letters?.[t.key]) return
+  // Works for not-yet-released letters too: the backend release creates the
+  // document when the template is published (used to back-fill a missing
+  // Printable Cert / Digital Certificate for an already-graduated student).
+  const wasReleased = !!activeEnrollment.value.letters?.[t.key]
   regeneratingLetterKey.value = t.key
   letterRegenResult.value = ''
   try {
@@ -1022,8 +1249,8 @@ async function regenerateLetter(t) {
       `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/regenerate`,
       null, { params: { letterType: enumName } })
     letterRegenResult.value = (res.data?.regenerated ?? []).length
-      ? `${t.label} regenerated.`
-      : `Nothing regenerated for ${t.label} (template not published).`
+      ? `${t.label} ${wasReleased ? 'regenerated' : 'generated'}.`
+      : `Nothing for ${t.label} (template not published).`
     await refreshDetailModal()
   } catch (err) {
     letterRegenResult.value = err.response?.data?.error ?? err.message ?? 'Regenerate failed'
@@ -1065,6 +1292,9 @@ watch(() => detailModal.value?.activeEnrollmentId, () => {
   showRegenOffer.value = false
   regenResult.value = ''
   durationSaveError.value = ''
+  specializationSaveError.value = ''
+  specializationSaveOk.value = false
+  loadEnrolmentSpecOptions()
 })
 
 const awaitingOfferAcceptance = computed(() =>
@@ -1171,6 +1401,9 @@ async function openStudentDetail(s, preselectEnrollmentId = null) {
     if (!detailModal.value.activeEnrollmentId && res.data.enrollments?.length) {
       detailModal.value.activeEnrollmentId = res.data.enrollments[0].studentEnrollmentId
     }
+    // Load the specialization options now that the enrolment data is present
+    // (the activeEnrollmentId watcher can fire before data arrives).
+    await loadEnrolmentSpecOptions()
   } catch (err) {
     detailModal.value.error = err.response?.data?.error ?? err.message ?? 'Failed to load student'
   } finally {
@@ -1339,6 +1572,7 @@ async function refreshDetailModal() {
   try {
     const res = await api.get(`/v1/admin/students/${detailModal.value.studentId}`)
     detailModal.value.data = normaliseDetailForEdit(res.data)
+    await loadEnrolmentSpecOptions()
   } catch { /* keep stale view */ }
 }
 
@@ -1369,19 +1603,45 @@ async function downloadStudentDoc(d) {
   }
 }
 
+// Trigger a download/open of a blob PDF response.
+function openBlobPdf(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.target = '_blank'
+  document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+// Provisional transcript download from the Letters tab (before the official
+// transcript is released). Uses the active enrolment of the open detail modal.
+const downloadingLetterProvisional = ref(false)
+async function downloadLetterProvisional() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || downloadingLetterProvisional.value) return
+  downloadingLetterProvisional.value = true
+  try {
+    const res = await api.get(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/transcript/provisional`,
+      { responseType: 'blob' })
+    openBlobPdf(res.data, 'provisional-transcript.pdf')
+  } catch (err) {
+    reviewToast.value = err.response?.status === 404
+      ? 'No published transcript template yet, or no grades saved.'
+      : (err.response?.data?.error ?? err.message ?? 'Download failed')
+    setTimeout(() => { reviewToast.value = '' }, 3500)
+  } finally {
+    downloadingLetterProvisional.value = false
+  }
+}
+
 async function downloadLetter(letter) {
   if (!letter?.studentDocumentId || !detailModal.value) return
   try {
     const res = await api.get(
       `/v1/admin/students/${detailModal.value.studentId}/documents/${letter.studentDocumentId}/file`,
       { responseType: 'blob' })
-    const url = URL.createObjectURL(res.data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = letter.fileName ?? 'letter.pdf'
-    a.target = '_blank'
-    document.body.appendChild(a); a.click(); document.body.removeChild(a)
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    openBlobPdf(res.data, letter.fileName ?? 'letter.pdf')
   } catch (err) {
     reviewToast.value = err.response?.status === 404
       ? 'File not found.'
@@ -1455,6 +1715,8 @@ async function openGradeSubmit(s, e) {
     confirmTuitionPaid: false,
     loading: true,
     submitting: false,
+    savingDraft: false,
+    downloadingProvisional: false,
     error: '',
   })
   try {
@@ -1472,6 +1734,42 @@ const canCommitAdminGrades = computed(() => {
   if (!m?.subjects?.length) return false
   return m.subjects.every(r => Number.isFinite(r.score) && r.score >= 0 && r.score <= 100)
 })
+
+// Admin draft-save (no status change), mirroring the partner draft.
+async function saveAdminGradesDraft() {
+  const m = gradeModal.value
+  if (!m || m.savingDraft) return
+  m.savingDraft = true; m.error = ''
+  try {
+    const items = m.subjects.filter(r => Number.isFinite(r.score)).map(r => ({ subjectId: r.subjectId, score: r.score }))
+    await api.post(`/v1/admin/students/${m.studentId}/enrollments/${m.enrollmentId}/grades/draft`, { items })
+    reviewToast.value = `Saved ${items.length} grade(s). Provisional transcript updated.`
+    setTimeout(() => { reviewToast.value = '' }, 3000)
+  } catch (err) {
+    m.error = err.response?.data?.error ?? err.message ?? 'Failed to save grades'
+  } finally {
+    if (gradeModal.value) gradeModal.value.savingDraft = false
+  }
+}
+
+// Download the watermarked provisional transcript from current saved grades.
+async function downloadAdminProvisional() {
+  const m = gradeModal.value
+  if (!m || m.downloadingProvisional) return
+  m.downloadingProvisional = true; m.error = ''
+  try {
+    const res = await api.get(
+      `/v1/admin/students/${m.studentId}/enrollments/${m.enrollmentId}/transcript/provisional`,
+      { responseType: 'blob' })
+    openBlobPdf(res.data, 'provisional-transcript.pdf')
+  } catch (err) {
+    m.error = err.response?.status === 404
+      ? 'No published transcript template for this programme yet, or save grades first.'
+      : (err.response?.data?.error ?? err.message ?? 'Download failed')
+  } finally {
+    if (gradeModal.value) gradeModal.value.downloadingProvisional = false
+  }
+}
 
 async function confirmGradeSubmission() {
   const m = gradeModal.value
@@ -2265,6 +2563,8 @@ async function runExport() {
 .dur-regen { margin-top: .4rem; padding: .4rem .55rem; background: #fff7ed; border: 1px solid #fdba74; border-radius: 5px; font-size: .8rem; color: #7c2d12; }
 .btn-export { margin-left: auto; padding: .35rem .85rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .82rem; font-weight: 600; cursor: pointer; }
 .btn-export:hover { background: #143b6c; }
+.btn-add-student { padding: .35rem .85rem; border: 1px solid #1f7a44; background: #1f7a44; color: #fff; border-radius: 5px; font-size: .82rem; font-weight: 600; cursor: pointer; }
+.btn-add-student:hover { background: #185f35; }
 
 .export-modal { max-width: 720px; }
 .export-section { padding: .85rem 0; border-bottom: 1px solid #eef2f7; }

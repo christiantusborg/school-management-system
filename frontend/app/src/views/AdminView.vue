@@ -456,7 +456,7 @@
         </div>
 
         <div v-show="manageTab === 'students'" class="manage-section">
-          <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" />
+          <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" @add-student="openAddStudentForManagedPartner" />
         </div>
         </aside>
       </Teleport>
@@ -1066,6 +1066,17 @@ function chooseAddStudentPartner(p) {
   addStudentPartnerSlug.value = p.slug
   addStudentPartnerName.value = p.name
   addStudentStep.value = 'wizard'
+}
+// Opened from the partner-management drawer's Students tab: the partner is
+// already chosen, so skip the picker and drop straight into the wizard.
+function openAddStudentForManagedPartner() {
+  const p = managingPartner.value
+  if (!p) return
+  addStudentPickSearch.value = ''
+  addStudentPartnerSlug.value = p.slug
+  addStudentPartnerName.value = p.name
+  addStudentStep.value = 'wizard'
+  showAddStudentAdmin.value = true
 }
 function closeAddStudentAdmin() {
   showAddStudentAdmin.value = false
