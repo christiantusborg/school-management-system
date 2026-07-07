@@ -77,7 +77,11 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
         foreach (var (docTypeId, type) in LetterDocTypes)
         {
             if (onlyType is not null && type != onlyType) continue;
-            if (!releasedDocTypeIds.Contains(docTypeId)) continue;
+            // "Regenerate all" (no explicit type) only re-renders letters already
+            // released. An explicit single-letter request (the per-row Generate
+            // button) may issue one for the first time — used to back-fill a
+            // missing Printable Cert / Digital Certificate after grading.
+            if (onlyType is null && !releasedDocTypeIds.Contains(docTypeId)) continue;
             var newDocId = await letterRelease.ReleaseAsync(enrollmentId, type, ct);
             if (newDocId is not null) regenerated.Add(type.ToString());
         }
