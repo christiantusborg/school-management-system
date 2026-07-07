@@ -172,6 +172,10 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
                 programmeMaxDurationMonths = e.Specialization.Programmes.MaxDurationMonths,
                 specializationId = e.SpecializationId,
                 specializationName = e.Specialization.Name,
+                instructionLanguage = e.InstructionLanguageOverride != null && e.InstructionLanguageOverride != ""
+                    ? e.InstructionLanguageOverride
+                    : e.Specialization.InstructionLanguage,
+                instructionLanguageOverride = e.InstructionLanguageOverride,
                 pathwayId = (int?)e.PathwayId,
                 modeOfStudyId = e.ModeOfStudyId,
                 modeOfStudyName = e.ModeOfStudy.Name,
@@ -211,6 +215,8 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
             e.programmeMaxDurationMonths,
             e.specializationId,
             e.specializationName,
+            e.instructionLanguage,
+            e.instructionLanguageOverride,
             e.pathwayId,
             e.modeOfStudyId,
             e.modeOfStudyName,

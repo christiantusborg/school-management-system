@@ -198,9 +198,16 @@
               <pre class="grade-reject-note">{{ manageModal.rejection.reason }}</pre>
             </div>
             <p class="muted manage-hint">
-              Enter a score (0–100) for each subject. On commit, the application is sent to Admission for grade approval.
+              Enter a score (0–100) for each subject. <strong>Save</strong> keeps your grades as a draft (you can
+              keep editing and download a provisional transcript). <strong>Program Complete</strong> sends the
+              grades to Admission for approval.
             </p>
+            <div class="grade-statusbar">
+              <span>Current status: <strong>{{ manageModal.statusName || '—' }}</strong></span>
+              <span>Final grade (avg): <strong>{{ gradeAverage ?? '—' }}</strong></span>
+            </div>
             <div v-if="manageModal.gradesError" class="err-banner">{{ manageModal.gradesError }}</div>
+            <div v-if="manageModal.gradesOk" class="ok-banner">{{ manageModal.gradesOk }}</div>
             <div v-if="manageModal.gradesLoading" class="muted">Loading subjects…</div>
             <div v-else-if="manageModal.subjects?.length" class="grade-grid"
                  :style="{ columnCount: gradeColumnCount(manageModal.subjects.length) }">
@@ -214,10 +221,16 @@
             <div v-else class="muted">No subjects defined for this specialization.</div>
             <div class="manage-footer">
               <button class="btn-link" @click="manageModal.step = 'choose'">← Back</button>
+              <button class="btn-link" :disabled="manageModal.downloadingProvisional" @click="downloadProvisional">
+                {{ manageModal.downloadingProvisional ? 'Preparing…' : '⤓ Provisional transcript' }}
+              </button>
+              <button class="btn-save" :disabled="manageModal.savingDraft" @click="saveGradesDraft">
+                {{ manageModal.savingDraft ? 'Saving…' : 'Save grades' }}
+              </button>
               <button class="btn-confirm-manage"
                       :disabled="!canCommitGrades || manageModal.gradesSubmitting"
                       @click="commitGrades">
-                {{ manageModal.gradesSubmitting ? 'Submitting…' : 'Commit & send to IBSS' }}
+                {{ manageModal.gradesSubmitting ? 'Submitting…' : 'Program Complete' }}
               </button>
             </div>
           </div>
@@ -303,6 +316,7 @@
                   <dl>
                     <dt>Programme</dt><dd>{{ activeEnrollment.programmeName }}</dd>
                     <dt>Specialisation</dt><dd>{{ activeEnrollment.specializationName }}</dd>
+                    <dt>Study language</dt><dd>{{ activeEnrollment.instructionLanguage || '—' }}</dd>
                     <dt>Mode</dt><dd>{{ activeEnrollment.modeOfStudyName ?? '—' }}</dd>
                     <dt>Commencement</dt><dd>{{ formatDateD(activeEnrollment.commencementDate) || '—' }}</dd>
                     <dt>Duration</dt><dd>{{ activeEnrollment.durationOfStudyMonths ?? '—' }} months</dd>
@@ -383,6 +397,11 @@
                   </div>
                   <button class="btn-mini-d" :disabled="!activeEnrollment.letters?.[t.key]"
                           @click="downloadLetterPartner(activeEnrollment.letters?.[t.key])">Download</button>
+                  <button v-if="t.key === 'transcript' && !activeEnrollment.letters?.[t.key]" class="btn-mini-d"
+                          style="margin-left:6px" :disabled="downloadingLetterProvisional"
+                          @click="downloadLetterProvisionalPartner()">
+                    {{ downloadingLetterProvisional ? '…' : '⤓ Provisional' }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -653,12 +672,13 @@ const DETAIL_TABS = [
   { id: 'letters',   label: 'Letters' },
   { id: 'activity',  label: 'Activity log' },
 ]
+// Printable Cert (provisionalCertificate) is intentionally omitted: only the
+// Admission Office may download the printable certificate version.
 const LETTER_TYPES = [
-  { key: 'offerLetter',            label: 'Offer Letter',            icon: '📄' },
-  { key: 'admissionLetter',        label: 'Admission Letter',        icon: '📋' },
-  { key: 'transcript',             label: 'Transcript',              icon: '📑' },
-  { key: 'certificate',            label: 'Certificate',             icon: '🎓' },
-  { key: 'provisionalCertificate', label: 'Provisional Certificate', icon: '🎓' },
+  { key: 'offerLetter',            label: 'Offer Letter',        icon: '📄' },
+  { key: 'admissionLetter',        label: 'Admission Letter',    icon: '📋' },
+  { key: 'transcript',             label: 'Transcript',          icon: '📑' },
+  { key: 'certificate',            label: 'Digital Certificate', icon: '🎓' },
 ]
 const detailModal = ref(null)
 const detailEnrollments = computed(() => detailModal.value?.data?.enrollments ?? [])
@@ -781,6 +801,30 @@ async function downloadStudentDocPartner(d) {
       ? 'File not found.'
       : (err.response?.data?.error ?? err.message ?? 'Download failed')
     setTimeout(() => { reviewToast.value = '' }, 3000)
+  }
+}
+
+// Provisional transcript from the partner Letters tab (before release).
+const downloadingLetterProvisional = ref(false)
+async function downloadLetterProvisionalPartner() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || downloadingLetterProvisional.value) return
+  downloadingLetterProvisional.value = true
+  try {
+    const res = await api.get(
+      `/v1/partner/my-students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/transcript/provisional`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'provisional-transcript.pdf'; a.target = '_blank'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (err) {
+    reviewToast.value = err.response?.status === 404
+      ? 'No published transcript template yet, or no grades saved.'
+      : (err.response?.data?.error ?? err.message ?? 'Download failed')
+    setTimeout(() => { reviewToast.value = '' }, 3500)
+  } finally {
+    downloadingLetterProvisional.value = false
   }
 }
 
@@ -1158,6 +1202,7 @@ function openManage(s, e) {
     enrollmentId: e.studentEnrollmentId,
     studentName: `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim(),
     enrollmentLabel: `${e.programmeCode} · ${e.specializationName}`,
+    statusName: e.statusName ?? null,
     step: 'choose',
     selectedType: null,
     selectedLabel: '',
@@ -1168,6 +1213,9 @@ function openManage(s, e) {
     gradesLoading: false,
     gradesSubmitting: false,
     gradesError: '',
+    gradesOk: '',
+    savingDraft: false,
+    downloadingProvisional: false,
   })
 }
 // Loads subject list (and any prior rejection note) into the grades step
@@ -1229,6 +1277,62 @@ const canCommitGrades = computed(() => {
   if (!m || m.step !== 'grades' || !m.subjects?.length) return false
   return m.subjects.every(r => Number.isInteger(r.score) && r.score >= 0 && r.score <= 100)
 })
+
+// Read-only "Final grade" = average of the scores entered so far (any subset).
+const gradeAverage = computed(() => {
+  const m = manageModal.value
+  if (!m?.subjects?.length) return null
+  const scored = m.subjects.filter(r => Number.isFinite(r.score))
+  if (!scored.length) return null
+  return (scored.reduce((sum, r) => sum + r.score, 0) / scored.length).toFixed(1)
+})
+
+// Save grades as a draft (any subset). Status stays in grading; the partner
+// can keep editing and download a provisional transcript.
+async function saveGradesDraft() {
+  const m = manageModal.value
+  if (!m || m.savingDraft) return
+  m.savingDraft = true; m.gradesError = ''; m.gradesOk = ''
+  try {
+    const items = m.subjects
+      .filter(r => Number.isFinite(r.score))
+      .map(r => ({ subjectId: r.subjectId, score: r.score }))
+    await api.post(
+      `/v1/partner/my-students/${m.studentId}/enrollments/${m.enrollmentId}/grades/draft`,
+      { items })
+    m.gradesOk = `Saved ${items.length} grade(s). You can download a provisional transcript.`
+    setTimeout(() => { if (manageModal.value) manageModal.value.gradesOk = '' }, 3000)
+  } catch (err) {
+    m.gradesError = err.response?.data?.error ?? err.message ?? 'Failed to save grades'
+  } finally {
+    if (manageModal.value) manageModal.value.savingDraft = false
+  }
+}
+
+// Download the watermarked provisional transcript built from saved grades.
+async function downloadProvisional() {
+  const m = manageModal.value
+  if (!m || m.downloadingProvisional) return
+  m.downloadingProvisional = true; m.gradesError = ''
+  try {
+    const res = await api.get(
+      `/v1/partner/my-students/${m.studentId}/enrollments/${m.enrollmentId}/transcript/provisional`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'provisional-transcript.pdf'
+    a.target = '_blank'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (err) {
+    m.gradesError = err.response?.status === 404
+      ? 'No published transcript template for this programme yet, or save grades first.'
+      : (err.response?.data?.error ?? err.message ?? 'Download failed')
+  } finally {
+    if (manageModal.value) manageModal.value.downloadingProvisional = false
+  }
+}
 
 async function commitGrades() {
   const m = manageModal.value
@@ -1404,6 +1508,8 @@ function confirmSubStatus() {
 .grade-input:focus { border-color: #003366; outline: none; }
 
 /* Multi-column grade list — flows top-to-bottom, max ~10 per column. */
+.grade-statusbar { display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: .82rem; color: #44506a; background: #f6f9fd; border: 1px solid #e6ebf2; border-radius: 6px; padding: .45rem .7rem; margin: .3rem 0 .5rem; }
+.ok-banner { background: #eafaf0; border: 1px solid #b6e6c8; color: #1c7a4a; padding: .45rem .65rem; border-radius: 6px; font-size: .82rem; margin: .3rem 0; }
 .grade-grid { column-gap: 1.2rem; margin-top: .5rem; }
 .grade-row {
   break-inside: avoid;

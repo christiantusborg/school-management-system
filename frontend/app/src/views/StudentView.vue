@@ -147,18 +147,27 @@
               </div>
               <button class="btn-mini" :disabled="!canDownloadAdmission(enr)" @click="downloadAdmission(enr)">Download</button>
             </div>
-            <div class="doc-mini" :class="{ disabled: !canDownloadTranscript(enr) }">
+            <div class="doc-mini" :class="{ disabled: !canDownloadTranscript(enr) && !inGrading(enr) }">
               <div class="doc-mini-icon">📑</div>
               <div class="doc-mini-info">
                 <div class="doc-mini-name">Transcript</div>
-                <div class="doc-mini-sub">{{ canDownloadTranscript(enr) ? 'Ready' : 'Available after grades approved' }}</div>
+                <div class="doc-mini-sub">
+                  {{ canDownloadTranscript(enr) ? 'Ready'
+                     : inGrading(enr) ? 'Provisional available while grading'
+                     : 'Available after grades approved' }}
+                </div>
               </div>
-              <button class="btn-mini" :disabled="!canDownloadTranscript(enr)" @click="downloadTranscript(enr)">Download</button>
+              <button v-if="canDownloadTranscript(enr)" class="btn-mini" @click="downloadTranscript(enr)">Download</button>
+              <button v-else-if="inGrading(enr)" class="btn-mini" :disabled="provisionalBusy === enr.enrollmentId"
+                      @click="downloadProvisional(enr)">
+                {{ provisionalBusy === enr.enrollmentId ? '…' : 'Provisional' }}
+              </button>
+              <button v-else class="btn-mini" disabled>Download</button>
             </div>
             <div class="doc-mini" :class="{ disabled: !canDownloadCertificate(enr) }">
               <div class="doc-mini-icon">🎓</div>
               <div class="doc-mini-info">
-                <div class="doc-mini-name">Certificate</div>
+                <div class="doc-mini-name">Digital Certificate</div>
                 <div class="doc-mini-sub">{{ canDownloadCertificate(enr) ? 'Ready' : 'Not yet available' }}</div>
               </div>
               <button class="btn-mini" :disabled="!canDownloadCertificate(enr)" @click="downloadCertificate(enr)">Download</button>
@@ -375,6 +384,37 @@ function downloadOffer(enr)       { return downloadLetter(enr.letters?.offerLett
 function downloadAdmission(enr)   { return downloadLetter(enr.letters?.admissionLetter) }
 function downloadTranscript(enr)  { return downloadLetter(enr.letters?.transcript) }
 function downloadCertificate(enr) { return downloadLetter(enr.letters?.certificate) }
+
+// Grading window: the partner is entering grades but Admission hasn't approved
+// yet, so the official transcript isn't released — a watermarked provisional
+// one can still be previewed.
+function inGrading(enr) {
+  return enr.statusCode === 'AwaitingGradesSubmit' || enr.statusCode === 'AwaitingGradesApproval'
+}
+
+const provisionalBusy = ref(null)
+async function downloadProvisional(enr) {
+  if (provisionalBusy.value) return
+  provisionalBusy.value = enr.enrollmentId
+  try {
+    const res = await api.get(
+      `/v1/student/me/enrollments/${enr.enrollmentId}/transcript/provisional`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'provisional-transcript.pdf'
+    a.target = '_blank'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (e) {
+    showToast(e.response?.status === 404
+      ? 'Your transcript is not available to preview yet.'
+      : (e.response?.data?.error ?? e.message ?? 'Download failed'))
+  } finally {
+    provisionalBusy.value = null
+  }
+}
 
 function showToast(msg) {
   toast.value = msg
