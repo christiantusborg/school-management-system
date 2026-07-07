@@ -18,7 +18,8 @@ public sealed class LetterPdfRenderer
         CertificateLayout layout,
         IReadOnlyDictionary<Guid, byte[]> assetBytes,
         IReadOnlyDictionary<string, string> tagValues,
-        IReadOnlyList<TranscriptGradeRow>? transcriptRows = null)
+        IReadOnlyList<TranscriptGradeRow>? transcriptRows = null,
+        string? watermark = null)
     {
         var lw = layout.Width <= 0 ? 2000 : layout.Width;
         var lh = layout.Height <= 0 ? 1414 : layout.Height;
@@ -33,20 +34,23 @@ public sealed class LetterPdfRenderer
         var sx = pw / (float)lw;
         var sy = ph / (float)lh;
 
+        var allRows = transcriptRows ?? Array.Empty<TranscriptGradeRow>();
+
         return Document.Create(container =>
         {
             foreach (var pageDef in layout.GetPages())
             {
-                // A page carrying the auto-generated grades table is rendered as
-                // a flowing Header/Content/Footer page so the table paginates
-                // across as many pages as needed (full letterhead on each),
-                // instead of being clipped at the page edge.
-                var transcriptField = (pageDef.Fields ?? new()).FirstOrDefault(f =>
-                    string.Equals((f.Kind ?? "text").Trim(), "transcriptTable", StringComparison.OrdinalIgnoreCase));
-                if (transcriptField is not null)
+                // Legacy auto-paginating grade table (no range): render the page
+                // as a flowing Header/Content/Footer page so the table paginates
+                // across as many pages as needed. A page using ranged tables is
+                // instead rendered normally with each range as a fixed slice.
+                var flowingField = (pageDef.Fields ?? new()).FirstOrDefault(f =>
+                    string.Equals((f.Kind ?? "text").Trim(), "transcriptTable", StringComparison.OrdinalIgnoreCase)
+                    && f.RowEnd <= 0);
+                if (flowingField is not null)
                 {
-                    RenderFlowingTranscriptPage(container, pageDef, transcriptField, pageSize, sx, sy, lw, lh,
-                        tagValues, assets, transcriptRows ?? Array.Empty<TranscriptGradeRow>());
+                    RenderFlowingTranscriptPage(container, pageDef, flowingField, pageSize, sx, sy, lw, lh,
+                        tagValues, assets, allRows, watermark);
                     continue;
                 }
 
@@ -55,6 +59,7 @@ public sealed class LetterPdfRenderer
                     page.Size(pageSize);
                     page.Margin(0);
                     page.PageColor(Colors.White);
+                    ApplyWatermark(page, watermark);
 
                     page.Content().Layers(layers =>
                     {
@@ -75,7 +80,24 @@ public sealed class LetterPdfRenderer
                             var kind = (field.Kind ?? "text").Trim().ToLowerInvariant();
                             if (kind == "transcripttable")
                             {
-                                RenderTranscriptTable(layers, field, sx, sy, transcriptRows ?? Array.Empty<TranscriptGradeRow>());
+                                if (field.RowEnd > 0)
+                                {
+                                    // Ranged slice: rows [RowStart..RowEnd] (1-based), rows only.
+                                    // Total/GPA live in a separate transcriptTotals field.
+                                    var from = Math.Max(1, field.RowStart);
+                                    var to = Math.Max(from, field.RowEnd);
+                                    var slice = allRows.Skip(from - 1).Take(to - from + 1).ToList();
+                                    RenderTranscriptTableSlice(layers, field, sx, sy, slice);
+                                }
+                                else
+                                {
+                                    RenderTranscriptTable(layers, field, sx, sy, allRows);
+                                }
+                                continue;
+                            }
+                            if (kind == "transcripttotals")
+                            {
+                                RenderTranscriptTotals(layers, field, sx, sy, allRows);
                                 continue;
                             }
                             if (kind == "gradestandardtable")
@@ -167,6 +189,23 @@ public sealed class LetterPdfRenderer
     }
 
     /// <summary>
+    /// Overlays a faint diagonal watermark (e.g. "PROVISIONAL") across the whole
+    /// page foreground when <paramref name="text"/> is set. Used to mark the
+    /// draft transcript a student can download mid-grading so it can't be
+    /// mistaken for the official one. No-op when null/blank.
+    /// </summary>
+    private static void ApplyWatermark(PageDescriptor page, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        page.Foreground()
+            .AlignCenter()
+            .AlignMiddle()
+            .Rotate(-35)
+            .Text(text!)
+            .FontSize(70).Bold().FontColor(Colors.Red.Lighten3);
+    }
+
+    /// <summary>
     /// Renders the transcript page with the grades table in a flowing
     /// Content region between a repeated Header (letterhead + student details)
     /// and a repeated Footer (accreditation band). The table paginates onto as
@@ -185,7 +224,8 @@ public sealed class LetterPdfRenderer
         int canvasW, int canvasH,
         IReadOnlyDictionary<string, string> tagValues,
         IReadOnlyDictionary<Guid, byte[]> assets,
-        IReadOnlyList<TranscriptGradeRow> rows)
+        IReadOnlyList<TranscriptGradeRow> rows,
+        string? watermark = null)
     {
         var pw = pageSize.Width;
         var fields = pageDef.Fields ?? new();
@@ -220,6 +260,7 @@ public sealed class LetterPdfRenderer
             page.Margin(0);
             page.PageColor(Colors.White);
             if (bgBytes is { Length: > 0 }) page.Background().Image(bgBytes).FitArea();
+            ApplyWatermark(page, watermark);
 
             page.Header().Height(headerHeight).Layers(layers =>
             {
@@ -488,6 +529,122 @@ public sealed class LetterPdfRenderer
             var span = aligned.AlignMiddle().Text(text).FontSize(fontSize);
             if (bold) span.Bold();
         }
+    }
+
+    /// <summary>
+    /// Renders one fixed range of the grades table at the field's position
+    /// (e.g. rows 1-10, 11-20). Shows the column header and the given slice,
+    /// padded to 10 rows. Total/GPA are a separate transcriptTotals field.
+    /// </summary>
+    private static void RenderTranscriptTableSlice(
+        QuestPDF.Fluent.LayersDescriptor layers,
+        CertificateField field,
+        float sx, float sy,
+        IReadOnlyList<TranscriptGradeRow> slice)
+    {
+        var x = (float)field.X * sx;
+        var y = (float)field.Y * sy;
+        var w = Math.Max(50f, (float)(field.Width <= 0 ? 800 : field.Width) * sx);
+        var fontSize = Math.Max(6f, field.FontSize <= 0 ? 9f : field.FontSize * sy);
+
+        layers.Layer().PaddingTop(y).PaddingLeft(x).Width(w).Element(c =>
+        {
+            c.Table(table =>
+            {
+                table.ColumnsDefinition(cols =>
+                {
+                    cols.RelativeColumn(2); cols.RelativeColumn(4); cols.RelativeColumn(2);
+                    cols.RelativeColumn(2); cols.RelativeColumn(2); cols.RelativeColumn(2); cols.RelativeColumn(2);
+                });
+
+                Header(table, "Code"); Header(table, "Module"); Header(table, "ECTS\ncredit hours");
+                Header(table, "ECTS\nGrade"); Header(table, "IBSS\nGrade"); Header(table, "ECTS\nGrade Point");
+                Header(table, "Grade\nPoint");
+
+                foreach (var row in slice)
+                {
+                    var (ects, uk, gp) = MapScore(row.Score);
+                    var pts = (double)row.Ects * gp;
+                    Cell(table, row.Code, fontSize);
+                    Cell(table, row.Name, fontSize, alignLeft: true);
+                    Cell(table, row.Ects.ToString("0.##", CultureInfo.InvariantCulture), fontSize);
+                    Cell(table, ects, fontSize);
+                    Cell(table, uk, fontSize);
+                    Cell(table, gp.ToString("0.0", CultureInfo.InvariantCulture), fontSize);
+                    Cell(table, pts.ToString("0.0", CultureInfo.InvariantCulture), fontSize);
+                }
+
+                // Pad each slice to 10 rows so every range table is the same height.
+                for (int i = slice.Count; i < 10; i++)
+                    for (int j = 0; j < 7; j++) Cell(table, "", fontSize);
+            });
+        });
+
+        static void Header(QuestPDF.Fluent.TableDescriptor t, string text)
+            => t.Cell().Border(0.5f).BorderColor(Colors.Black).Padding(3).AlignCenter().AlignMiddle().Text(text).Bold().FontSize(9);
+        static void Cell(QuestPDF.Fluent.TableDescriptor t, string text, float fontSize, bool alignLeft = false, bool bold = false)
+        {
+            var cell = t.Cell().Border(0.5f).BorderColor(Colors.Black).Padding(3).MinHeight(16);
+            var span = (alignLeft ? cell.AlignLeft() : cell.AlignCenter()).AlignMiddle().Text(text).FontSize(fontSize);
+            if (bold) span.Bold();
+        }
+    }
+
+    /// <summary>
+    /// Renders the standalone Total + Grade Point Average summary (a
+    /// transcriptTotals field) computed over all grades, at its own position so
+    /// admins can place it as its own section independent of the grade tables.
+    /// </summary>
+    private static void RenderTranscriptTotals(
+        QuestPDF.Fluent.LayersDescriptor layers,
+        CertificateField field,
+        float sx, float sy,
+        IReadOnlyList<TranscriptGradeRow> allRows)
+    {
+        var x = (float)field.X * sx;
+        var y = (float)field.Y * sy;
+        var w = Math.Max(50f, (float)(field.Width <= 0 ? 800 : field.Width) * sx);
+        var fontSize = Math.Max(6f, field.FontSize <= 0 ? 9f : field.FontSize * sy);
+
+        decimal totalEcts = 0m;
+        double totalGp = 0;
+        foreach (var row in allRows)
+        {
+            var (_, _, gp) = MapScore(row.Score);
+            totalEcts += row.Ects;
+            totalGp += (double)row.Ects * gp;
+        }
+        var gpa = totalEcts > 0 ? totalGp / (double)totalEcts : 0;
+
+        layers.Layer().PaddingTop(y).PaddingLeft(x).Width(w).Element(c =>
+        {
+            c.Table(table =>
+            {
+                // Mirror the grade table's 7-column grid so Total/GPA line up
+                // with the table above it.
+                table.ColumnsDefinition(cols =>
+                {
+                    cols.RelativeColumn(2); cols.RelativeColumn(4); cols.RelativeColumn(2);
+                    cols.RelativeColumn(2); cols.RelativeColumn(2); cols.RelativeColumn(2); cols.RelativeColumn(2);
+                });
+
+                void Cell(string text, bool bold = false)
+                {
+                    var span = table.Cell().Border(0.5f).BorderColor(Colors.Black).Padding(3).MinHeight(16)
+                        .AlignCenter().AlignMiddle().Text(text).FontSize(fontSize);
+                    if (bold) span.Bold();
+                }
+
+                table.Cell().ColumnSpan(2).Border(0.5f).BorderColor(Colors.Black).Padding(3).Text("Total").Bold().FontSize(fontSize);
+                Cell(totalEcts.ToString("0.##", CultureInfo.InvariantCulture), bold: true);
+                Cell(""); Cell(""); Cell("");
+                Cell(totalGp.ToString("0.0", CultureInfo.InvariantCulture), bold: true);
+
+                table.Cell().ColumnSpan(6).Border(0.5f).BorderColor(Colors.Black).Padding(3).AlignRight()
+                    .Text("Grade Point Average").Bold().FontSize(fontSize);
+                Cell(gpa.ToString("0.00", CultureInfo.InvariantCulture), bold: true);
+            });
+        });
     }
 
     /// <summary>

@@ -208,6 +208,7 @@ builder.Services.AddScoped<IDocumentTypeRepository, DocumentTypeRepository>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.LetterTagResolver>();
 builder.Services.AddSingleton<Odin.Api.Base.Letters.LetterPdfRenderer>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.LetterReleaseService>();
+builder.Services.AddScoped<Odin.Api.Base.Letters.ProvisionalTranscriptService>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.LetterEmailService>();
 
 // Per-enrollment activity log reader — used by admin/partner/student

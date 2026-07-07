@@ -160,4 +160,17 @@ public sealed class CertificateField
     /// <summary>Render height in page space for image fields.</summary>
     [JsonPropertyName("height")]
     public int Height { get; set; }
+
+    /// <summary>
+    /// For a ranged transcript grade table: the 1-based first/last grade row
+    /// this table renders (e.g. 1..10, 11..20). When set (RowEnd &gt; 0) the
+    /// table shows only that fixed slice at its position; the Total/GPA summary
+    /// is appended below whichever range holds the last grade. Zero/unset means
+    /// a legacy auto-paginating table that shows every row.
+    /// </summary>
+    [JsonPropertyName("rowStart")]
+    public int RowStart { get; set; }
+
+    [JsonPropertyName("rowEnd")]
+    public int RowEnd { get; set; }
 }
