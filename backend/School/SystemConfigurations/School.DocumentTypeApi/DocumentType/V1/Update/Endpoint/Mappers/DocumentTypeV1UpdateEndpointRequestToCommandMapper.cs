@@ -13,6 +13,7 @@ public sealed class DocumentTypeV1UpdateEndpointRequestToCommandMapper
             DocumentTypeId = Guid.Empty,
             Name = input.Name,
             Description = input.Description,
+            AiPrompt = input.AiPrompt,
         };
     }
 }

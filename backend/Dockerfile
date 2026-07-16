@@ -28,13 +28,19 @@ RUN npm ci --omit=dev --no-audit --no-fund
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Node.js is required by DatabaseSeeder.cs (first-boot OPAQUE cred generation).
-RUN apt-get update \
- && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
- && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
- && apt-get install -y --no-install-recommends nodejs \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
+# Node.js is required by DatabaseSeeder.cs and partner creation (OPAQUE cred
+# generation). Copied from the pinned node:22-slim stage the build already
+# uses — no nodesource download, no DNS dependency, and no way to silently
+# fall back to Debian's old Node 18 (which once broke partner creation).
+COPY --from=seed-deps /usr/local/bin/node /usr/local/bin/node
+RUN node -v | grep -q '^v22'
+
+# OCR toolchain for the DocumentScanWorker — same recipe as ~/projects/ocr:
+# tesseract + language packs, ghostscript for PDF page rasterisation.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-dan tesseract-ocr-deu tesseract-ocr-nld \
+        tesseract-ocr-nor tesseract-ocr-swe ghostscript \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /out ./
 COPY --from=seed-deps /Odin.Web /Odin.Web

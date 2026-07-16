@@ -8,4 +8,5 @@ public sealed record DocumentTypeV1CreateCommand : IHandleableCommand<
 {
     public required string Name { get; init; }
     public string? Description { get; init; }
+    public string? AiPrompt { get; init; }
 }

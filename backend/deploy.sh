@@ -62,7 +62,15 @@ rsync -a --delete \
   "$SCRIPT_DIR/" "$REMOTE:$REMOTE_SRC/"
 
 echo "▶ Building image $IMAGE on remote ..."
-ssh "$REMOTE" "cd $REMOTE_SRC && docker build -t $IMAGE ."
+# The LAN's DNS flaps intermittently; base-image manifest lookups can fail
+# transiently. Retry instead of dying on the first blip.
+build_ok=""
+for attempt in 1 2 3; do
+  if ssh "$REMOTE" "cd $REMOTE_SRC && docker build -t $IMAGE ."; then build_ok=1; break; fi
+  echo "⚠ build attempt $attempt failed (transient network?) — retrying in 10s"
+  sleep 10
+done
+[ "$build_ok" = "1" ] || { echo "✗ docker build failed after 3 attempts" >&2; exit 1; }
 
 echo "▶ Ensuring docker volume '$VOLUME' exists ..."
 ssh "$REMOTE" "docker volume inspect $VOLUME >/dev/null 2>&1 || docker volume create $VOLUME"
@@ -77,6 +85,9 @@ ssh "$REMOTE" "docker run -d \
   -e ASPNETCORE_URLS=http://0.0.0.0:5103 \
   -e ConnectionStrings__DefaultConnection='$PG_CONNECTION_STRING' \
   -e Storage__Provider=Local \
+  -e PdfService__BaseUrl=http://192.168.1.77:8081 \
+  -e DocumentScan__OllamaUrl=${DOCSCAN_OLLAMA_URL:-} \
+  -e DocumentScan__OllamaModel=${DOCSCAN_OLLAMA_MODEL:-llama3.2:latest} \
   -e Storage__LocalRoot=/app/data/uploads \
   -e App__Domain=$PUBLIC_DOMAIN \
   -e App__StudentOrigin=$PUBLIC_ORIGIN \

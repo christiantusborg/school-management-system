@@ -19,6 +19,7 @@ public sealed class DocumentTypeV1UpdateCommandHandler(IDocumentTypeRepository r
 
         entity.Name = command.Name;
         entity.Description = command.Description;
+        entity.AiPrompt = command.AiPrompt;
 
         return new SuccessOrFailure<DocumentTypeV1UpdateCommandResult>(
             new DocumentTypeV1UpdateCommandResult { DocumentTypeId = entity.DocumentTypeId });

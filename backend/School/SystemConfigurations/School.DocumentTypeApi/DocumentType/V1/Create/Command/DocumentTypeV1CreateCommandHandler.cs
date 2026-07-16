@@ -13,6 +13,7 @@ public sealed class DocumentTypeV1CreateCommandHandler(IDocumentTypeRepository r
             DocumentTypeId = Guid.NewGuid(),
             Name = command.Name,
             Description = command.Description,
+            AiPrompt = command.AiPrompt,
         };
         repository.Add(entity);
         return Task.FromResult(new SuccessOrFailure<DocumentTypeV1CreateCommandResult>(

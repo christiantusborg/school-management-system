@@ -9,4 +9,5 @@ public sealed record DocumentTypeV1UpdateCommand : IHandleableCommand<
     public required Guid DocumentTypeId { get; init; }
     public required string Name { get; init; }
     public string? Description { get; init; }
+    public string? AiPrompt { get; init; }
 }

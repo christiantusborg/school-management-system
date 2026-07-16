@@ -61,8 +61,16 @@
               <label>
                 {{ field.label }}
                 <span v-if="field.required" class="req"> *</span>
+                <button v-if="isCollapsedField(field.key)" type="button" class="btn-toggle-field"
+                        @click="revealed[field.key] = !revealed[field.key]">
+                  {{ revealed[field.key] ? 'Hide' : 'Show' }}
+                </button>
               </label>
-              <textarea v-if="field.type === 'textarea'" v-model="formData[field.key]" rows="3"></textarea>
+              <p v-if="isCollapsedField(field.key) && !revealed[field.key]" class="collapsed-hint">
+                Hidden — click Show only when you really need to view or edit it.
+              </p>
+              <textarea v-if="field.type === 'textarea' && (!isCollapsedField(field.key) || revealed[field.key])"
+                        v-model="formData[field.key]" :rows="isCollapsedField(field.key) ? 14 : 3"></textarea>
               <label v-else-if="field.type === 'checkbox'" class="checkbox-label">
                 <input type="checkbox" v-model="formData[field.key]" />
                 {{ formData[field.key] ? 'Yes' : 'No' }}
@@ -130,14 +138,19 @@ async function fetchSchema() {
   }
 }
 
+// Long internal fields (AI prompts) stay collapsed until explicitly revealed.
+const revealed = reactive({})
+function isCollapsedField(key) { return /prompt/i.test(key) }
+
 function parseSchema(schema) {
   const listItemProps = schema?.list?.result?.properties?.items?.items?.properties ?? {}
 
   derivedIdKey.value = Object.keys(listItemProps).find(k => /id$/i.test(k)) ?? null
 
+  // Prompt-like fields are long internal config; never show them as columns.
   const SKIP = new Set([derivedIdKey.value, 'links', 'deletedAt'].filter(Boolean))
   derivedColumns.value = Object.keys(listItemProps)
-    .filter(k => !SKIP.has(k))
+    .filter(k => !SKIP.has(k) && !/prompt/i.test(k))
     .map(k => ({ key: k, label: toTitleCase(k), type: inferType(listItemProps[k], k) }))
 
   const createReq = schema?.create?.request ?? {}
@@ -159,7 +172,7 @@ function inferType(schema, key) {
   if (schema.type === 'boolean') return 'checkbox'
   if (schema.type === 'integer' || schema.type === 'number') return 'number'
   if (schema.format === 'date-time') return 'date'
-  if (schema.type === 'string' && /description|notes|comment/i.test(key)) return 'textarea'
+  if (schema.type === 'string' && /description|notes|comment|prompt/i.test(key)) return 'textarea'
   return 'text'
 }
 
@@ -361,4 +374,6 @@ onMounted(async () => {
   border-radius: 7px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
 }
 .btn-danger:hover { background: #b91c1c; }
+.btn-toggle-field { margin-left: .5rem; padding: .1rem .55rem; font-size: .72rem; border: 1px solid #ccd5e0; border-radius: 5px; background: #f7f9fb; cursor: pointer; }
+.collapsed-hint { font-size: .76rem; color: #999; margin: .2rem 0 0; font-style: italic; }
 </style>

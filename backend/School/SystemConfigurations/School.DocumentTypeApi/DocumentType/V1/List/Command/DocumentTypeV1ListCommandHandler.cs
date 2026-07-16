@@ -19,7 +19,8 @@ public sealed class DocumentTypeV1ListCommandHandler(IDocumentTypeRepository rep
             {
                 DocumentTypeId = x.DocumentTypeId,
                 Name = x.Name,
-                Description = x.Description
+                Description = x.Description,
+                AiPrompt = x.AiPrompt
             })
             .ToList();
 

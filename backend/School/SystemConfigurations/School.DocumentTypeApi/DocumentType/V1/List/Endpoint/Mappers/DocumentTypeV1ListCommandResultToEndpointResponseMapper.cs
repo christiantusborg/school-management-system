@@ -13,6 +13,7 @@ public sealed class DocumentTypeV1ListCommandResultToEndpointResponseMapper(IHtt
             DocumentTypeId = x.DocumentTypeId,
             Name = x.Name,
             Description = x.Description,
+            AiPrompt = x.AiPrompt,
             Links = []
         }).ToList();
 

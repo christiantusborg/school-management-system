@@ -46,6 +46,15 @@ public class StudentDocument : IDeletedAtEntity
     /// </summary>
     public Guid CurrentStatusId { get; set; }
 
+    /// <summary>Raw OCR text of the uploaded file (background scan).</summary>
+    public string? OcrResult { get; set; }
+    /// <summary>Full JSON verdict from the AI validator (standard schema).</summary>
+    public string? AiResult { get; set; }
+    /// <summary>AI confidence the document is what it claims, 0.00–1.00.</summary>
+    public decimal? AiConfidence { get; set; }
+    /// <summary>AI-estimated fraud probability, 0.00–1.00.</summary>
+    public decimal? AiFraudRisk { get; set; }
+
     public DateTime? DeletedAt { get; set; }
 
     public Student Student { get; set; } = default!;

@@ -5,4 +5,5 @@ public sealed class DocumentTypeV1ListCommandResultItem : IDocumentTypeV1ListCom
     public required Guid DocumentTypeId { get; init; }
     public required string Name { get; init; }
     public string? Description { get; init; }
+    public string? AiPrompt { get; init; }
 }

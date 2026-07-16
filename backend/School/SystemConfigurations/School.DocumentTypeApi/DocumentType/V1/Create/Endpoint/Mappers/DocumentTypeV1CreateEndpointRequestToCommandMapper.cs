@@ -12,6 +12,7 @@ public sealed class DocumentTypeV1CreateEndpointRequestToCommandMapper
         {
             Name = input.Name,
             Description = input.Description,
+            AiPrompt = input.AiPrompt,
         };
     }
 }

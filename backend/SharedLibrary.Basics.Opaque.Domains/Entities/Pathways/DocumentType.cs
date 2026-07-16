@@ -8,6 +8,13 @@ public class DocumentType : IDeletedAtEntity
     public string Name { get; set; } = default!;
     public string? Description { get; set; }
 
+    /// <summary>Detailed instruction for the (future) AI document checker:
+    /// classify the upload, validate it against this type, score confidence,
+    /// flag fraud indicators, and answer in the standard JSON schema shared
+    /// by every document type. Seeded with a strong default; editable in
+    /// System Config → Document Types.</summary>
+    public string? AiPrompt { get; set; }
+
     /// <summary>
     /// True for document types that the system itself produces (e.g. generated
     /// letter PDFs). These are hidden from the application-document upload UI
