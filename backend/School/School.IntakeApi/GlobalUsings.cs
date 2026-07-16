@@ -1,0 +1,11 @@
+global using System.Security.Claims;
+global using Microsoft.AspNetCore.Builder;
+global using Microsoft.AspNetCore.Http;
+global using Microsoft.AspNetCore.Identity;
+global using Microsoft.AspNetCore.Mvc;
+global using Microsoft.AspNetCore.Routing;
+global using Microsoft.EntityFrameworkCore;
+global using Microsoft.Extensions.DependencyInjection;
+global using QuVian.SharedLibrary.Basics.Endpoints.Essentials.EndpointsAdjunctsTags;
+global using QuVian.SharedLibrary.Basics.Endpoints.Interfaces;
+global using Odin.Api.Base.Data;
