@@ -2,9 +2,10 @@
   <div>
     <div class="pc-head">
       <div>
-        <div class="manage-section-title">Partner certificates</div>
-        <p class="pc-sub">Cooperation certificates for this partner — one per school. Design them like any
-          other certificate; Download always renders the latest design.</p>
+        <div class="manage-section-title">Partner certificates &amp; authorization letters</div>
+        <p class="pc-sub">Cooperation certificates and recruitment authorization letters for this partner —
+          one of each kind per school. Design them like any other certificate; Download always renders
+          the latest design.</p>
       </div>
     </div>
 
@@ -12,10 +13,11 @@
     <div v-if="loading" class="loading-row">Loading…</div>
 
     <table v-else-if="items.length" class="data-table" style="margin-bottom:.75rem">
-      <thead><tr><th>School</th><th>Title</th><th style="width:280px">Actions</th></tr></thead>
+      <thead><tr><th>School</th><th>Type</th><th>Title</th><th style="width:280px">Actions</th></tr></thead>
       <tbody>
         <tr v-for="c in items" :key="c.partnerCertificateId" class="data-row">
           <td>{{ c.schoolName || '—' }}</td>
+          <td>{{ kindLabel(c.kind) }}</td>
           <td>
             <input v-model="c.title" class="pc-title-inp" @keyup.enter="renameCert(c)" />
             <button v-if="c.title !== c.savedTitle" class="btn-sm" :disabled="c.renaming" @click="renameCert(c)">
@@ -34,18 +36,24 @@
     </table>
     <p v-else-if="!loading" class="pc-sub" style="margin:.5rem 0;">No certificates yet — add one below.</p>
 
-    <div v-if="schoolsAvailable.length" class="pc-add-row">
+    <div v-if="!loading" class="pc-add-row">
+      <select v-model="addKind" class="pc-add-select" style="min-width:190px" @change="addSchoolId = ''">
+        <option value="Certificate">Certificate</option>
+        <option value="AuthorizationLetter">Authorization letter</option>
+      </select>
       <select v-model="addSchoolId" class="pc-add-select">
         <option value="">— pick a school —</option>
-        <option v-for="s in schoolsAvailable" :key="s.schoolId" :value="s.schoolId">{{ s.name }}</option>
+        <option v-for="s in addSchoolOptions" :key="s.schoolId" :value="s.schoolId">{{ s.name }}</option>
       </select>
-      <input v-model="addTitle" class="pc-title-inp" placeholder="Certificate of Partnership" style="flex:1" />
+      <input v-model="addTitle" class="pc-title-inp"
+             :placeholder="addKind === 'AuthorizationLetter' ? 'Partnership Authorization Letter' : 'Certificate of Partnership'"
+             style="flex:1" />
       <button class="btn-primary-sm" :disabled="!addSchoolId || adding" @click="addCert">
-        {{ adding ? 'Adding…' : '+ Add certificate' }}
+        {{ adding ? 'Adding…' : (addKind === 'AuthorizationLetter' ? '+ Add authorization letter' : '+ Add certificate') }}
       </button>
     </div>
-    <p v-else-if="!loading && items.length" class="pc-sub" style="margin:.4rem 0;">
-      Every school already has a certificate for this partner.
+    <p v-if="!loading && !addSchoolOptions.length" class="pc-sub" style="margin:.4rem 0;">
+      Every school already has this document type for this partner.
     </p>
 
     <CertificateEditorModal
@@ -59,7 +67,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import api from '../../api/client.js'
 import CertificateEditorModal from '../letters/CertificateEditorModal.vue'
 
@@ -69,12 +77,20 @@ const props = defineProps({
 })
 
 const items = ref([])
-const schoolsAvailable = ref([])
+const schools = ref([])
 const loading = ref(false)
 const error = ref('')
+const addKind = ref('Certificate')
 const addSchoolId = ref('')
 const addTitle = ref('')
 const adding = ref(false)
+
+function kindLabel(k) {
+  return k === 'AuthorizationLetter' ? 'Authorization letter' : 'Certificate'
+}
+// One of each kind per school: offer only schools missing the chosen kind.
+const addSchoolOptions = computed(() =>
+  schools.value.filter(s => !items.value.some(c => c.schoolId === s.schoolId && c.kind === addKind.value)))
 
 const designerOpen = ref(false)
 const designerCertId = ref('')
@@ -89,7 +105,7 @@ async function load() {
     items.value = (res.data.items ?? []).map(c => ({
       ...c, savedTitle: c.title, renaming: false, downloading: false,
     }))
-    schoolsAvailable.value = res.data.schoolsAvailable ?? []
+    schools.value = res.data.schools ?? []
   } catch (e) {
     error.value = e.response?.data?.error ?? e.message ?? 'Failed to load certificates'
   } finally {
@@ -105,6 +121,7 @@ async function addCert() {
     await api.post(`/v1/admin/partners/${props.partnerId}/certificates`, {
       schoolId: addSchoolId.value,
       title: addTitle.value.trim() || null,
+      kind: addKind.value,
     })
     addSchoolId.value = ''
     addTitle.value = ''
@@ -132,7 +149,7 @@ async function renameCert(c) {
 }
 
 async function removeCert(c) {
-  if (!confirm(`Remove the "${c.title}" certificate for ${c.schoolName}?`)) return
+  if (!confirm(`Remove the "${c.title}" (${kindLabel(c.kind)}) for ${c.schoolName}?`)) return
   error.value = ''
   try {
     await api.delete(`/v1/admin/partner-certificates/${c.partnerCertificateId}`)

@@ -566,14 +566,15 @@
     <!-- Partner cooperation certificates (issued by the Admission Office) -->
     <div v-show="mainTab === 'certs'" class="container">
       <div class="page-head"><h1>Certificates</h1></div>
-      <p class="cert-tab-sub">Cooperation certificates issued to your institution by the schools of MGW.</p>
+      <p class="cert-tab-sub">Cooperation certificates and recruitment authorization letters issued to your institution by the schools of MGW.</p>
       <div v-if="certsError" class="err-banner">{{ certsError }}</div>
       <div v-if="certsLoading" class="loading-row">Loading…</div>
       <table v-else-if="certs.length" class="partner-tbl">
-        <thead><tr><th>School</th><th>Certificate</th><th style="width:160px"></th></tr></thead>
+        <thead><tr><th>School</th><th>Type</th><th>Document</th><th style="width:160px"></th></tr></thead>
         <tbody>
           <tr v-for="c in certs" :key="c.partnerCertificateId">
             <td>{{ c.schoolName || '—' }}</td>
+            <td>{{ c.kind === 'AuthorizationLetter' ? 'Authorization letter' : 'Certificate' }}</td>
             <td>{{ c.title }}</td>
             <td>
               <button class="cert-dl-btn" :disabled="c.downloading" @click="downloadCertificate(c)">

@@ -1028,6 +1028,12 @@ public sealed class LetterPdfRenderer
         var body = field.Text ?? string.Empty;
         if (!string.IsNullOrEmpty(field.Tag) && tagValues.TryGetValue(field.Tag, out var v))
             body = v ?? string.Empty;
+        else if (body.Contains('['))
+            // Static text may embed any number of [tag] tokens inline
+            // ("…certify that [partner name] is a partner of [school name]…").
+            // Only exact registry keys are replaced; other bracket text stays.
+            foreach (var (tag, val) in tagValues)
+                body = body.Replace(tag, val ?? string.Empty);
         // For tag fields with empty values we still emit prefix/suffix only if
         // body is non-empty — letting an unset tag suppress the whole field
         // (avoids a stray "Student ID: " when the student has no number).

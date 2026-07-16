@@ -30,6 +30,8 @@ public sealed class AdminV1PartnerCertificatesEndpoint : IEndpointMarker
     {
         public Guid SchoolId { get; init; }
         public string? Title { get; init; }
+        /// <summary>"Certificate" (default) or "AuthorizationLetter".</summary>
+        public string? Kind { get; init; }
     }
 
     public sealed class RenameBody
@@ -47,29 +49,39 @@ public sealed class AdminV1PartnerCertificatesEndpoint : IEndpointMarker
         var partnerExists = await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct);
         if (!partnerExists) return Results.NotFound();
 
-        var items = await db.PartnerCertificates
+        var items = (await db.PartnerCertificates
             .Where(c => c.PartnerId == partnerId && c.DeletedAt == null)
             .OrderBy(c => c.CreatedAt)
             .Select(c => new
             {
+                c.PartnerCertificateId,
+                c.SchoolId,
+                SchoolName = db.Schools.Where(s => s.SchoolId == c.SchoolId).Select(s => s.Name).FirstOrDefault(),
+                c.Kind,
+                c.Title,
+                UpdatedAt = c.UpdatedAt ?? c.CreatedAt,
+            })
+            .ToListAsync(ct))
+            .Select(c => new
+            {
                 partnerCertificateId = c.PartnerCertificateId,
                 schoolId = c.SchoolId,
-                schoolName = db.Schools.Where(s => s.SchoolId == c.SchoolId).Select(s => s.Name).FirstOrDefault(),
+                schoolName = c.SchoolName,
+                kind = c.Kind.ToString(),
                 title = c.Title,
-                updatedAt = c.UpdatedAt ?? c.CreatedAt,
+                updatedAt = c.UpdatedAt,
             })
-            .ToListAsync(ct);
-
-        var usedSchoolIds = items.Select(i => i.schoolId).ToHashSet();
-        var schoolsAvailable = (await db.Schools
-                .Where(s => s.DeletedAt == null)
-                .OrderBy(s => s.Name)
-                .Select(s => new { schoolId = s.SchoolId, name = s.Name })
-                .ToListAsync(ct))
-            .Where(s => !usedSchoolIds.Contains(s.schoolId))
             .ToList();
 
-        return Results.Ok(new { items, schoolsAvailable });
+        // All schools — the frontend offers, per document kind, only the
+        // schools that don't have that kind yet (one of each per school).
+        var schools = await db.Schools
+            .Where(s => s.DeletedAt == null)
+            .OrderBy(s => s.Name)
+            .Select(s => new { schoolId = s.SchoolId, name = s.Name })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items, schools });
     }
 
     private static async Task<IResult> CreateAsync(
@@ -80,17 +92,25 @@ public sealed class AdminV1PartnerCertificatesEndpoint : IEndpointMarker
         var schoolExists = await db.Schools.AnyAsync(s => s.SchoolId == body.SchoolId && s.DeletedAt == null, ct);
         if (!schoolExists) return Results.BadRequest(new { error = "Unknown school." });
 
+        if (!Enum.TryParse<PartnerCertificateKind>(body.Kind ?? "Certificate", ignoreCase: true, out var kind))
+            return Results.BadRequest(new { error = "Unknown document kind." });
+
         var duplicate = await db.PartnerCertificates.AnyAsync(c =>
-            c.PartnerId == partnerId && c.SchoolId == body.SchoolId && c.DeletedAt == null, ct);
+            c.PartnerId == partnerId && c.SchoolId == body.SchoolId && c.Kind == kind && c.DeletedAt == null, ct);
         if (duplicate)
-            return Results.Conflict(new { error = "This partner already has a certificate for that school." });
+            return Results.Conflict(new { error = "This partner already has that document for that school." });
 
         var cert = new PartnerCertificate
         {
             PartnerId = partnerId,
             SchoolId = body.SchoolId,
-            Title = string.IsNullOrWhiteSpace(body.Title) ? "Certificate of Partnership" : body.Title.Trim(),
-            CertificateLayoutJson = PartnerCertificateService.DefaultLayoutJson(),
+            Kind = kind,
+            Title = string.IsNullOrWhiteSpace(body.Title)
+                ? (kind == PartnerCertificateKind.AuthorizationLetter ? "Partnership Authorization Letter" : "Certificate of Partnership")
+                : body.Title.Trim(),
+            CertificateLayoutJson = kind == PartnerCertificateKind.AuthorizationLetter
+                ? PartnerCertificateService.AuthorizationLetterLayoutJson()
+                : PartnerCertificateService.DefaultLayoutJson(),
         };
         db.PartnerCertificates.Add(cert);
         await db.SaveChangesAsync(ct);

@@ -79,6 +79,51 @@ public sealed class PartnerCertificateService(
     }
 
     /// <summary>
+    /// Starter design for a new Partnership authorization letter — an A4
+    /// portrait text letter modelled on the "Letter of Authorization -
+    /// Approved Admissions Partner" sample. Static text may embed [tag]
+    /// tokens inline; the renderer substitutes them at render time.
+    /// </summary>
+    public static string AuthorizationLetterLayoutJson()
+    {
+        const int leftX = 140;
+        const int contentW = 1134; // 1414 - 2 × 140
+        var layout = new CertificateLayout
+        {
+            Width = 1414,
+            Height = 2000,
+            PageSize = "A4",
+            Orientation = "portrait",
+            Pages =
+            [
+                new CertificatePage
+                {
+                    Fields =
+                    [
+                        new CertificateField { Kind = "text", Tag = "[school name]", X = 0, Y = 110, FontSize = 40, Color = "#1a2d4f", Align = "center", Bold = true, Width = 1414 },
+                        new CertificateField { Kind = "text", Tag = "[date]", X = 0, Y = 200, FontSize = 24, Color = "#333333", Align = "center", Width = 1414 },
+                        new CertificateField { Kind = "text", Text = "Letter of Authorization - Approved Admissions Partner", X = 0, Y = 320, FontSize = 34, Color = "#111111", Align = "center", Bold = true, Width = 1414 },
+                        new CertificateField { Kind = "text", Text = "To Whom It May Concern", X = 0, Y = 430, FontSize = 28, Color = "#111111", Align = "center", Width = 1414 },
+                        new CertificateField { Kind = "text", Text = "This is to formally certify that [partner name] has been appointed as an Approved Admissions Partner of [school name].", X = leftX, Y = 540, FontSize = 26, Color = "#222222", Align = "left", Width = contentW },
+                        new CertificateField { Kind = "text", Text = "As an Approved Admissions Partner, the above-mentioned institution is granted the rights and responsibilities to promote the academic programs of [school name] and support the recruitment of prospective students for various academic programs, including Doctorate, Master's, Bachelor's, Certification's and Executive Education programs, in accordance with the guidelines and admission standards established by the institution. Under this authorization, the partner is entrusted with the following responsibilities:", X = leftX, Y = 660, FontSize = 26, Color = "#222222", Align = "left", Width = contentW },
+                        new CertificateField { Kind = "text", Text = "1. Student Recruitment", X = leftX, Y = 960, FontSize = 26, Color = "#111111", Align = "left", Bold = true, Width = contentW },
+                        new CertificateField { Kind = "text", Text = "Identify, guide and support prospective students through the admission process in line with the institution's requirements.", X = leftX, Y = 1010, FontSize = 26, Color = "#222222", Align = "left", Width = contentW },
+                        new CertificateField { Kind = "text", Text = "2. Programme Promotion", X = leftX, Y = 1110, FontSize = 26, Color = "#111111", Align = "left", Bold = true, Width = contentW },
+                        new CertificateField { Kind = "text", Text = "Represent the institution's academic programs accurately and professionally in all marketing and counselling activities.", X = leftX, Y = 1160, FontSize = 26, Color = "#222222", Align = "left", Width = contentW },
+                        new CertificateField { Kind = "text", Text = "3. Compliance", X = leftX, Y = 1260, FontSize = 26, Color = "#111111", Align = "left", Bold = true, Width = contentW },
+                        new CertificateField { Kind = "text", Text = "Adhere to the admission standards, quality guidelines and code of conduct established by the institution at all times.", X = leftX, Y = 1310, FontSize = 26, Color = "#222222", Align = "left", Width = contentW },
+                        new CertificateField { Kind = "text", Text = "This authorization remains valid while the partnership agreement between the parties is in force.", X = leftX, Y = 1440, FontSize = 26, Color = "#222222", Align = "left", Width = contentW },
+                        new CertificateField { Kind = "text", Text = "____________________________", X = leftX, Y = 1650, FontSize = 28, Color = "#222222", Align = "left" },
+                        new CertificateField { Kind = "text", Text = "Signature", X = leftX, Y = 1710, FontSize = 26, Color = "#222222", Align = "left", Bold = true },
+                        new CertificateField { Kind = "text", Text = "Founder & CEO", X = leftX, Y = 1760, FontSize = 24, Color = "#555555", Align = "left" },
+                    ],
+                },
+            ],
+        };
+        return JsonSerializer.Serialize(layout, CertificateLayout.JsonOpts);
+    }
+
+    /// <summary>
     /// Starter design for a new partner certificate, echoing the sample:
     /// CERTIFICATE OF PARTNERSHIP heading, "proudly presented to", the partner
     /// name, an honour line, date issued and a signature block. Landscape A4.

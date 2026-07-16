@@ -25,17 +25,27 @@ public sealed class PartnerV1MyCertificatesEndpoint : IEndpointMarker
         var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
         if (fail is not null) return fail;
 
-        var items = await db.PartnerCertificates
+        var items = (await db.PartnerCertificates
             .Where(c => c.PartnerId == partnerId && c.DeletedAt == null)
             .OrderBy(c => c.CreatedAt)
             .Select(c => new
             {
-                partnerCertificateId = c.PartnerCertificateId,
-                schoolName = db.Schools.Where(s => s.SchoolId == c.SchoolId).Select(s => s.Name).FirstOrDefault(),
-                title = c.Title,
-                updatedAt = c.UpdatedAt ?? c.CreatedAt,
+                c.PartnerCertificateId,
+                SchoolName = db.Schools.Where(s => s.SchoolId == c.SchoolId).Select(s => s.Name).FirstOrDefault(),
+                c.Kind,
+                c.Title,
+                UpdatedAt = c.UpdatedAt ?? c.CreatedAt,
             })
-            .ToListAsync(ct);
+            .ToListAsync(ct))
+            .Select(c => new
+            {
+                partnerCertificateId = c.PartnerCertificateId,
+                schoolName = c.SchoolName,
+                kind = c.Kind.ToString(),
+                title = c.Title,
+                updatedAt = c.UpdatedAt,
+            })
+            .ToList();
         return Results.Ok(new { items });
     }
 
