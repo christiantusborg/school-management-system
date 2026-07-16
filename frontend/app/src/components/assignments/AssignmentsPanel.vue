@@ -14,7 +14,9 @@
       </button>
 
       <div v-if="open[m.subjectId]" class="asg-module-body">
-        <p v-if="!m.uploads.length" class="asg-muted" style="margin:.2rem 0 .4rem;">No assignments uploaded for this module yet.</p>
+        <p v-if="!m.uploads.length" class="asg-muted" style="margin:.2rem 0 .4rem;">
+          {{ canUpload ? 'No assignments uploaded for this module yet.' : 'The student has not uploaded any assignments for this module yet.' }}
+        </p>
 
         <div v-for="u in m.uploads" :key="u.assignmentUploadId" class="asg-upload">
           <div class="asg-upload-head">

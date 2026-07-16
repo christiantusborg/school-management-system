@@ -18,8 +18,9 @@ public sealed class PartnerV1MyStudentsAssignmentsEndpoint : IEndpointMarker
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
         const string baseRoute = "/v1/partner/my-students/{studentId:guid}/enrollments/{enrollmentId:guid}/assignments";
+        // Reviewers only: ONLY the student uploads assignments (from the
+        // student portal). Partner staff and teachers read, download, comment.
         app.MapGet(baseRoute, ListAsync).RequireAuthorization("PartnerOnly");
-        app.MapPost(baseRoute, UploadAsync).RequireAuthorization("PartnerOnly").DisableAntiforgery();
         app.MapGet(baseRoute + "/{assignmentId:guid}/file", FileAsync).RequireAuthorization("PartnerOnly");
         app.MapPost(baseRoute + "/{assignmentId:guid}/comments", CommentAsync).RequireAuthorization("PartnerOnly");
         return app;
@@ -55,29 +56,6 @@ public sealed class PartnerV1MyStudentsAssignmentsEndpoint : IEndpointMarker
         var (ok, _) = await OwnsAsync(http, db, studentId, enrollmentId, ct);
         if (!ok) return Results.NotFound();
         return Results.Ok(await svc.ListAsync(enrollmentId, ct));
-    }
-
-    private static async Task<IResult> UploadAsync(
-        Guid studentId, Guid enrollmentId, HttpContext http,
-        OdinDbContext db, AssignmentService svc, CancellationToken ct)
-    {
-        var (ok, userId) = await OwnsAsync(http, db, studentId, enrollmentId, ct);
-        if (!ok) return Results.NotFound();
-        if (!http.Request.HasFormContentType)
-            return Results.BadRequest(new { error = "multipart/form-data required" });
-
-        var form = await http.Request.ReadFormAsync(ct);
-        if (!Guid.TryParse(form["subjectId"].ToString(), out var subjectId))
-            return Results.BadRequest(new { error = "subjectId is required" });
-        var file = form.Files["file"];
-        if (file is null) return Results.BadRequest(new { error = "file is required" });
-
-        var (role, name) = await AuthorAsync(db, userId, ct);
-        await using var src = file.OpenReadStream();
-        var (error, id) = await svc.UploadAsync(enrollmentId,
-            new AssignmentService.UploadInput(subjectId, form["title"].ToString(), src, file.FileName, file.ContentType, file.Length),
-            role, name, userId, ct);
-        return error is null ? Results.Ok(new { assignmentUploadId = id }) : Results.BadRequest(new { error });
     }
 
     private static async Task<IResult> FileAsync(

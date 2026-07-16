@@ -905,7 +905,8 @@
                   <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
                 </div>
                 <AssignmentsPanel
-                  :api-base="`/v1/admin/students/${detailModal.studentId}/enrollments/${enr.studentEnrollmentId}/assignments`" />
+                  :api-base="`/v1/admin/students/${detailModal.studentId}/enrollments/${enr.studentEnrollmentId}/assignments`"
+                  :can-upload="false" />
               </div>
               <p v-if="!(detailModal.data?.enrollments ?? []).length" class="muted">No enrolments for this student yet.</p>
             </div>

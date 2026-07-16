@@ -403,7 +403,7 @@
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
               <AssignmentsPanel v-else
                 :api-base="`/v1/partner/my-students/${detailModal.studentId}/enrollments/${activeEnrollment.studentEnrollmentId}/assignments`"
-                :can-upload="!auth.user?.isTeacher" />
+                :can-upload="false" />
             </div>
 
             <div v-if="detailModal.activeTab === 'letters'" class="tab-pane">
