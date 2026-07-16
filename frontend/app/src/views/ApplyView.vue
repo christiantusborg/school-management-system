@@ -1,9 +1,9 @@
 <template>
   <div class="apply-page">
     <header class="apply-header">
-      <div class="logo">IBSS</div>
+      <div class="logo">MGW</div>
       <div class="org">
-        <strong>International Business School of Scandinavia</strong>
+        <strong>My Global World Education Group</strong>
         <span v-if="partner">Application via <strong>{{ partner.name }}</strong></span>
       </div>
     </header>
@@ -50,8 +50,16 @@
           <div class="field"><label>First name *</label><input v-model="form.firstName" /></div>
           <div class="field"><label>Last name *</label><input v-model="form.lastName" /></div>
         </div>
-        <div class="field"><label>Email *</label><input type="email" v-model="form.email" /></div>
-        <div class="field"><label>Password *</label><input type="password" v-model="form.password" placeholder="At least 8 characters" /></div>
+        <div class="field">
+          <label>Email *</label>
+          <input type="email" v-model="form.email" />
+          <small v-if="form.email.trim() && !validEmail" class="field-hint-err">Enter a valid email address.</small>
+        </div>
+        <div class="field">
+          <label>Password *</label>
+          <input type="password" v-model="form.password" placeholder="At least 8 characters" />
+          <small v-if="form.password && form.password.length < 8" class="field-hint-err">Password must be at least 8 characters.</small>
+        </div>
         <div class="actions actions-end">
           <button class="btn-primary" :disabled="!step1Valid || busy" @click="startAccount">
             {{ busy ? 'Creating…' : 'Create account &amp; continue →' }}
@@ -66,12 +74,33 @@
           <div class="field"><label>Date of birth</label><input type="date" v-model="form.dateOfBirth" /></div>
           <div class="field"><label>Passport / ID number</label><input v-model="form.passportId" /></div>
         </div>
+        <div class="row-2">
+          <div class="field">
+            <label>Nationality</label>
+            <select v-model.number="form.nationalityId">
+              <option :value="null">— select —</option>
+              <option v-for="n in nationalities" :key="n.nationalityId" :value="n.nationalityId">{{ n.name }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Gender</label>
+            <select v-model="form.gender">
+              <option value="">— select —</option>
+              <option v-for="g in GENDER_OPTIONS" :key="g" :value="g">{{ g }}</option>
+            </select>
+          </div>
+        </div>
+
         <div class="field">
-          <label>Nationality</label>
-          <select v-model.number="form.nationalityId">
-            <option :value="null">— select —</option>
-            <option v-for="n in nationalities" :key="n.nationalityId" :value="n.nationalityId">{{ n.name }}</option>
+          <label>Do you have a disability, learning difference, or other condition that may require reasonable adjustments or support during your studies? <span class="field-optional">(optional)</span></label>
+          <select v-model="form.disabilityDisclosure">
+            <option value="">— select —</option>
+            <option v-for="d in DISABILITY_OPTIONS" :key="d" :value="d">{{ d }}</option>
           </select>
+        </div>
+        <div v-if="form.disabilityDisclosure === 'Yes'" class="field">
+          <label>If you wish, please describe the support or reasonable adjustments that would help you succeed.</label>
+          <textarea v-model="form.disabilitySupportNeeds" rows="3" placeholder="Optional"></textarea>
         </div>
 
         <div class="section-divider">Address</div>
@@ -111,6 +140,40 @@
             <label>Years of work experience</label>
             <select v-model.number="form.yearsWorkExperience">
               <option v-for="n in yearsExperienceOptions" :key="n.value" :value="n.value">{{ n.label }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Specialization for degree</label>
+          <input v-model="form.degreeSpecialization" type="text" maxlength="300"
+                 placeholder="Your specialty from the education, e.g. Marketing, Mechanical Engineering" />
+        </div>
+
+        <div class="row-2">
+          <div class="field">
+            <label>Current position by function</label>
+            <select v-model="form.currentPositionFunctionId">
+              <option value="">— select —</option>
+              <option v-for="p in positionFunctions" :key="p.positionFunctionId" :value="p.positionFunctionId">{{ p.name }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Current employment industry</label>
+            <select v-model="form.currentEmploymentIndustryId">
+              <option value="">— select —</option>
+              <option v-for="i in employmentIndustries" :key="i.employmentIndustryId" :value="i.employmentIndustryId">{{ i.name }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Monthly salary at the time of starting your education <span class="field-optional">(optional)</span></label>
+          <div class="salary-row">
+            <input type="number" min="0" step="0.01" v-model="form.monthlySalaryAmount" placeholder="Amount" class="salary-amount" />
+            <select v-model="form.monthlySalaryCurrencyId" class="salary-currency">
+              <option value="">Currency</option>
+              <option v-for="c in currencies" :key="c.currencyId" :value="c.currencyId">{{ c.code }}{{ c.name ? ` — ${c.name}` : '' }}</option>
             </select>
           </div>
         </div>
@@ -179,6 +242,17 @@
         </div>
         <button class="btn-add" @click="addProgRow">+ Add another programme</button>
 
+        <div v-if="cardProgrammeSelected" class="card-optin">
+          <label class="consent-row" style="margin-top:.6rem;">
+            <input type="checkbox" v-model="form.wantsStudentCard" />
+            🪪 Yes, I would like a digital student card
+          </label>
+          <p class="step-hint" style="margin:.2rem 0 0 1.6rem;">
+            Your programme offers a digital student ID card. If you keep this ticked,
+            a portrait photo (Student Card Picture) is required in the next step.
+          </p>
+        </div>
+
         <div class="actions">
           <button class="btn-back" @click="goBack">← Back</button>
           <button class="btn-primary" :disabled="!step4Valid || busy" @click="savePrograms">Save &amp; continue →</button>
@@ -218,8 +292,30 @@
                         @click="onRemove(uploadedFor(row.specializationId, req.documentTypeId).studentDocumentId)">Remove</button>
               </div>
             </li>
-            <li v-if="requiredDocsFor(row.programmeId).length === 0" class="doc-empty">
+            <li v-if="requiredDocsFor(row.programmeId).length === 0 && !cardPhotoRequiredFor(row.programmeId)" class="doc-empty">
               No documents required for this programme.
+            </li>
+            <!-- Student card photo: mandatory when the programme issues a
+                 digital student card and the applicant opted in. -->
+            <li v-if="cardPhotoRequiredFor(row.programmeId) && cardPictureType" class="doc-row">
+              <div class="doc-name">
+                <span :class="['doc-mark', uploadedFor(row.specializationId, cardPictureType.documentTypeId) ? 'mark-ok' : 'mark-pending']">
+                  {{ uploadedFor(row.specializationId, cardPictureType.documentTypeId) ? '✓' : '·' }}
+                </span>
+                Student Card Picture <span class="muted">(portrait photo for your ID card — required)</span>
+              </div>
+              <div class="doc-actions">
+                <span v-if="uploadedFor(row.specializationId, cardPictureType.documentTypeId)" class="doc-meta">
+                  {{ uploadedFor(row.specializationId, cardPictureType.documentTypeId).fileName }}
+                </span>
+                <label class="btn-upload">
+                  {{ uploadedFor(row.specializationId, cardPictureType.documentTypeId) ? 'Replace' : 'Upload' }}
+                  <input type="file" accept="image/*"
+                         @change="onUpload($event, row.specializationId, cardPictureType.documentTypeId)" />
+                </label>
+                <button v-if="uploadedFor(row.specializationId, cardPictureType.documentTypeId)" class="btn-x"
+                        @click="onRemove(uploadedFor(row.specializationId, cardPictureType.documentTypeId).studentDocumentId)">Remove</button>
+              </div>
             </li>
           </ul>
         </div>
@@ -232,13 +328,17 @@
 
       <!-- ── Step 6: Consent + Submit ── -->
       <section v-if="state.step === 6" class="step">
+        <!-- Optional survey (admin-authored via Questionnaires → Assignments);
+             renders nothing when no active SignupWizard form exists. -->
+        <SurveyStep v-if="wizardToken" :token="wizardToken" />
+
         <h2 class="step-title">Consent &amp; declaration</h2>
         <ul class="consent-list">
           <li>Your data is used to evaluate your application and shared with the partner you applied through.</li>
           <li>It is not sold or used for marketing.</li>
           <li>Retained for 3 years (or until you ask us to delete it). You can access, correct, or delete it any time.</li>
         </ul>
-        <label class="consent-row"><input type="checkbox" v-model="form.consentProcessing" /> I consent to IBSS and my chosen partner processing my data for this application (GDPR Art. 6(1)(a)).</label>
+        <label class="consent-row"><input type="checkbox" v-model="form.consentProcessing" /> I consent to MGW and my chosen partner processing my data for this application (GDPR Art. 6(1)(a)).</label>
         <label class="consent-row"><input type="checkbox" v-model="form.consentTerms" /> I agree to the Terms of Service and Privacy Policy.</label>
         <label class="consent-row"><input type="checkbox" v-model="form.consentAccuracy" /> I declare the information I have provided is accurate.</label>
         <div class="actions">
@@ -258,6 +358,7 @@ import api from '../api/client.js'
 import { ACCEPTED_DOC_ACCEPT_ATTR } from '../utils/uploadPolicy.js'
 import { resolvePartnerSlug } from '../lib/partner.js'
 import { blindPassword, deriveClientPublicKey } from '../crypto/opaque.js'
+import SurveyStep from '../components/intake/SurveyStep.vue'
 
 const STEPS = [
   { n: 1, label: 'Account' },
@@ -333,6 +434,9 @@ const documentTypes = ref([])
 const documents = ref([])
 const languagesCatalog = ref([])
 const nationalities = ref([])
+const positionFunctions = ref([])
+const employmentIndustries = ref([])
+const currencies = ref([])
 
 const state = reactive({
   step: 1,
@@ -343,12 +447,20 @@ const state = reactive({
 const form = reactive({
   firstName: '', lastName: '', email: '', password: '',
   dateOfBirth: '', passportId: '', nationalityId: null,
+  gender: '', disabilityDisclosure: '', disabilitySupportNeeds: '',
+  wantsStudentCard: true,
   addressLine1: '', addressLine2: '', city: '', stateRegion: '', postalCode: '', countryCode: '',
-  highestDegree: '', yearsWorkExperience: 0,
+  highestDegree: '', degreeSpecialization: '', yearsWorkExperience: 0,
+  currentPositionFunctionId: '', currentEmploymentIndustryId: '',
+  monthlySalaryAmount: '', monthlySalaryCurrencyId: '',
   languages: [],   // [{ languageId, proficiency }]
   programmes: [{ programmeId: '', specializationId: '', modeOfStudyId: 1, pathwayId: null }],
   consentProcessing: false, consentTerms: false, consentAccuracy: false,
 })
+
+// Fixed option lists (not configurable).
+const GENDER_OPTIONS = ['Female', 'Male', 'Another gender identity', 'Prefer not to say']
+const DISABILITY_OPTIONS = ['Yes', 'No', 'Prefer not to say']
 
 const wizardToken = ref(localStorage.getItem('wizardToken') || '')
 
@@ -360,8 +472,9 @@ function setToken(t) {
 
 function authHeaders() { return wizardToken.value ? { 'X-Wizard-Token': wizardToken.value } : {} }
 
+const validEmail = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
 const step1Valid = computed(() =>
-  form.firstName.trim() && form.lastName.trim() && form.email.trim() && form.password.length >= 8
+  form.firstName.trim() && form.lastName.trim() && validEmail.value && form.password.length >= 8
 )
 const step4Valid = computed(() => form.programmes.length > 0
   && form.programmes.every(p => p.programmeId && p.specializationId))
@@ -501,6 +614,16 @@ async function ensureRequiredDocsLoaded() {
 function programmeNameFor(programmeId) {
   return catalogue.value.programmes.find(p => p.programmeId === programmeId)?.name ?? '—'
 }
+
+// ── Digital student card opt-in ──────────────────────────────────────────
+const cardProgrammeSelected = computed(() => form.programmes.some(r =>
+  catalogue.value.programmes.find(p => p.programmeId === r.programmeId)?.issueDigitalStudentCard))
+const cardPictureType = computed(() =>
+  documentTypes.value.find(t => t.name === 'Student Card Picture'))
+function cardPhotoRequiredFor(programmeId) {
+  if (!form.wantsStudentCard) return false
+  return !!catalogue.value.programmes.find(p => p.programmeId === programmeId)?.issueDigitalStudentCard
+}
 function specializationNameFor(programmeId, specializationId) {
   const p = catalogue.value.programmes.find(x => x.programmeId === programmeId)
   return p?.specializations?.find(s => s.specializationId === specializationId)?.name ?? '—'
@@ -556,16 +679,22 @@ async function loadCatalogue() {
     return false
   }
   try {
-    const [dt, langs, nats, levels] = await Promise.all([
+    const [dt, langs, nats, levels, posFns, inds, currs] = await Promise.all([
       api.get('/v1/public/document-types'),
       api.get('/v1/public/languages'),
       api.get('/v1/public/nationalities'),
       api.get('/v1/public/education-levels'),
+      api.get('/v1/public/position-functions'),
+      api.get('/v1/public/employment-industries'),
+      api.get('/v1/public/currencies'),
     ])
     documentTypes.value = dt.data.items ?? []
     languagesCatalog.value = langs.data.items ?? []
     nationalities.value = nats.data.items ?? []
     educationLevels.value = levels.data.items ?? []
+    positionFunctions.value = posFns.data.items ?? []
+    employmentIndustries.value = inds.data.items ?? []
+    currencies.value = currs.data.items ?? []
   } catch (e) {
     loadError.value = { title: 'Could not load reference data', detail: e.response?.data?.error ?? e.message }
     return false
@@ -591,7 +720,15 @@ async function loadDraft() {
     form.stateRegion = d.personal?.address?.stateRegion ?? ''
     form.postalCode = d.personal?.address?.postalCode ?? ''
     form.countryCode = d.personal?.address?.countryCode ?? ''
+    form.gender = d.personal?.gender ?? ''
+    form.disabilityDisclosure = d.personal?.disabilityDisclosure ?? ''
+    form.disabilitySupportNeeds = d.personal?.disabilitySupportNeeds ?? ''
     form.highestDegree = d.background?.highestDegree ?? ''
+    form.degreeSpecialization = d.background?.degreeSpecialization ?? ''
+    form.currentPositionFunctionId = d.background?.currentPositionFunctionId ?? ''
+    form.currentEmploymentIndustryId = d.background?.currentEmploymentIndustryId ?? ''
+    form.monthlySalaryAmount = d.background?.monthlySalaryAmount ?? ''
+    form.monthlySalaryCurrencyId = d.background?.monthlySalaryCurrencyId ?? ''
     // Cap to (catalogue max + 1) so the value matches the upper "max+" bucket
     // in the dynamic dropdown. Catalogue is loaded before loadDraft runs.
     const yrsCap = maxPathwayMinYears.value + 1
@@ -645,10 +782,24 @@ async function startAccount() {
     state.step = 2
     form.password = ''
   } catch (e) {
-    error.value = e.response?.data?.error ?? e.message ?? 'Account creation failed'
+    error.value = extractApiError(e, 'Account creation failed. Check the email and password and try again.')
   } finally {
     busy.value = false
   }
+}
+
+// Pull a human message from the various error shapes the API returns: our
+// { error } objects, ASP.NET ProblemDetails ({ title, detail, errors }), or a
+// plain string body — falling back to the axios message.
+function extractApiError(e, fallback) {
+  const d = e.response?.data
+  if (typeof d === 'string' && d.trim()) return d
+  if (d?.error) return d.error
+  if (d?.errors && typeof d.errors === 'object') {
+    const msgs = Object.values(d.errors).flat().filter(Boolean)
+    if (msgs.length) return msgs.join(' ')
+  }
+  return d?.detail ?? d?.title ?? e.message ?? fallback
 }
 
 async function savePersonal() {
@@ -664,6 +815,9 @@ async function savePersonal() {
       stateRegion: form.stateRegion,
       postalCode: form.postalCode,
       countryCode: form.countryCode || null,
+      gender: form.gender || null,
+      disabilityDisclosure: form.disabilityDisclosure || null,
+      disabilitySupportNeeds: form.disabilityDisclosure === 'Yes' ? (form.disabilitySupportNeeds || null) : null,
     }, { headers: authHeaders() })
     state.step = 3
   } catch (e) { error.value = e.response?.data?.error ?? e.message }
@@ -675,7 +829,13 @@ async function saveBackground() {
   try {
     await api.patch('/v1/public/draft-signup/background', {
       highestDegree: form.highestDegree,
+      degreeSpecialization: form.degreeSpecialization || null,
       yearsWorkExperience: form.yearsWorkExperience,
+      currentPositionFunctionId: form.currentPositionFunctionId || null,
+      currentEmploymentIndustryId: form.currentEmploymentIndustryId || null,
+      monthlySalaryAmount: form.monthlySalaryAmount !== '' && form.monthlySalaryAmount != null
+        ? Number(form.monthlySalaryAmount) : null,
+      monthlySalaryCurrencyId: form.monthlySalaryCurrencyId || null,
       languages: form.languages
         .filter(l => l.languageId > 0)
         .map(l => ({ languageId: l.languageId, proficiency: l.proficiency })),
@@ -696,6 +856,7 @@ async function savePrograms() {
         modeOfStudyId: p.modeOfStudyId,
         pathwayId: p.pathwayId ?? null,
       })),
+      wantsStudentCard: cardProgrammeSelected.value ? !!form.wantsStudentCard : null,
     }, { headers: authHeaders() })
     state.step = 5
     await Promise.all([refreshDocuments(), ensureRequiredDocsLoaded()])
@@ -784,6 +945,7 @@ onMounted(async () => {
 
 .banner-warn { background: #fff7e0; border: 1px solid #f5d684; color: #856404; padding: 0.6rem 0.85rem; border-radius: 6px; font-size: 0.86rem; margin-bottom: 1rem; }
 .form-error { color: #b91c1c; font-size: 0.86rem; margin: 0 0 0.6rem; }
+.field-hint-err { color: #b91c1c; font-size: 0.76rem; margin-top: 0.2rem; display: block; }
 
 .step { display: flex; flex-direction: column; gap: 0.85rem; }
 .step-title { color: #003366; font-size: 1.15rem; margin: 0; }
@@ -795,6 +957,10 @@ onMounted(async () => {
 .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.65rem; }
 .field { display: flex; flex-direction: column; gap: 0.3rem; }
 .field-narrow { max-width: 200px; }
+.field-optional { font-weight: 400; color: #888; }
+.salary-row { display: flex; gap: 0.5rem; }
+.salary-amount { flex: 1; min-width: 0; }
+.salary-currency { flex: 0 0 auto; max-width: 200px; }
 .field label { font-size: 0.82rem; font-weight: 600; color: #444; }
 .field input, .field select {
   padding: 0.55rem 0.7rem; border: 1.5px solid #d0d7e0; border-radius: 6px;

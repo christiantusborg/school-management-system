@@ -24,8 +24,13 @@ public sealed class DraftSignupV1BackgroundEndpoint : IEndpointMarker
     public sealed class BackgroundRequest
     {
         public string? HighestDegree { get; init; }
+        public string? DegreeSpecialization { get; init; }
         public int? YearsWorkExperience { get; init; }
         public IReadOnlyList<LanguageEntry>? Languages { get; init; }
+        public Guid? CurrentPositionFunctionId { get; init; }
+        public Guid? CurrentEmploymentIndustryId { get; init; }
+        public decimal? MonthlySalaryAmount { get; init; }
+        public Guid? MonthlySalaryCurrencyId { get; init; }
     }
     public sealed class LanguageEntry
     {
@@ -47,7 +52,12 @@ public sealed class DraftSignupV1BackgroundEndpoint : IEndpointMarker
         if (student is null) return WizardTokenAuth.Unauthorised();
 
         student.HighestDegree = body.HighestDegree;
+        student.DegreeSpecialization = string.IsNullOrWhiteSpace(body.DegreeSpecialization) ? null : body.DegreeSpecialization.Trim();
         student.YearsWorkExperience = body.YearsWorkExperience ?? 0;
+        student.CurrentPositionFunctionId = body.CurrentPositionFunctionId;
+        student.CurrentEmploymentIndustryId = body.CurrentEmploymentIndustryId;
+        student.MonthlySalaryAmount = body.MonthlySalaryAmount is > 0 ? body.MonthlySalaryAmount : null;
+        student.MonthlySalaryCurrencyId = body.MonthlySalaryCurrencyId;
 
         // Languages: deferred — see class summary. To re-enable once
         // UserLanguage is retyped:

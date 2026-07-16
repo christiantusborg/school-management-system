@@ -64,6 +64,7 @@ public sealed class PartnerCatalogueV1Endpoint : IEndpointMarker
                 p.Description,
                 p.AwardEducationLevelId,
                 AwardRank = p.AwardEducationLevel != null ? (int?)p.AwardEducationLevel.Rank : null,
+                p.IssueDigitalStudentCard,
             })
             .ToListAsync(ct);
 
@@ -155,6 +156,7 @@ public sealed class PartnerCatalogueV1Endpoint : IEndpointMarker
                 description = p.Description,
                 awardEducationLevelId = p.AwardEducationLevelId,
                 awardRank = p.AwardRank,
+                issueDigitalStudentCard = p.IssueDigitalStudentCard,
                 specializations = specsByProgramme.TryGetValue(p.ProgrammeId, out var sps)
                     ? sps.Select(s => new
                       {

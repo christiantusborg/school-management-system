@@ -36,6 +36,7 @@ public static class StudentEditService
     public sealed class BackgroundDto
     {
         public string? HighestDegree { get; init; }
+        public string? DegreeSpecialization { get; init; }
         public int? YearsWorkExperience { get; init; }
         public IReadOnlyList<LanguageEntry>? Languages { get; init; }
     }
@@ -157,6 +158,7 @@ public static class StudentEditService
         var now = DateTime.UtcNow;
 
         student.HighestDegree = string.IsNullOrWhiteSpace(dto.HighestDegree) ? null : dto.HighestDegree;
+        student.DegreeSpecialization = string.IsNullOrWhiteSpace(dto.DegreeSpecialization) ? null : dto.DegreeSpecialization.Trim();
         student.YearsWorkExperience = dto.YearsWorkExperience ?? 0;
 
         // UserLanguage.UserId is typed as Guid in the current schema; the

@@ -24,6 +24,9 @@ public sealed class DraftSignupV1PersonalEndpoint : IEndpointMarker
         public string? PostalCode { get; init; }
         public string? CountryCode { get; init; }
         public string? Phone { get; init; }
+        public string? Gender { get; init; }
+        public string? DisabilityDisclosure { get; init; }
+        public string? DisabilitySupportNeeds { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
@@ -42,6 +45,15 @@ public sealed class DraftSignupV1PersonalEndpoint : IEndpointMarker
         student.DateOfBirth = body.DateOfBirth;
         student.PassportId = body.PassportId;
         student.NationalityId = body.NationalityId;
+        student.Gender = string.IsNullOrWhiteSpace(body.Gender) ? null : body.Gender.Trim();
+        student.DisabilityDisclosure = string.IsNullOrWhiteSpace(body.DisabilityDisclosure) ? null : body.DisabilityDisclosure.Trim();
+        // Support-needs text is only meaningful when the disclosure is "Yes";
+        // clear it otherwise so a later "No" doesn't leave stale details behind.
+        student.DisabilitySupportNeeds =
+            string.Equals(student.DisabilityDisclosure, "Yes", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(body.DisabilitySupportNeeds)
+                ? body.DisabilitySupportNeeds.Trim()
+                : null;
 
         var profile = await db.UserProfiles.FirstOrDefaultAsync(p => p.UserId == session.UserId, ct);
         if (profile is not null) profile.DateOfBirth = body.DateOfBirth;

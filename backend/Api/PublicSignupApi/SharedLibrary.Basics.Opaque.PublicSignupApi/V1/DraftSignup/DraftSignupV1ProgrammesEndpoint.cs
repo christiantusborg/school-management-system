@@ -21,6 +21,10 @@ public sealed class DraftSignupV1ProgrammesEndpoint : IEndpointMarker
     public sealed class ProgrammesRequest
     {
         public IReadOnlyList<ProgrammeItem>? Items { get; init; }
+        /// <summary>"Yes, I would like a digital student card" — only shown
+        /// (and only meaningful) when a selected programme issues cards.
+        /// Null leaves the student's stored preference unchanged.</summary>
+        public bool? WantsStudentCard { get; init; }
     }
     public sealed class ProgrammeItem
     {
@@ -58,9 +62,10 @@ public sealed class DraftSignupV1ProgrammesEndpoint : IEndpointMarker
             WizardSessionService.Ttl);
 
         var student = await db.Students.FirstOrDefaultAsync(s => s.StudentId == session.StudentId, ct);
-        if (student is not null && student.WizardStep < 4)
+        if (student is not null)
         {
-            student.WizardStep = 4;
+            if (student.WizardStep < 4) student.WizardStep = 4;
+            if (body.WantsStudentCard is { } wants) student.WantsStudentIdCard = wants;
             await db.SaveChangesAsync(ct);
         }
 

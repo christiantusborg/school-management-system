@@ -48,6 +48,21 @@ public sealed class DraftSignupV1SubmitEndpoint : IEndpointMarker
         if (picks is null || picks.Items.Count == 0)
             return Results.BadRequest(new { error = "No programmes selected — go back to step 4." });
 
+        // Digital student card: when opted in and a selected programme issues
+        // cards, the card photo upload is mandatory before submitting.
+        var pickedProgrammeIds = picks.Items.Select(p => p.ProgrammeId).Distinct().ToList();
+        var anyCardProgramme = await db.Programmes
+            .AnyAsync(p => pickedProgrammeIds.Contains(p.ProgrammeId) && p.IssueDigitalStudentCard, ct);
+        if (anyCardProgramme && student.WantsStudentIdCard)
+        {
+            var hasCardPhoto = await db.StudentDocuments.AnyAsync(d =>
+                d.StudentId == student.StudentId
+                && d.DocumentTypeId == SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.StudentCardPicture
+                && d.DeletedAt == null, ct);
+            if (!hasCardPhoto)
+                return Results.BadRequest(new { error = "Please upload a Student Card Picture (or untick the student card option) — it is required for your digital student ID card." });
+        }
+
         var submittedAt = DateTime.UtcNow;
         var specToEnrolment = new Dictionary<Guid, Guid>();
         foreach (var pick in picks.Items)
