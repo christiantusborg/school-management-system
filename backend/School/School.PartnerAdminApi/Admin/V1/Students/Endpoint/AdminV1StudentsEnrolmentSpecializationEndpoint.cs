@@ -27,7 +27,9 @@ public sealed class AdminV1StudentsEnrolmentSpecializationEndpoint : IEndpointMa
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId,
         [FromBody] SpecializationBody body,
-        OdinDbContext db, CancellationToken ct)
+        OdinDbContext db,
+        [FromServices] Odin.Api.Base.Letters.LetterReleaseService letterRelease,
+        CancellationToken ct)
     {
         if (body.SpecializationId is not { } newSpecId)
             return Results.BadRequest(new { error = "specializationId is required." });
@@ -64,6 +66,29 @@ public sealed class AdminV1StudentsEnrolmentSpecializationEndpoint : IEndpointMa
 
         enrolment.SpecializationId = newSpecId;
         await db.SaveChangesAsync(ct);
+
+        // Re-render already-released letters so transcripts/certificates
+        // immediately reflect the new programme/specialization (grades of the
+        // old specialization are filtered out by the tag resolver). Best
+        // effort: a render failure never fails the specialization change.
+        var releasedTypes = new (Guid DocTypeId, LetterType Type)[]
+        {
+            (SystemDocumentTypeIds.OfferLetter,            LetterType.OfferLetter),
+            (SystemDocumentTypeIds.AdmissionLetter,        LetterType.AdmissionLetter),
+            (SystemDocumentTypeIds.Transcript,             LetterType.Transcript),
+            (SystemDocumentTypeIds.PrintableTranscript,    LetterType.PrintableTranscript),
+            (SystemDocumentTypeIds.Certificate,            LetterType.Certificate),
+            (SystemDocumentTypeIds.ProvisionalCertificate, LetterType.ProvisionalCertificate),
+            (SystemDocumentTypeIds.StudentIdCard,          LetterType.StudentIdCard),
+        };
+        foreach (var (docTypeId, type) in releasedTypes)
+        {
+            var released = await db.StudentDocuments.AnyAsync(d =>
+                d.EnrollmentId == enrollmentId && d.DocumentTypeId == docTypeId && d.DeletedAt == null, ct);
+            if (!released) continue;
+            try { await letterRelease.ReleaseAsync(enrollmentId, type, ct); }
+            catch { /* keep the change even if a re-render fails */ }
+        }
 
         var programmeName = await db.Programmes
             .Where(p => p.ProgrammeId == target.ProgrammeId)

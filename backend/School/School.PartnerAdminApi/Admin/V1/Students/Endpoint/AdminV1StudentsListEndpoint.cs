@@ -56,6 +56,19 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
             })
             .ToListAsync(cancellationToken);
 
+        // Enrolments with an unpaid installment or additional invoice past its
+        // due date — powers the "Payment overdue" chip on the Students list.
+        var enrollmentIds = enrollments.Select(e => e.StudentEnrollmentId).ToList();
+        var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Unspecified);
+        var overdueIds = enrollmentIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await db.EnrollmentPaymentPlans
+                .Where(p => enrollmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null
+                    && (p.Installments.Any(i => !i.IsPaid && i.DueDate != null && i.DueDate < today)
+                        || p.AdditionalInvoices.Any(a => !a.IsPaid && a.DueDate != null && a.DueDate < today)))
+                .Select(p => p.StudentEnrollmentId)
+                .ToListAsync(cancellationToken)).ToHashSet();
+
         // Group by student.
         var studentIds = enrollments.Select(e => e.StudentId).Distinct().ToList();
         var students = await db.Students
@@ -101,6 +114,7 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                     commencementDate = e.CommencementDate,
                     statusCode = e.StatusCode,
                     statusName = e.StatusName,
+                    paymentOverdue = overdueIds.Contains(e.StudentEnrollmentId),
                 }).ToList(),
             };
         }).ToList();

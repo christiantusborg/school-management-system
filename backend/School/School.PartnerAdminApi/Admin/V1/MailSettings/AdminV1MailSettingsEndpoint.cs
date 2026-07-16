@@ -141,8 +141,8 @@ public sealed class AdminV1MailSettingsEndpoint : IEndpointMarker
         {
             await emailSender.SendAsync(new EmailMessage(
                 To: body.To.Trim(),
-                Subject: "IBSS mail configuration test",
-                HtmlBody: "<p>This is a test email from the IBSS admin portal. If you received it, outbound mail is configured correctly.</p>"),
+                Subject: "MGW mail configuration test",
+                HtmlBody: "<p>This is a test email from the MGW admin portal. If you received it, outbound mail is configured correctly.</p>"),
                 ct);
         }
         catch (Exception ex)

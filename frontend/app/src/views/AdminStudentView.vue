@@ -1,7 +1,7 @@
 <template>
   <div class="page-wrapper">
     <nav class="navbar">
-      <span class="brand-text">IBSS Admin Portal</span>
+      <span class="brand-text">MGW Admin Portal</span>
       <div class="nav-links">
         <RouterLink to="/admin" class="nav-link">Dashboard</RouterLink>
         <RouterLink to="/programmes" class="nav-link">Programmes</RouterLink>
@@ -236,7 +236,7 @@
       <!-- ── Download Centre ── -->
       <div class="detail-card download-card">
         <h3 class="card-title">Download Centre</h3>
-        <p class="download-hint">Select documents to download. Grade report and certificate are available in two versions: <strong>Digital</strong> includes the official IBSS stamp and digital signature; <strong>Physical</strong> is unsigned for manual signing and stamping.</p>
+        <p class="download-hint">Select documents to download. Grade report and certificate are available in two versions: <strong>Digital</strong> includes the official MGW stamp and digital signature; <strong>Physical</strong> is unsigned for manual signing and stamping.</p>
         <div class="dl-list">
           <template v-for="doc in uploadedDocs" :key="'up_' + doc.field">
             <label class="dl-row">
@@ -424,7 +424,7 @@
                 <tr>
                   <th>Module</th>
                   <th class="num-col">Credit<br>Hours</th>
-                  <th class="num-col">IBSS<br>Grade</th>
+                  <th class="num-col">MGW<br>Grade</th>
                   <th class="num-col">UK<br>Grade</th>
                   <th class="num-col">ECTS<br>Grade</th>
                   <th class="num-col">ECTS<br>Points</th>
@@ -884,8 +884,8 @@ function printOfferLetter(s, enr, type) {
   const title   = type === 'offer' ? 'LETTER OF OFFER' : 'LETTER OF ADMISSION'
   const isOffer = type === 'offer'
   const body    = isOffer
-    ? `We are pleased to offer you a place at the International Business School of Scandinavia through our partner institution <strong>${s.partner}</strong>. This offer is subject to the verification of your academic qualifications and supporting documents.`
-    : `We are pleased to confirm your admission to the International Business School of Scandinavia through our partner institution <strong>${s.partner}</strong>. Your place has been formally reserved and we look forward to welcoming you.`
+    ? `We are pleased to offer you a place at the My Global World Education Group through our partner institution <strong>${s.partner}</strong>. This offer is subject to the verification of your academic qualifications and supporting documents.`
+    : `We are pleased to confirm your admission to the My Global World Education Group through our partner institution <strong>${s.partner}</strong>. Your place has been formally reserved and we look forward to welcoming you.`
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title} — ${s.studentId}</title>
   <style>
@@ -901,8 +901,8 @@ function printOfferLetter(s, enr, type) {
     .sign { margin-top:40px; } .sig-line { border-top:1px solid #555; width:200px; margin:28px 0 5px; }
   </style></head><body>
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
-    <div class="logo">IBSS</div>
-    <div class="org"><strong>International Business School of Scandinavia</strong><br><span>in partnership with ${s.partner}</span></div>
+    <div class="logo">MGW</div>
+    <div class="org"><strong>My Global World Education Group</strong><br><span>in partnership with ${s.partner}</span></div>
   </div>
   <hr/>
   <p>${todayFormatted}</p>
@@ -919,7 +919,7 @@ function printOfferLetter(s, enr, type) {
     <tr><td>Partner Institution</td><td>${s.partner}</td></tr>
   </table>
   <p>${isOffer ? 'Please accept this offer by confirming your enrolment with your partner institution.' : 'Please retain this letter as confirmation of your admission.'}</p>
-  <div class="sign"><p>Yours sincerely,</p><div class="sig-line"></div><p><strong>IBSS Admissions Office</strong></p><p style="color:#555;font-size:9pt">International Business School of Scandinavia</p></div>
+  <div class="sign"><p>Yours sincerely,</p><div class="sig-line"></div><p><strong>MGW Admissions Office</strong></p><p style="color:#555;font-size:9pt">My Global World Education Group</p></div>
   <script>window.onload=function(){window.print()}<\/script></body></html>`
 
   const win = window.open('', '_blank', 'width=820,height=700')
@@ -977,10 +977,10 @@ function printGradeReport(s, withStamp) {
 
   const stampBlock = withStamp ? `
     <div class="stamp"><div class="stamp-text">APPROVED ✓</div><div class="stamp-date">${todayFormatted}</div></div>
-    <div class="sign"><p>Verified by,</p><div class="sig-line"></div><p class="sig-name">IBSS Academic Registry</p><p class="sig-org">International Business School of Scandinavia</p>
+    <div class="sign"><p>Verified by,</p><div class="sig-line"></div><p class="sig-name">MGW Academic Registry</p><p class="sig-org">My Global World Education Group</p>
     <p class="sig-note">Digitally verified — ${todayFormatted}</p></div>` : `
     <div class="phys-note">FOR PHYSICAL SIGNING — Stamp and signature to be applied manually.</div>
-    <div class="sign-blank"><p>Verified by,</p><div class="sig-line"></div><p class="sig-name">_______________________________</p><p class="sig-org">IBSS Academic Registry</p></div>`
+    <div class="sign-blank"><p>Verified by,</p><div class="sig-line"></div><p class="sig-name">_______________________________</p><p class="sig-org">MGW Academic Registry</p></div>`
 
   const enr = s.enrollments?.[0] ?? {}
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Grade Report — ${s.studentId}</title>
@@ -1012,7 +1012,7 @@ function printGradeReport(s, withStamp) {
     .phys-note { margin: 24px 0 8px; padding: 8px 14px; border: 2px dashed #e0a800; color: #7a5200; font-size: 9pt; font-weight: bold; display: inline-block; }
     .sign-blank { margin-top: 20px; }
   </style></head><body>
-  <div class="header"><div class="logo">IBSS</div><div class="org"><strong>International Business School of Scandinavia</strong><br><span>Grade Report${withStamp ? ' — Official Digital Copy' : ' — Physical Copy (Unsigned)'}</span></div></div>
+  <div class="header"><div class="logo">MGW</div><div class="org"><strong>My Global World Education Group</strong><br><span>Grade Report${withStamp ? ' — Official Digital Copy' : ' — Physical Copy (Unsigned)'}</span></div></div>
   <hr/>
   <table class="info-table">
     <tr><td>Student Name</td><td>${s.firstName} ${s.lastName}</td></tr>
@@ -1024,7 +1024,7 @@ function printGradeReport(s, withStamp) {
   </table>
   <h4>Subject Results</h4>
   <table class="grade-table">
-    <thead><tr><th>Subject</th><th>Credits</th><th>IBSS</th><th>UK</th><th>ECTS</th><th>ECTS Pts</th><th>Grade Pts</th></tr></thead>
+    <thead><tr><th>Subject</th><th>Credits</th><th>MGW</th><th>UK</th><th>ECTS</th><th>ECTS Pts</th><th>Grade Pts</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot>
       <tr class="total-row"><td><strong>Total</strong></td><td class="tc">${totalCr}</td><td class="tc" colspan="4"></td><td class="tc gp">${totalGP.toFixed(1)}</td></tr>
@@ -1051,11 +1051,11 @@ function printCertificate(s, withStamp) {
 
   const enr = s.enrollments?.[0] ?? {}
   const bottomBlock = withStamp ? `
-    <div class="cert-declaration"><p>This is to certify that the above-named student has successfully completed all academic requirements for the award of <strong>${enr.programme ?? ''}</strong> — <strong>${enr.specialization ?? ''}</strong> at the International Business School of Scandinavia.</p></div>
+    <div class="cert-declaration"><p>This is to certify that the above-named student has successfully completed all academic requirements for the award of <strong>${enr.programme ?? ''}</strong> — <strong>${enr.specialization ?? ''}</strong> at the My Global World Education Group.</p></div>
     <div class="stamp"><div class="stamp-text">APPROVED ✓</div><div class="stamp-date">${todayFormatted}</div></div>
-    <div class="sign"><p>Certified by,</p><div class="sig-line"></div><p class="sig-name">IBSS Academic Registrar</p><p class="sig-org">International Business School of Scandinavia</p>
+    <div class="sign"><p>Certified by,</p><div class="sig-line"></div><p class="sig-name">MGW Academic Registrar</p><p class="sig-org">My Global World Education Group</p>
     <p class="sig-note">Digitally certified — ${todayFormatted}</p></div>` : `
-    <div class="cert-declaration"><p>This is to certify that the above-named student has successfully completed all academic requirements for the award of <strong>${enr.programme ?? ''}</strong> — <strong>${enr.specialization ?? ''}</strong> at the International Business School of Scandinavia.</p></div>
+    <div class="cert-declaration"><p>This is to certify that the above-named student has successfully completed all academic requirements for the award of <strong>${enr.programme ?? ''}</strong> — <strong>${enr.specialization ?? ''}</strong> at the My Global World Education Group.</p></div>
     <div class="phys-note">FOR PHYSICAL SIGNING — Official seal and signature to be applied manually.</div>
     <div class="sign-blank"><div style="display:flex;gap:60px;margin-top:20px"><div><div class="sig-line"></div><p class="sig-name">Academic Registrar</p></div><div><div class="sig-line"></div><p class="sig-name">Date</p></div></div></div>`
 
@@ -1090,7 +1090,7 @@ function printCertificate(s, withStamp) {
     .phys-note { margin: 16px 0 8px; padding: 8px 14px; border: 2px dashed #e0a800; color: #7a5200; font-size: 9pt; font-weight: bold; display: inline-block; font-family: Arial, sans-serif; }
     .sign-blank { font-family: Arial, sans-serif; }
   </style></head><body>
-  <div class="header"><div class="logo">IBSS</div><div class="org"><strong>International Business School of Scandinavia</strong><br><span>Academic Certificate${withStamp ? ' — Official Digital Copy' : ' — Physical Copy (Unsigned)'}</span></div></div>
+  <div class="header"><div class="logo">MGW</div><div class="org"><strong>My Global World Education Group</strong><br><span>Academic Certificate${withStamp ? ' — Official Digital Copy' : ' — Physical Copy (Unsigned)'}</span></div></div>
   <hr/>
   <div class="cert-title">Academic Transcript &amp; Certificate</div>
   <table class="info-table">
@@ -1104,7 +1104,7 @@ function printCertificate(s, withStamp) {
   </table>
   <h4>Academic Results</h4>
   <table class="grade-table">
-    <thead><tr><th>Subject</th><th>Credits</th><th>IBSS</th><th>UK</th><th>ECTS</th><th>ECTS Pts</th><th>Grade Pts</th></tr></thead>
+    <thead><tr><th>Subject</th><th>Credits</th><th>MGW</th><th>UK</th><th>ECTS</th><th>ECTS Pts</th><th>Grade Pts</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot>
       <tr class="total-row"><td><strong>Total</strong></td><td class="tc">${totalCr}</td><td class="tc" colspan="4"></td><td class="tc gp">${totalGP.toFixed(1)}</td></tr>

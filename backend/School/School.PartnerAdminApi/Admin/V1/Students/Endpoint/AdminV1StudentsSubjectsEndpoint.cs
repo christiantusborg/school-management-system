@@ -24,7 +24,7 @@ public sealed class AdminV1StudentsSubjectsEndpoint : IEndpointMarker
             .Where(e => e.StudentEnrollmentId == enrollmentId
                 && e.StudentId == studentId
                 && e.DeletedAt == null)
-            .Select(e => new { e.SpecializationId, e.Status.Code, ProgrammeCode = e.Specialization.Programmes.Code, SpecName = e.Specialization.Name })
+            .Select(e => new { e.SpecializationId, e.Status.Code, ProgrammeCode = e.Specialization.Programmes.Code, SpecName = e.Specialization.Name, RequiredEcts = e.Specialization.Programmes.RequiredEcts, e.ProjectTitle })
             .FirstOrDefaultAsync(ct);
         if (enrolment is null) return Results.NotFound();
 
@@ -41,6 +41,7 @@ public sealed class AdminV1StudentsSubjectsEndpoint : IEndpointMarker
                 code = s.Code,
                 name = s.Name,
                 ects = s.Ects,
+                isThesis = s.IsThesis,
             })
             .ToListAsync(ct);
 
@@ -50,6 +51,7 @@ public sealed class AdminV1StudentsSubjectsEndpoint : IEndpointMarker
             s.code,
             s.name,
             s.ects,
+            s.isThesis,
             score = existingGrades.TryGetValue(s.subjectId, out var sc) ? (int?)sc : null,
         }).ToList();
 
@@ -58,6 +60,8 @@ public sealed class AdminV1StudentsSubjectsEndpoint : IEndpointMarker
             enrolmentStatus = enrolment.Code,
             programmeCode = enrolment.ProgrammeCode,
             specializationName = enrolment.SpecName,
+            requiredEcts = enrolment.RequiredEcts,
+            projectTitle = enrolment.ProjectTitle,
             items,
         });
     }

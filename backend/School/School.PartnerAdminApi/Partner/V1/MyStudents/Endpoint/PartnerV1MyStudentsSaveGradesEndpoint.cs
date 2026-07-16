@@ -36,6 +36,7 @@ public sealed class PartnerV1MyStudentsSaveGradesEndpoint : IEndpointMarker
     public sealed class SaveGradesRequest
     {
         public List<GradeEntry>? Items { get; init; }
+        public string? ProjectTitle { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
@@ -96,6 +97,8 @@ public sealed class PartnerV1MyStudentsSaveGradesEndpoint : IEndpointMarker
                 });
             }
         }
+
+        enrolment.ProjectTitle = string.IsNullOrWhiteSpace(body.ProjectTitle) ? null : body.ProjectTitle.Trim();
 
         // No status change and no activity note: a draft save is silent so
         // repeated saves don't spam the activity log.

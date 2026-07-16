@@ -1,7 +1,7 @@
 <template>
   <div class="page-wrapper">
     <nav class="navbar">
-      <span class="brand-text">IBSS Admin Portal</span>
+      <span class="brand-text">MGW Admin Portal</span>
       <div class="nav-links">
         <RouterLink to="/admin"       class="nav-link">Dashboard</RouterLink>
         <RouterLink to="/programmes"  class="nav-link">Programmes</RouterLink>
@@ -12,7 +12,7 @@
     </nav>
 
     <div class="tab-bar">
-      <button :class="['tab-btn', { active: tab === 'core' }]"    @click="tab = 'core'">IBSS Core</button>
+      <button :class="['tab-btn', { active: tab === 'core' }]"    @click="tab = 'core'">MGW Core</button>
       <button :class="['tab-btn', { active: tab === 'partner' }]" @click="tab = 'partner'">Partner Programmes</button>
     </div>
 
@@ -20,7 +20,7 @@
     <div v-show="tab === 'core'" class="container">
       <div class="page-header">
         <div>
-          <h1 class="page-title">IBSS Core Programmes</h1>
+          <h1 class="page-title">MGW Core Programmes</h1>
           <p class="page-sub">{{ corePrograms.length }} programmes — changes apply to all partners</p>
         </div>
         <button class="btn-primary" @click="newProg.show = !newProg.show">+ Add Programme</button>

@@ -103,6 +103,7 @@ public sealed class AdminProgrammesV1LetterTemplatePreviewEndpoint : IEndpointMa
         tags["[student number]"]       = "STU-2026-0001";
         tags["[student address]"]      = "12 Sample Street, London, UK";
         tags["[passport id]"]          = "AB123456";
+        tags["[student phone]"]        = "+45 12 34 56 78";
         tags["[date]"]                 = DateTime.UtcNow.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture);
         tags["[date of birth]"]        = "15 March 1998";
         tags["[commencement date]"]    = "01 September 2026";
@@ -117,6 +118,14 @@ public sealed class AdminProgrammesV1LetterTemplatePreviewEndpoint : IEndpointMa
         tags["[grade]"]                = "78.5";
         tags["[ects achieved]"]        = "60";
         tags["[transcript]"]           = string.Empty; // transcript HTML token; the renderer uses transcriptTable fields for layout-based previews
+        tags["[tuition fee]"]          = "-";
+        tags["[additional fees]"]      = "-";
+        tags["[total fees]"]           = "-";
+        tags["[number of payments]"]   = "-";
+        tags["[payment plan]"] =
+            "Payment 1: Bank transfer / Credit card, USD 2,250.00, due 01 September 2026\n" +
+            "Payment 2: Bank transfer / Credit card, USD 2,250.00, due 01 December 2026\n" +
+            "Payment 3: Bank transfer / Credit card, USD 2,250.00, due 01 March 2027";
 
         return tags;
     }

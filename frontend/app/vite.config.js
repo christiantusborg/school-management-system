@@ -23,6 +23,15 @@ function emitVersionFile() {
 
 export default defineConfig({
   plugins: [vue(), emitVersionFile()],
+  resolve: {
+    alias: {
+      // '@' matches QuVian core's convention so the ported questionnaire
+      // builder files work unmodified; '@quvian/shared' maps onto the local
+      // shim copies under src/shared-quvian.
+      '@': resolve(__dirname, 'src'),
+      '@quvian/shared': resolve(__dirname, 'src/shared-quvian'),
+    },
+  },
   server: {
     cors: false,
     proxy: {

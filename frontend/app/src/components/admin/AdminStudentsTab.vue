@@ -21,6 +21,10 @@
         <option value="">All specializations</option>
         <option v-for="m in specializationsAvailable" :key="m.specializationId" :value="m.specializationId">{{ m.name }}</option>
       </select>
+      <select v-if="!partnerId" v-model="filterPartnerName" class="inp">
+        <option value="">All partners</option>
+        <option v-for="p in partnersAvailable" :key="p" :value="p">{{ p }}</option>
+      </select>
       <button class="btn-refresh" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻' }}</button>
       <button class="btn-export" @click="exportModal = makeExportModal()">📥 Export students</button>
       <button v-if="partnerId" class="btn-add-student" @click="emit('add-student')">➕ Add student</button>
@@ -31,7 +35,7 @@
       <thead>
         <tr>
           <th>Student #</th><th>Name</th><th v-if="!partnerId">Partner</th>
-          <th>Email</th><th>Enrolments</th><th></th>
+          <th>Email</th><th>Enrolments</th><th>Actions</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -49,6 +53,12 @@
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
               <span class="enr-prog">{{ e.programmeCode }}</span> · {{ e.specializationName }}
               <span :class="['s-badge', statusClass(e.statusCode)]">{{ e.statusName }}</span>
+              <span v-if="e.paymentOverdue" class="s-badge s-badge-overdue"
+                    title="An installment or additional invoice is unpaid past its due date (Programs → Payment).">Payment overdue</span>
+            </div>
+          </td>
+          <td class="enrol-actions-cell">
+            <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-actions">
               <button v-if="e.statusCode === 'AwaitingGradesApproval'" class="btn-review-sm btn-grades-approve"
                       @click.stop="openGradeReview(s, e)">
                 Approve grades
@@ -78,20 +88,28 @@
       </tbody>
     </table>
 
-    <!-- Grade review modal -->
+    <!-- Grade review modal (also teleported inline into the drawer's
+         Programs → Grades sub-tab when opened with inline=true) -->
+    <Teleport v-if="gradeModal" defer to="#grade-editor-inline-slot" :disabled="!gradeModal.inline">
     <transition name="fade">
-      <div v-if="gradeModal" class="manage-overlay" @click.self="gradeModal = null">
-        <div class="manage-modal grade-modal">
-          <div class="manage-hdr">
+      <div :class="gradeModal.inline ? 'grade-inline-wrap' : 'manage-overlay'" @click.self="gradeModal.inline ? null : (gradeModal = null)">
+        <div class="manage-modal grade-modal" :class="{ 'grade-inline': gradeModal.inline }">
+          <div v-if="!gradeModal.inline" class="manage-hdr">
             <h3>{{ gradeModal.mode === 'submit' ? 'Submit grades' : 'Approve grades' }}</h3>
             <button class="drawer-close" @click="gradeModal = null">✕</button>
           </div>
-          <p class="manage-sub">{{ gradeModal.studentName }} · {{ gradeModal.programmeCode }} · {{ gradeModal.specializationName }}</p>
+          <p v-if="!gradeModal.inline" class="manage-sub">{{ gradeModal.studentName }} · {{ gradeModal.programmeCode }} · {{ gradeModal.specializationName }}</p>
           <div class="manage-body">
             <p v-if="gradeModal.error" class="err-banner">{{ gradeModal.error }}</p>
             <p v-if="gradeModal.loading" class="muted">Loading grades…</p>
             <p v-else-if="gradeModal.mode === 'submit'" class="muted manage-hint">
               Enter a score (0–100) for each subject. On submit, the enrolment moves to Awaiting grades approval.
+            </p>
+            <p v-if="gradeModal.mode === 'submit' && gradeModal.requiredEcts" class="manage-hint"
+               :class="adminEctsRemaining > 0 ? 'ects-warn' : 'ects-ok'">
+              Completed {{ adminCompletedEcts }} of {{ gradeModal.requiredEcts }} required ECTS.
+              <span v-if="adminEctsRemaining > 0">Need {{ adminEctsRemaining }} more before you can submit.</span>
+              <span v-else>Threshold reached — you can submit.</span>
             </p>
             <div v-if="!gradeModal.loading && gradeModal.subjects?.length" class="grade-grid"
                  :style="{ columnCount: gradeColumnCount(gradeModal.subjects.length) }">
@@ -102,9 +120,17 @@
                 <input v-if="gradeModal.mode === 'submit'" type="number" min="0" max="100"
                        v-model.number="row.score" class="grade-input gr-input" />
                 <strong v-else :class="['grade-score', scoreClass(row.score)]">{{ row.score ?? '—' }}</strong>
+                <span class="gr-letter" :title="`School grade for ${row.score ?? '—'}`">{{ scoreToLetter(row.score) }}</span>
               </div>
             </div>
             <p v-else-if="!gradeModal.loading" class="muted">No grades submitted for this enrolment.</p>
+
+            <!-- Thesis/dissertation project title — shown once the thesis module has a grade. -->
+            <div v-if="gradeModal.mode === 'submit' || adminThesisGraded" class="project-title-row">
+              <label>Project title <span class="muted" style="font-weight:400;">(thesis/dissertation — shown on the transcript)</span></label>
+              <input v-if="gradeModal.mode === 'submit'" v-model="gradeModal.projectTitle" class="grade-input" style="width:100%;" placeholder="e.g. The impact of …" />
+              <strong v-else>{{ gradeModal.projectTitle || '—' }}</strong>
+            </div>
 
             <EnrollmentActivityLog v-if="gradeModal.studentId && gradeModal.enrollmentId"
               :api-path="`/v1/admin/students/${gradeModal.studentId}/enrollments/${gradeModal.enrollmentId}/activity`" />
@@ -137,7 +163,7 @@
             </div>
 
             <div class="manage-footer">
-              <button v-if="gradeModal.mode !== 'reject'" class="btn-link" @click="gradeModal = null">Cancel</button>
+              <button v-if="gradeModal.mode !== 'reject' && !gradeModal.inline" class="btn-link" @click="gradeModal = null">Cancel</button>
               <button v-else class="btn-link" @click="gradeModal.mode = 'view'">← Back</button>
 
               <template v-if="gradeModal.mode === 'submit'">
@@ -148,11 +174,15 @@
                         :disabled="gradeModal.savingDraft" @click="saveAdminGradesDraft">
                   {{ gradeModal.savingDraft ? 'Saving…' : 'Save grades' }}
                 </button>
-                <button class="btn-confirm-manage btn-approve-final"
+                <button v-if="!gradeModal.postApproval" class="btn-confirm-manage btn-approve-final"
                         :disabled="!canCommitAdminGrades || gradeModal.submitting"
+                        :title="adminEctsRemaining > 0 ? `Need ${adminEctsRemaining} more ECTS to reach the ${gradeModal.requiredEcts} ECTS completion threshold.` : ''"
                         @click="confirmGradeSubmission">
                   {{ gradeModal.submitting ? 'Submitting…' : '✓ Submit grades' }}
                 </button>
+                <span v-else class="muted" style="font-size:.76rem;">
+                  Grades already approved — Save updates the scores; regenerate the transcript/certificates from Letters afterwards.
+                </span>
               </template>
               <div v-else-if="gradeModal.mode !== 'reject'" class="grade-actions">
                 <button class="btn-confirm-manage btn-reject-final"
@@ -177,6 +207,7 @@
         </div>
       </div>
     </transition>
+    </Teleport>
 
     <!-- Student detail modal: 3 tabs (Details / Letters / Activity) -->
     <transition name="fade">
@@ -345,6 +376,10 @@
                       <span>Highest degree</span>
                       <input v-model="detailModal.data.background.highestDegree" />
                     </label>
+                    <label class="edit-field edit-field-wide">
+                      <span>Specialization for degree</span>
+                      <input v-model="detailModal.data.background.degreeSpecialization" placeholder="Specialty from previous education" />
+                    </label>
                     <label class="edit-field">
                       <span>Years of experience</span>
                       <input type="number" min="0" v-model.number="detailModal.data.background.yearsWorkExperience" />
@@ -370,19 +405,67 @@
                     {{ savingBackground ? 'Saving…' : 'Save background' }}
                   </button>
                 </div>
-                <div class="detail-section" v-if="activeEnrollment">
+                              </div>
+            </div>
+
+            <!-- Programs tab: everything enrolment-scoped, one menu entry
+                 per programme the student signed up for -->
+            <div v-show="detailModal.activeTab === 'programs'" class="tab-pane">
+              <p v-if="!detailEnrollments.length" class="muted">No enrolments.</p>
+              <div v-else class="programs-layout">
+                <aside class="programs-menu">
+                  <button v-for="e in detailEnrollments" :key="e.studentEnrollmentId"
+                          :class="['prog-menu-item', { active: e.studentEnrollmentId === activeEnrollment?.studentEnrollmentId }]"
+                          @click="detailModal.activeEnrollmentId = e.studentEnrollmentId">
+                    <span class="prog-menu-name">{{ e.programmeName }}</span>
+                    <span class="prog-menu-spec">{{ e.specializationName }}</span>
+                    <span class="prog-menu-status">{{ e.statusName }}</span>
+                  </button>
+                  <button class="btn-add" style="margin-top:.3rem;" @click="openAddProg">+ Add programme</button>
+                  <div v-if="addProg.open" class="add-prog-box">
+                    <select v-model="addProg.programmeId" class="inp" style="width:100%; margin-bottom:.35rem;">
+                      <option value="">— Programme —</option>
+                      <option v-for="p in enrolmentProgOptions" :key="p.programmeId" :value="p.programmeId">
+                        {{ p.name }}{{ p.schoolName ? ` (${p.schoolName})` : '' }}
+                      </option>
+                    </select>
+                    <select v-model="addProg.specializationId" class="inp" style="width:100%; margin-bottom:.35rem;" :disabled="!addProg.programmeId">
+                      <option value="">— Specialization —</option>
+                      <option v-for="m in addProgSpecs" :key="m.specializationId" :value="m.specializationId">{{ m.name }}</option>
+                    </select>
+                    <div style="display:flex; gap:.35rem;">
+                      <button class="btn-row-details btn-row-details-sm" :disabled="!addProg.specializationId || addProg.busy" @click="saveAddProg">
+                        {{ addProg.busy ? 'Adding…' : 'Add' }}
+                      </button>
+                      <button class="btn-row-details btn-row-details-sm" @click="addProg.open = false">Cancel</button>
+                    </div>
+                    <p v-if="addProg.error" class="card-toggle-err" style="margin:.3rem 0 0;">{{ addProg.error }}</p>
+                  </div>
+                </aside>
+                <div class="programs-content" v-if="activeEnrollment">
+                  <div class="prog-subtabs">
+                    <button v-for="st in PROGRAM_SUBTABS" :key="st.id"
+                            :class="['tab-btn', { active: programSubTab === st.id }]"
+                            @click="programSubTab = st.id">{{ st.label }}</button>
+                  </div>
+
+                  <!-- Enrolment sub-tab -->
+                  <div v-if="programSubTab === 'enrolment'" class="detail-grid prog-enrol-grid">
+<div class="detail-section" v-if="activeEnrollment">
                   <h4>Enrolment</h4>
                   <dl>
                     <dt>Programme</dt>
                     <dd v-if="canEditSpecialization">
-                      <select v-model="programmeDraft" class="dur-input" style="width:240px;" @change="onProgrammeDraftChange">
-                        <option v-for="p in enrolmentProgOptions" :key="p.programmeId" :value="p.programmeId">{{ p.name }}</option>
+                      <select v-model="programmeDraft" class="dur-input" style="width:min(520px, 90%);" @change="onProgrammeDraftChange">
+                        <option v-for="p in enrolmentProgOptions" :key="p.programmeId" :value="p.programmeId">
+                          {{ p.name }}{{ p.schoolName ? ` (${p.schoolName})` : '' }}{{ p.showCode && p.code ? ` · ${p.code}` : '' }}
+                        </option>
                       </select>
                     </dd>
                     <dd v-else>{{ activeEnrollment.programmeName }}</dd>
                     <dt>Specialisation</dt>
                     <dd v-if="canEditSpecialization">
-                      <select v-model="specializationDraft" class="dur-input" style="width:220px;">
+                      <select v-model="specializationDraft" class="dur-input" style="width:min(520px, 90%);">
                         <option v-for="m in enrolmentSpecOptions" :key="m.specializationId" :value="m.specializationId">{{ m.name }}</option>
                       </select>
                       <button class="btn-row-details btn-row-details-sm"
@@ -397,7 +480,7 @@
                     <dd v-else>{{ activeEnrollment.specializationName }}</dd>
                     <dt>Study language</dt>
                     <dd v-if="canEditDuration">
-                      <input type="text" class="dur-input" style="width:170px;" v-model="teachingLanguageDraft"
+                      <input type="text" class="dur-input" style="width:min(380px, 70%);" v-model="teachingLanguageDraft"
                              placeholder="English (programme default)" />
                       <button class="btn-row-details btn-row-details-sm" :disabled="savingLanguage" @click="saveTeachingLanguage">
                         {{ savingLanguage ? 'Saving…' : 'Save' }}
@@ -407,7 +490,20 @@
                       <div class="muted" style="font-size:.72rem;margin-top:.2rem;">Override on all letters; blank = programme default.</div>
                     </dd>
                     <dd v-else>{{ activeEnrollment.instructionLanguage || '—' }}</dd>
-                    <dt>Mode</dt><dd>{{ activeEnrollment.modeOfStudyName ?? '—' }}</dd>
+                    <dt>Mode</dt>
+                    <dd v-if="canEditDuration">
+                      <select v-model.number="modeDraft" class="dur-input" style="width:min(380px, 70%);">
+                        <option v-for="m in modeOptions" :key="m.modeOfStudyId" :value="m.modeOfStudyId">{{ m.name }}</option>
+                      </select>
+                      <button class="btn-row-details btn-row-details-sm"
+                              :disabled="savingMode || !modeDraft || modeDraft === activeEnrollment.modeOfStudyId"
+                              @click="saveModeOfStudy">
+                        {{ savingMode ? 'Saving…' : 'Save' }}
+                      </button>
+                      <span v-if="modeSaveError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ modeSaveError }}</span>
+                      <span v-else-if="modeSaveOk" class="ok-banner" style="display:inline-block;margin-left:.5rem;">Saved</span>
+                    </dd>
+                    <dd v-else>{{ activeEnrollment.modeOfStudyName ?? '—' }}</dd>
                     <dt>Commencement</dt>
                     <dd v-if="canEditDuration">
                       <input type="date" class="dur-input" style="width:150px;" v-model="commencementDraft" />
@@ -452,7 +548,25 @@
                     </dd>
                     <dt>Expected completion</dt>
                     <dd>{{ expectedCompletion || '—' }}</dd>
-                    <dt>Status</dt><dd><span :class="['s-badge', statusClass(activeEnrollment.statusCode)]">{{ activeEnrollment.statusName }}</span></dd>
+                    <dt>Status</dt>
+                    <dd>
+                      <template v-if="!statusEdit">
+                        <span :class="['s-badge', statusClass(activeEnrollment.statusCode)]">{{ activeEnrollment.statusName }}</span>
+                        <button class="btn-row-details btn-row-details-sm" style="margin-left:.5rem;" @click="openStatusEdit">✎ Change status</button>
+                      </template>
+                      <template v-else>
+                        <select v-model="statusDraft" class="dur-input" style="width:230px;">
+                          <option v-for="s in enrollmentStatuses" :key="s.statusId" :value="s.statusId">{{ s.name }}</option>
+                        </select>
+                        <input v-model="statusNote" class="dur-input" style="width:230px;margin-left:.4rem;" placeholder="Reason (optional)" />
+                        <button class="btn-row-details btn-row-details-sm" :disabled="savingStatus" @click="saveStatus">
+                          {{ savingStatus ? 'Saving…' : 'Save' }}
+                        </button>
+                        <button class="btn-link" style="margin-left:.4rem;" @click="statusEdit = false">Cancel</button>
+                        <span v-if="statusError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ statusError }}</span>
+                        <div class="muted" style="font-size:.72rem;margin-top:.2rem;">Moves this enrolment to any status (e.g. re-open a rejected application). Logged in the activity log.</div>
+                      </template>
+                    </dd>
                     <template v-if="canEditDuration">
                       <dt>Offer letter date</dt>
                       <dd>
@@ -461,6 +575,11 @@
                       <dt>Admission letter date</dt>
                       <dd>
                         <input type="date" class="dur-input" style="width:150px;" v-model="admissionLetterDateDraft" />
+                      </dd>
+                      <dt>Graduation date</dt>
+                      <dd>
+                        <input type="date" class="dur-input" style="width:150px;" v-model="graduationDateDraft" />
+                        <span class="muted" style="font-size:.72rem;margin-left:.4rem;">defaults to expected completion</span>
                       </dd>
                       <dt>Transcript date</dt>
                       <dd>
@@ -476,99 +595,61 @@
                   </dl>
                 </div>
               </div>
-            </div>
 
-            <!-- Documents tab -->
-            <div v-if="detailModal.activeTab === 'documents'" class="tab-pane">
-              <div v-for="enr in docsByEnrollment" :key="enr.enrollmentId" class="docs-group">
-                <div class="docs-group-head">
-                  <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
-                  <span class="docs-group-count">{{ enr.coreDocs.length + enr.additionalDocs.length }}</span>
-                  <button class="btn-mini" style="margin-left:auto"
-                          @click="openAdditionalDialog(enr.enrollmentId)">
-                    + Add additional document
-                  </button>
-                </div>
-                <div class="docs-list" v-if="enr.coreDocs.length">
-                  <div v-for="d in enr.coreDocs" :key="d.studentDocumentId" class="doc-row">
-                    <span :class="['doc-pill', docPillClass(d.status)]">{{ docPillIcon(d.status) }}</span>
-                    <div class="doc-info">
-                      <div class="doc-name">{{ d.documentTypeName }}</div>
-                      <div class="doc-sub">
-                        {{ d.fileName }} · uploaded {{ formatDate(d.uploadedAt) }} · {{ d.statusName }}
-                      </div>
-                    </div>
-                    <button class="btn-mini" @click="downloadStudentDoc(d)">Open</button>
-                    <label class="btn-mini" v-if="!d.isVerified" style="margin-left:6px">
-                      Replace
-                      <input type="file" :accept="ACCEPTED_DOC_ACCEPT_ATTR" hidden
-                             @change="onAdminReplace($event, enr.enrollmentId, d)" />
-                    </label>
+                  <!-- Grades sub-tab: the full grade editor, teleported inline.
+                       v-show (not v-if): the slot must stay mounted so the
+                       teleport never targets a missing element. -->
+                  <div v-show="programSubTab === 'grades'">
+                    <div id="grade-editor-inline-slot"></div>
+                    <p v-if="!gradeModal" class="muted">Loading grade editor…</p>
                   </div>
-                </div>
-                <p v-else class="muted" style="padding:6px 0;">No documents uploaded yet for this application.</p>
-                <div v-if="enr.additionalDocs.length" class="docs-list">
-                  <div class="docs-subhead">Additional documents</div>
-                  <div v-for="d in enr.additionalDocs" :key="d.studentDocumentId" class="doc-row">
-                    <span :class="['doc-pill', docPillClass(d.status)]">{{ docPillIcon(d.status) }}</span>
-                    <div class="doc-info">
-                      <div class="doc-name">
-                        {{ d.documentTypeName }}
-                        <span class="pill-additional">Additional</span>
-                      </div>
-                      <div class="doc-sub">
-                        {{ d.fileName }} · uploaded {{ formatDate(d.uploadedAt) }} · {{ d.statusName }}
-                      </div>
-                    </div>
-                    <button class="btn-mini" @click="downloadStudentDoc(d)">Open</button>
-                  </div>
-                </div>
-              </div>
-              <p v-if="!docsByEnrollment.length" class="muted">No enrolments for this student yet.</p>
-            </div>
-
-            <AdditionalDocumentUploadDialog
-              v-if="additionalDialog.open"
-              types-endpoint="/v1/admin/document-types"
-              :upload-endpoint="additionalDialog.uploadEndpoint"
-              @close="additionalDialog.open = false"
-              @uploaded="onAdditionalUploaded" />
 
             <!-- Letters tab -->
-            <div v-if="detailModal.activeTab === 'letters'" class="tab-pane">
+            <div v-if="programSubTab === 'letters'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
               <div v-else class="letters-list">
-                <div v-for="t in LETTER_TYPES" :key="t.key" class="letter-row" :class="{ disabled: !activeEnrollment.letters?.[t.key] }">
-                  <span class="letter-icon">{{ t.icon }}</span>
-                  <div class="letter-info">
-                    <div class="letter-name">{{ t.label }}</div>
-                    <div class="letter-sub">
-                      <template v-if="activeEnrollment.letters?.[t.key]">
-                        {{ activeEnrollment.letters[t.key].fileName }} · released {{ formatDate(activeEnrollment.letters[t.key].uploadedAt) }}
-                      </template>
-                      <template v-else>Not yet released</template>
+                <template v-for="t in LETTER_TYPES" :key="t.key">
+                  <div class="letter-row" :class="{ disabled: !activeEnrollment.letters?.[t.key] }">
+                    <span class="letter-icon">{{ t.icon }}</span>
+                    <div class="letter-info">
+                      <div class="letter-name">{{ t.label }}</div>
+                      <div class="letter-sub">
+                        <template v-if="activeEnrollment.letters?.[t.key]">
+                          {{ activeEnrollment.letters[t.key].fileName }} · released {{ formatDate(activeEnrollment.letters[t.key].uploadedAt) }}
+                        </template>
+                        <template v-else>Not yet released</template>
+                      </div>
+                    </div>
+                    <div class="letter-actions">
+                      <button class="btn-mini" :disabled="!activeEnrollment.letters?.[t.key]"
+                              @click="downloadLetter(activeEnrollment.letters?.[t.key])">Download</button>
+                      <button v-if="canRegenerateLetters" class="btn-mini btn-mini-ghost"
+                              :disabled="regeneratingLetterKey === t.key"
+                              @click="regenerateLetter(t)">
+                        {{ regeneratingLetterKey === t.key
+                            ? (activeEnrollment.letters?.[t.key] ? 'Regenerating…' : 'Generating…')
+                            : (activeEnrollment.letters?.[t.key] ? 'Regenerate' : 'Generate') }}
+                      </button>
+                      <button v-if="canRegenerateLetters && EMAILABLE_KEYS.includes(t.key)" class="btn-mini btn-mini-email"
+                              :disabled="!activeEnrollment.letters?.[t.key]"
+                              @click="openSendEmail(t)">✉ Send</button>
                     </div>
                   </div>
-                  <div class="letter-actions">
-                    <button class="btn-mini" :disabled="!activeEnrollment.letters?.[t.key]"
-                            @click="downloadLetter(activeEnrollment.letters?.[t.key])">Download</button>
-                    <button v-if="t.key === 'transcript' && !activeEnrollment.letters?.[t.key]" class="btn-mini btn-mini-ghost"
-                            :disabled="downloadingLetterProvisional"
-                            @click="downloadLetterProvisional()">
-                      {{ downloadingLetterProvisional ? '…' : '⤓ Provisional' }}
-                    </button>
-                    <button v-if="canRegenerateLetters" class="btn-mini btn-mini-ghost"
-                            :disabled="regeneratingLetterKey === t.key"
-                            @click="regenerateLetter(t)">
-                      {{ regeneratingLetterKey === t.key
-                          ? (activeEnrollment.letters?.[t.key] ? 'Regenerating…' : 'Generating…')
-                          : (activeEnrollment.letters?.[t.key] ? 'Regenerate' : 'Generate') }}
-                    </button>
-                    <button v-if="canRegenerateLetters && EMAILABLE_KEYS.includes(t.key)" class="btn-mini btn-mini-email"
-                            :disabled="!activeEnrollment.letters?.[t.key]"
-                            @click="openSendEmail(t)">✉ Send</button>
+                  <!-- Provisional transcript: rendered live, never stored — listed
+                       with the other letters right after the transcript rows. -->
+                  <div v-if="t.key === 'printableTranscript'" class="letter-row">
+                    <span class="letter-icon">📑</span>
+                    <div class="letter-info">
+                      <div class="letter-name">Provisional Transcript</div>
+                      <div class="letter-sub">Rendered live from the grades saved so far · watermarked until grades are submitted</div>
+                    </div>
+                    <div class="letter-actions">
+                      <button class="btn-mini" :disabled="downloadingLetterProvisional" @click="downloadLetterProvisional()">
+                        {{ downloadingLetterProvisional ? 'Preparing…' : 'Download' }}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                </template>
                 <p v-if="letterRegenResult" class="muted" style="margin-top:.4rem;">{{ letterRegenResult }}</p>
               </div>
 
@@ -596,6 +677,255 @@
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+
+
+            <!-- Payment tab -->
+            <div v-if="programSubTab === 'payment'" class="tab-pane">
+              <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
+              <template v-else>
+                <div class="pay-config">
+                  <div class="pay-field">
+                    <label>Total tuition fee</label>
+                    <div class="pay-fee-row">
+                      <select v-model="payment.currency" class="pay-cur">
+                        <option v-for="c in currencyOptions" :key="c.code" :value="c.code">{{ c.code }}</option>
+                      </select>
+                      <input type="number" min="0" step="0.01" v-model.number="payment.total" placeholder="e.g. 6000" />
+                    </div>
+                  </div>
+                  <div class="pay-field">
+                    <label>Number of payments</label>
+                    <select v-model.number="payment.count">
+                      <option v-for="n in 12" :key="n" :value="n">{{ n }}</option>
+                    </select>
+                  </div>
+                  <button class="btn-row-details btn-row-details-sm" @click="generateSchedule">↻ Generate schedule</button>
+                </div>
+
+                <table v-if="payment.installments.length" class="pay-table">
+                  <thead><tr><th>#</th><th>Amount</th><th>Due date</th><th>Paid</th><th>Paid date</th><th>Invoice</th></tr></thead>
+                  <tbody>
+                    <template v-for="(inst, idx) in payment.installments" :key="idx">
+                      <tr>
+                        <td>{{ idx + 1 }}</td>
+                        <td><input type="number" min="0" step="0.01" v-model.number="inst.amount" class="pay-inp" /></td>
+                        <td><input type="date" v-model="inst.dueDate" class="pay-inp" /></td>
+                        <td class="pay-center"><input type="checkbox" v-model="inst.isPaid" /></td>
+                        <td><input v-if="inst.isPaid" type="date" v-model="inst.paidDate" class="pay-inp" /></td>
+                        <td>
+                          <a class="pay-invoice-link" @click="downloadInvoice(idx + 1)">⤓ Invoice</a>
+                        </td>
+                      </tr>
+                      <tr class="pay-methods-row">
+                        <td></td>
+                        <td colspan="5">
+                          <div class="pay-methods">
+                            <div class="pay-method">
+                              <label class="pay-method-toggle">
+                                <input type="checkbox" v-model="inst.payByCard" />
+                                Pay by card (payment link)
+                              </label>
+                              <input v-if="inst.payByCard" type="text" v-model="inst.cardPaymentLink"
+                                placeholder="https://… payment link for this installment" class="pay-method-input" />
+                            </div>
+                            <div class="pay-method">
+                              <label class="pay-method-toggle">
+                                <input type="checkbox" v-model="inst.payByBank" />
+                                Pay by bank transfer
+                              </label>
+                              <textarea v-if="inst.payByBank" v-model="inst.bankAccountDetails" rows="2"
+                                placeholder="Bank name, IBAN / account no., payment reference…" class="pay-method-input"></textarea>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+                <p v-else class="muted" style="margin:.6rem 0;">No payments yet. Enter a total and number of payments, then Generate schedule.</p>
+
+                <!-- Additional invoices: manual one-off fees (attestation, delivery,
+                     reprinting, …). Never split — each is paid as a whole. -->
+                <div class="pay-add-head">
+                  <strong>Additional invoices</strong>
+                  <button class="btn-row-details btn-row-details-sm" @click="addAdditionalInvoice">+ Create additional invoice</button>
+                </div>
+                <p v-if="!payment.additional.length" class="muted" style="margin:.3rem 0 .6rem; font-size:.78rem;">
+                  One-off fees (attestation fee, delivery fee, reprinting fee, …). Each additional invoice
+                  has its own lines, due date and payment methods, and is paid as one — never in installments.
+                </p>
+                <div v-for="(ai, aidx) in payment.additional" :key="aidx" class="pay-ai-card">
+                  <div class="pay-ai-head">
+                    <strong>Additional invoice {{ aidx + 1 }}</strong>
+                    <span class="muted" style="font-size:.78rem;">Total: {{ payment.currency }} {{ fmtMoney(aiTotal(ai)) }}</span>
+                    <span style="flex:1;"></span>
+                    <a class="pay-invoice-link" @click="downloadAdditionalInvoice(aidx + 1)">⤓ Invoice</a>
+                    <button class="btn-mini btn-mini-ghost" title="Remove this additional invoice" @click="removeAdditionalInvoice(aidx)">✕ Remove</button>
+                  </div>
+                  <div v-for="(line, lidx) in ai.lines" :key="lidx" class="pay-ai-line">
+                    <div class="pay-ai-line-fields">
+                      <input type="number" min="0" step="0.01" v-model.number="line.amount" placeholder="Amount" class="pay-inp" />
+                      <input type="text" v-model="line.text" placeholder="What is this fee? (e.g. Attestation fee)" class="pay-inp pay-ai-text" />
+                    </div>
+                    <button v-if="ai.lines.length > 1" class="btn-mini btn-mini-ghost" title="Remove line" @click="ai.lines.splice(lidx, 1)">✕</button>
+                  </div>
+                  <button class="btn-mini btn-mini-ghost" style="margin:.2rem 0 .4rem;" @click="ai.lines.push({ text: '', amount: 0 })">+ Add line</button>
+                  <div class="pay-ai-meta">
+                    <label>Due date <input type="date" v-model="ai.dueDate" class="pay-inp" /></label>
+                    <label class="pay-method-toggle"><input type="checkbox" v-model="ai.isPaid" /> Paid</label>
+                    <label v-if="ai.isPaid">Paid date <input type="date" v-model="ai.paidDate" class="pay-inp" /></label>
+                  </div>
+                  <div class="pay-methods">
+                    <div class="pay-method">
+                      <label class="pay-method-toggle">
+                        <input type="checkbox" v-model="ai.payByCard" />
+                        Pay by card (payment link)
+                      </label>
+                      <input v-if="ai.payByCard" type="text" v-model="ai.cardPaymentLink"
+                        placeholder="https://… payment link for this invoice" class="pay-method-input" />
+                    </div>
+                    <div class="pay-method">
+                      <label class="pay-method-toggle">
+                        <input type="checkbox" v-model="ai.payByBank" />
+                        Pay by bank transfer
+                      </label>
+                      <textarea v-if="ai.payByBank" v-model="ai.bankAccountDetails" rows="2"
+                        placeholder="Bank name, IBAN / account no., payment reference…" class="pay-method-input"></textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="pay-summary">
+                  <div>Total tuition: <strong>{{ payment.currency }} {{ fmtMoney(payment.total) }}</strong></div>
+                  <div v-if="additionalSum > 0">Additional invoices: <strong>{{ payment.currency }} {{ fmtMoney(additionalSum) }}</strong></div>
+                  <div>Total paid: <strong>{{ payment.currency }} {{ fmtMoney(paidSum) }}</strong></div>
+                  <div :class="balanceDue > 0 ? 'ects-warn' : 'ects-ok'">Balance due: <strong>{{ payment.currency }} {{ fmtMoney(balanceDue) }}</strong></div>
+                </div>
+
+                <p v-if="payment.installments.length" class="muted" style="margin:.2rem 0 0; font-size:.75rem;">
+                  Each installment's enabled payment methods are printed on its invoice PDF (hidden once paid).
+                  The full invoice shows the next unpaid installment's methods. Save the plan to apply.
+                </p>
+
+                <div style="margin-top:.75rem; display:flex; align-items:center; gap:.6rem;">
+                  <button class="btn-row-details btn-row-details-sm" :disabled="payment.saving" @click="savePayment">
+                    {{ payment.saving ? 'Saving…' : 'Save payment plan' }}
+                  </button>
+                  <a v-if="payment.installments.length" class="pay-invoice-link" :class="{ disabled: payment.downloadingInvoice }" @click="downloadInvoice()">
+                    {{ payment.downloadingInvoice ? 'Preparing…' : '⤓ Download full invoice' }}
+                  </a>
+                  <span v-if="payment.error" class="err-banner" style="display:inline-block;">{{ payment.error }}</span>
+                  <span v-else-if="payment.ok" class="ok-banner" style="display:inline-block;">Saved</span>
+                </div>
+              </template>
+            </div>
+
+                </div>
+              </div>
+            </div>
+
+            <!-- Documents tab -->
+            <div v-if="detailModal.activeTab === 'documents'" class="tab-pane">
+              <div v-for="enr in docsByEnrollment" :key="enr.enrollmentId" class="docs-group">
+                <div class="docs-group-head">
+                  <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
+                  <span class="docs-group-count">{{ enr.coreDocs.length + enr.additionalDocs.length }}</span>
+                  <button class="btn-mini" style="margin-left:auto"
+                          @click="openAdditionalDialog(enr.enrollmentId)">
+                    + Add additional document
+                  </button>
+                </div>
+                <div class="docs-list" v-if="enr.coreDocs.length">
+                  <div v-for="d in enr.coreDocs" :key="d.studentDocumentId" class="doc-row">
+                    <span :class="['doc-pill', docPillClass(d.status)]">{{ docPillIcon(d.status) }}</span>
+                    <span v-if="d.aiConfidence != null || d.aiFraudRisk != null" class="ai-badge"
+                          :style="{ background: aiColor(d) }"
+                          :title="`Confidence ${fmtScore(d.aiConfidence)} · Fraud indicator ${fmtScore(d.aiFraudRisk)}`">(AI)</span>
+                    <span v-else-if="d.aiScannable === false" class="ai-badge ai-badge-none"
+                          title="Not scanned by AI: this document is generated by the system itself.">(AI)</span>
+                    <span v-else class="ai-badge" style="background:#1a6fd4;"
+                          title="Not scanned yet — queued for the background AI scan.">(AI)</span>
+                    
+                    <div class="doc-info">
+                      <div class="doc-name">{{ d.documentTypeName }}</div>
+                      <div class="doc-sub">
+                        {{ d.fileName }} · uploaded {{ formatDate(d.uploadedAt) }} · {{ d.statusName }}
+                      </div>
+                    </div>
+                    <button class="btn-mini" @click="downloadStudentDoc(d)">Open</button>
+                    <label class="btn-mini" v-if="!d.isVerified" style="margin-left:6px">
+                      Replace
+                      <input type="file" :accept="ACCEPTED_DOC_ACCEPT_ATTR" hidden
+                             @change="onAdminReplace($event, enr.enrollmentId, d)" />
+                    </label>
+                  </div>
+                </div>
+                <p v-else class="muted" style="padding:6px 0;">No documents uploaded yet for this application.</p>
+                <div v-if="enr.additionalDocs.length" class="docs-list">
+                  <div class="docs-subhead">Additional documents</div>
+                  <div v-for="d in enr.additionalDocs" :key="d.studentDocumentId" class="doc-row">
+                    <span :class="['doc-pill', docPillClass(d.status)]">{{ docPillIcon(d.status) }}</span>
+                    <span v-if="d.aiConfidence != null || d.aiFraudRisk != null" class="ai-badge"
+                          :style="{ background: aiColor(d) }"
+                          :title="`Confidence ${fmtScore(d.aiConfidence)} · Fraud indicator ${fmtScore(d.aiFraudRisk)}`">(AI)</span>
+                    <span v-else-if="d.aiScannable === false" class="ai-badge ai-badge-none"
+                          title="Not scanned by AI: this document is generated by the system itself.">(AI)</span>
+                    <span v-else class="ai-badge" style="background:#1a6fd4;"
+                          title="Not scanned yet — queued for the background AI scan.">(AI)</span>
+                    
+                    <div class="doc-info">
+                      <div class="doc-name">
+                        {{ d.documentTypeName }}
+                        <span class="pill-additional">Additional</span>
+                      </div>
+                      <div class="doc-sub">
+                        {{ d.fileName }} · uploaded {{ formatDate(d.uploadedAt) }} · {{ d.statusName }}
+                      </div>
+                    </div>
+                    <button class="btn-mini" @click="downloadStudentDoc(d)">Open</button>
+                  </div>
+                </div>
+              </div>
+              <p v-if="!docsByEnrollment.length" class="muted">No enrolments for this student yet.</p>
+            </div>
+
+            <AdditionalDocumentUploadDialog
+              v-if="additionalDialog.open"
+              types-endpoint="/v1/admin/document-types"
+              :upload-endpoint="additionalDialog.uploadEndpoint"
+              @close="additionalDialog.open = false"
+              @uploaded="onAdditionalUploaded" />
+
+            <!-- Moodle tab -->
+            <div v-if="detailModal.activeTab === 'moodle'" class="tab-pane">
+              <div class="moodle-row">
+                <div>
+                  <div class="moodle-title">Moodle enabled</div>
+                  <div class="muted" style="font-size:.78rem;">Whether this student is enabled in the Moodle LMS.</div>
+                </div>
+                <label class="moodle-toggle">
+                  <input type="checkbox" v-model="moodleDraft.enabled" />
+                  <span>{{ moodleDraft.enabled ? 'Yes' : 'No' }}</span>
+                </label>
+              </div>
+              <div class="moodle-creds">
+                <div class="moodle-field">
+                  <label>User for Moodle</label>
+                  <input v-model="moodleDraft.username" placeholder="Moodle username" />
+                </div>
+                <div class="moodle-field">
+                  <label>Password for Moodle</label>
+                  <input v-model="moodleDraft.password" placeholder="Moodle password" />
+                </div>
+              </div>
+              <div style="margin-top:.75rem;">
+                <button class="btn-row-details btn-row-details-sm" :disabled="savingMoodle" @click="saveMoodle">
+                  {{ savingMoodle ? 'Saving…' : 'Save Moodle settings' }}
+                </button>
+                <span v-if="moodleError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ moodleError }}</span>
+                <span v-else-if="moodleOk" class="ok-banner" style="display:inline-block;margin-left:.5rem;">Saved</span>
               </div>
             </div>
 
@@ -661,7 +991,7 @@
             <div v-if="exportModal.step === 2" class="export-section">
               <p class="export-help" style="margin-bottom:.5rem;">Tick none to include every status.</p>
               <div class="export-chip-list">
-                <label v-for="f in STATUS_FILTERS.filter(x => x.id !== '' && x.id !== 'action-required')" :key="f.id"
+                <label v-for="f in STATUS_FILTERS.filter(x => x.id !== '' && x.id !== 'action-required' && !x.overdue)" :key="f.id"
                        class="export-chip">
                   <input type="checkbox" :value="f.id"
                          :checked="exportModal.selectedStatusFilters.includes(f.id)"
@@ -761,7 +1091,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, reactive } from 'vue'
+import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue'
 import Fuse from 'fuse.js'
 import api from '../../api/client.js'
 import { auth } from '../../store/auth.js'
@@ -791,6 +1121,9 @@ const STATUS_FILTERS = [
   { id: 'admitted',                  label: 'Admitted',                    codes: ['ApplicationApprovedAdmission', 'AcceptAdmission'] },
   { id: 'awaiting-grades-submit',    label: 'Awaiting Grades Submit',      codes: ['AwaitingGradesSubmit'] },
   { id: 'graduated',                 label: 'Graduated',                   codes: ['GradesApproved'] },
+  // Not a status: any enrolment with an unpaid installment / additional
+  // invoice past its due date (flag computed by the list endpoint).
+  { id: 'payment-overdue',           label: 'Payment overdue',             codes: null, overdue: true },
   { id: '',                          label: 'All',                         codes: null },
 ]
 
@@ -851,17 +1184,63 @@ function statusClass(code) {
 // dropdown to switch which enrolment the Letters/Activity tabs scope to.
 const DETAIL_TABS = [
   { id: 'details',   label: 'Details' },
+  { id: 'programs',  label: 'Programs' },
   { id: 'documents', label: 'Documents' },
-  { id: 'letters',   label: 'Letters' },
+  { id: 'moodle',    label: 'Moodle' },
   { id: 'activity',  label: 'Activity log' },
 ]
-const LETTER_TYPES = [
+const ALL_LETTER_TYPES = [
   { key: 'offerLetter',            label: 'Offer Letter',           icon: '📄' },
   { key: 'admissionLetter',        label: 'Admission Letter',       icon: '📋' },
-  { key: 'transcript',             label: 'Transcript',             icon: '📑' },
+  { key: 'transcript',             label: 'Digital Transcript',     icon: '📑' },
+  { key: 'printableTranscript',    label: 'Printable Transcript',   icon: '📑' },
   { key: 'certificate',            label: 'Digital Certificate',    icon: '🎓' },
   { key: 'provisionalCertificate', label: 'Printable Cert',         icon: '🎓' },
+  // Only for programmes with the digital-student-card toggle on.
+  { key: 'studentIdCard',          label: 'Student ID Card',        icon: '🪪', requiresCardToggle: true },
 ]
+const LETTER_TYPES = computed(() => ALL_LETTER_TYPES.filter(t =>
+  !t.requiresCardToggle || activeEnrollment.value?.issueDigitalStudentCard))
+const PROGRAM_SUBTABS = [
+  { id: 'enrolment', label: 'Enrolment' },
+  { id: 'grades',    label: 'Grades' },
+  { id: 'letters',   label: 'Letters' },
+  { id: 'payment',   label: 'Payment' },
+]
+const programSubTab = ref('enrolment')
+
+// ── Add another programme to this student (Programs left menu) ──────────────
+const addProg = reactive({ open: false, programmeId: '', specializationId: '', specs: [], busy: false, error: '' })
+const addProgSpecs = computed(() =>
+  addProg.specs.filter(m => m.programmeId === addProg.programmeId && !m.deletedAt))
+async function openAddProg() {
+  addProg.open = true
+  addProg.error = ''
+  addProg.programmeId = ''
+  addProg.specializationId = ''
+  loadEnrolmentProgOptions()
+  try {
+    const res = await api.get('/v1/school/specializations')
+    addProg.specs = res.data.items ?? []
+  } catch { addProg.specs = [] }
+}
+async function saveAddProg() {
+  if (!detailModal.value || !addProg.specializationId || addProg.busy) return
+  addProg.busy = true
+  addProg.error = ''
+  try {
+    const res = await api.post(`/v1/admin/students/${detailModal.value.studentId}/enrollments`,
+      { specializationId: addProg.specializationId })
+    addProg.open = false
+    await refreshDetailModal()
+    if (res.data?.enrollmentId) detailModal.value.activeEnrollmentId = res.data.enrollmentId
+  } catch (e) {
+    addProg.error = e.response?.data?.error ?? e.message ?? 'Failed to add'
+  } finally {
+    addProg.busy = false
+  }
+}
+
 const detailModal = ref(null)
 const detailEnrollments = computed(() => detailModal.value?.data?.enrollments ?? [])
 const activeEnrollment = computed(() =>
@@ -869,6 +1248,39 @@ const activeEnrollment = computed(() =>
   ?? detailEnrollments.value[0]
   ?? null
 )
+
+// Programs → Grades: mounts the SAME grade editor as the Submit-grades
+// dialog, teleported inline. Opened/closed by the watcher below.
+function openInlineGrades() {
+  if (!detailModal.value || !activeEnrollment.value) return
+  const acc = detailModal.value.data?.account ?? {}
+  const s = { studentId: detailModal.value.studentId, firstName: acc.firstName, lastName: acc.lastName }
+  const e = activeEnrollment.value
+  // Match the editor mode to the enrolment's stage, mirroring the list flow:
+  // pre-submission statuses get the editable submit form; Awaiting grades
+  // approval gets the approve/reject review; approved (or anything else)
+  // gets a read-only view so a finished enrolment can't be re-submitted.
+  if (e.statusCode === 'AwaitingGradesApproval') {
+    openGradeReview(s, e)
+  } else {
+    // Editable everywhere else — including after approval: the Admission
+    // Office may correct scores at any time (draft save has no status gate).
+    // Only the formal Submit transition is hidden once it no longer applies.
+    openGradeSubmit(s, e)
+  }
+  if (gradeModal.value) {
+    gradeModal.value.inline = true
+    const SUBMITTABLE = ['AcceptOffer', 'ApplicationApprovedAdmission', 'AcceptAdmission', 'AwaitingGradesSubmit']
+    if (!SUBMITTABLE.includes(e.statusCode) && e.statusCode !== 'AwaitingGradesApproval')
+      gradeModal.value.postApproval = true
+  }
+}
+watch(() => [detailModal.value?.activeTab, programSubTab.value, activeEnrollment.value?.studentEnrollmentId],
+  ([tab, sub]) => {
+    if (tab === 'programs' && sub === 'grades' && detailModal.value) openInlineGrades()
+    else if (gradeModal.value?.inline) gradeModal.value = null
+  })
+
 
 const approvedDurationDraft = computed({
   get() {
@@ -906,7 +1318,7 @@ const savingSpecialization = ref(false)
 const specializationSaveError = ref('')
 const specializationSaveOk = ref(false)
 
-// Programmes the student's partner can be enrolled in: IBSS core programmes
+// Programmes the student's partner can be enrolled in: MGW core programmes
 // plus the partner's own custom programmes. The backend re-validates on save.
 async function loadEnrolmentProgOptions() {
   const partnerId = detailModal.value?.data?.partner?.partnerId
@@ -918,8 +1330,21 @@ async function loadEnrolmentProgOptions() {
     const core = (coreRes.data.items ?? []).filter(p => !p.deletedAt)
     const owned = (partnerRes.data.items ?? []).filter(p => !p.deletedAt && p.ownerId === partnerId)
     const byId = new Map()
-    for (const p of [...core, ...owned]) byId.set(p.programmeId, { programmeId: p.programmeId, name: p.name })
-    enrolmentProgOptions.value = Array.from(byId.values()).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+    for (const p of [...core, ...owned]) byId.set(p.programmeId, {
+      programmeId: p.programmeId,
+      name: p.name,
+      schoolName: p.schoolName ?? null,
+      code: p.code ?? null,
+    })
+    const opts = Array.from(byId.values()).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+    // Label is "name (school)"; the code is appended only when two options
+    // would otherwise read identically (e.g. duplicate MBAs at one school),
+    // since codes usually just repeat the school and double it up visually.
+    const keyOf = p => `${(p.name ?? '').toLowerCase()}|${(p.schoolName ?? '').toLowerCase()}`
+    const counts = {}
+    for (const p of opts) counts[keyOf(p)] = (counts[keyOf(p)] ?? 0) + 1
+    for (const p of opts) p.showCode = counts[keyOf(p)] > 1
+    enrolmentProgOptions.value = opts
   } catch { enrolmentProgOptions.value = [] }
 }
 
@@ -987,9 +1412,254 @@ const transcriptDateDraft = computed({
   get() { return activeEnrollment.value?.transcriptDate?.slice(0, 10) ?? '' },
   set(v) { if (activeEnrollment.value) activeEnrollment.value.transcriptDate = v || null },
 })
+// Graduation date override. Blank = fall back to the expected completion date
+// (handled server-side when rendering letters). Kept independent of the
+// expected-completion computation so editing the approved duration never
+// clobbers a value the user just typed here.
+const graduationDateDraft = computed({
+  get() { return activeEnrollment.value?.graduationDate?.slice(0, 10) ?? '' },
+  set(v) { if (activeEnrollment.value) activeEnrollment.value.graduationDate = v || null },
+})
 const savingLetterDates = ref(false)
 const letterDatesError = ref('')
 const letterDatesOk = ref(false)
+
+// ── Admin status change (re-open a rejected enrolment, etc.) ─────────────────
+const enrollmentStatuses = ref([])
+const statusEdit = ref(false)
+const statusDraft = ref(null)
+const statusNote = ref('')
+const savingStatus = ref(false)
+const statusError = ref('')
+
+async function openStatusEdit() {
+  statusError.value = ''
+  statusNote.value = ''
+  statusDraft.value = null
+  statusEdit.value = true
+  if (enrollmentStatuses.value.length === 0) {
+    try {
+      const res = await api.get('/v1/admin/enrollment-statuses')
+      enrollmentStatuses.value = res.data.items ?? []
+    } catch (err) {
+      statusError.value = err.response?.data?.error ?? err.message ?? 'Failed to load statuses'
+    }
+  }
+  // Preselect the current status.
+  const cur = enrollmentStatuses.value.find(s => s.code === activeEnrollment.value?.statusCode)
+  statusDraft.value = cur?.statusId ?? enrollmentStatuses.value[0]?.statusId ?? null
+}
+
+async function saveStatus() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || !statusDraft.value || savingStatus.value) return
+  savingStatus.value = true
+  statusError.value = ''
+  try {
+    const res = await api.patch(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/status`,
+      { statusId: statusDraft.value, note: statusNote.value })
+    activeEnrollment.value.statusCode = res.data.statusCode
+    activeEnrollment.value.statusName = res.data.statusName
+    statusEdit.value = false
+    await refreshDetailModal()
+    await load()
+  } catch (err) {
+    statusError.value = err.response?.data?.error ?? err.message ?? 'Failed to change status'
+  } finally {
+    savingStatus.value = false
+  }
+}
+
+// ── Moodle tab (per-student LMS enabled + login credentials) ─────────────────
+const savingMoodle = ref(false)
+const moodleError = ref('')
+const moodleOk = ref(false)
+// Editable draft, kept in sync with the loaded student so switching students
+// or reopening the modal shows that student's Moodle settings.
+const moodleDraft = reactive({ enabled: false, username: '', password: '' })
+watch(() => detailModal.value?.data, (d) => {
+  moodleDraft.enabled = !!d?.moodleEnabled
+  moodleDraft.username = d?.moodleUsername ?? ''
+  moodleDraft.password = d?.moodlePassword ?? ''
+  statusEdit.value = false
+}, { immediate: true })
+
+// ── Payment tab (per-enrolment tuition plan + invoice) ───────────────────────
+const payment = reactive({
+  exists: false, total: 0, currency: 'USD', count: 1, installments: [], additional: [],
+  saving: false, downloadingInvoice: false, error: '', ok: '',
+})
+// Configurable currency list (System Config → Currencies). Falls back to a
+// minimal default if the list can't be loaded. Always includes the currently
+// selected currency so a saved value never disappears from the dropdown.
+const currencyList = ref([{ code: 'USD' }])
+const currencyOptions = computed(() => {
+  const list = [...currencyList.value]
+  if (payment.currency && !list.some(c => c.code === payment.currency)) list.unshift({ code: payment.currency })
+  return list
+})
+async function loadCurrencies() {
+  try {
+    const res = await api.get('/v1/school/currencies/options')
+    if (res.data.items?.length) currencyList.value = res.data.items
+  } catch { /* keep fallback */ }
+}
+
+function aiTotal(ai) { return (ai.lines || []).reduce((s, l) => s + (Number(l.amount) || 0), 0) }
+const additionalSum = computed(() => payment.additional.reduce((s, ai) => s + aiTotal(ai), 0))
+const paidSum = computed(() =>
+  payment.installments.filter(i => i.isPaid).reduce((s, i) => s + (Number(i.amount) || 0), 0)
+  + payment.additional.filter(ai => ai.isPaid).reduce((s, ai) => s + aiTotal(ai), 0))
+const balanceDue = computed(() => (Number(payment.total) || 0) + additionalSum.value - paidSum.value)
+function fmtMoney(v) { return (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+
+// Load the plan whenever the Payment tab is opened for the active enrolment.
+watch(() => [detailModal.value?.activeTab, programSubTab.value, activeEnrollment.value?.studentEnrollmentId], async ([tab, sub, eid]) => {
+  if (!(tab === 'programs' && sub === 'payment') || !eid || !detailModal.value?.studentId) return
+  payment.error = ''
+  if (currencyList.value.length <= 1) loadCurrencies()
+  try {
+    const res = await api.get(`/v1/admin/students/${detailModal.value.studentId}/enrollments/${eid}/payment`)
+    const d = res.data
+    payment.exists = !!d.exists
+    payment.total = d.totalTuitionFee ?? 0
+    payment.currency = d.currency ?? 'USD'
+    payment.count = d.numberOfPayments || 1
+    payment.installments = (d.installments ?? []).map(i => ({
+      amount: i.amount, dueDate: i.dueDate?.slice(0, 10) ?? '', isPaid: !!i.isPaid, paidDate: i.paidDate?.slice(0, 10) ?? '',
+      payByCard: !!i.payByCardEnabled, cardPaymentLink: i.cardPaymentLink ?? '',
+      payByBank: !!i.payByBankEnabled, bankAccountDetails: i.bankAccountDetails ?? '',
+    }))
+    payment.additional = (d.additionalInvoices ?? []).map(a => ({
+      lines: (a.lines ?? []).map(l => ({ text: l.text ?? '', amount: l.amount ?? 0 })),
+      dueDate: a.dueDate?.slice(0, 10) ?? '', isPaid: !!a.isPaid, paidDate: a.paidDate?.slice(0, 10) ?? '',
+      payByCard: !!a.payByCardEnabled, cardPaymentLink: a.cardPaymentLink ?? '',
+      payByBank: !!a.payByBankEnabled, bankAccountDetails: a.bankAccountDetails ?? '',
+    }))
+    payment.additional.forEach(a => { if (!a.lines.length) a.lines.push({ text: '', amount: 0 }) })
+  } catch (err) {
+    payment.error = err.response?.data?.error ?? err.message ?? 'Failed to load'
+  }
+})
+
+// Auto-split the total into `count` equal installments (last absorbs rounding),
+// due monthly from commencement (or today). Existing rows are replaced.
+function generateSchedule() {
+  const n = Math.max(1, Number(payment.count) || 1)
+  const total = Number(payment.total) || 0
+  const per = Math.floor((total / n) * 100) / 100
+  const start = activeEnrollment.value?.commencementDate ? new Date(activeEnrollment.value.commencementDate) : new Date()
+  const rows = []
+  let allocated = 0
+  for (let k = 0; k < n; k++) {
+    const amount = k === n - 1 ? Math.round((total - allocated) * 100) / 100 : per
+    allocated += per
+    const due = new Date(start)
+    due.setMonth(due.getMonth() + k)
+    rows.push({ amount, dueDate: due.toISOString().slice(0, 10), isPaid: false, paidDate: '',
+      payByCard: false, cardPaymentLink: '', payByBank: false, bankAccountDetails: '' })
+  }
+  payment.installments = rows
+}
+
+async function savePayment() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || payment.saving) return
+  payment.saving = true; payment.error = ''; payment.ok = ''
+  try {
+    const body = {
+      totalTuitionFee: Number(payment.total) || 0,
+      currency: payment.currency,
+      installments: payment.installments.map((i, idx) => ({
+        sequence: idx + 1,
+        amount: Number(i.amount) || 0,
+        dueDate: i.dueDate || null,
+        isPaid: !!i.isPaid,
+        paidDate: i.isPaid ? (i.paidDate || null) : null,
+        payByCardEnabled: !!i.payByCard,
+        cardPaymentLink: i.cardPaymentLink || null,
+        payByBankEnabled: !!i.payByBank,
+        bankAccountDetails: i.bankAccountDetails || null,
+      })),
+      additionalInvoices: payment.additional.map((a, idx) => ({
+        sequence: idx + 1,
+        dueDate: a.dueDate || null,
+        isPaid: !!a.isPaid,
+        paidDate: a.isPaid ? (a.paidDate || null) : null,
+        payByCardEnabled: !!a.payByCard,
+        cardPaymentLink: a.cardPaymentLink || null,
+        payByBankEnabled: !!a.payByBank,
+        bankAccountDetails: a.bankAccountDetails || null,
+        lines: (a.lines || []).map(l => ({ text: l.text || '', amount: Number(l.amount) || 0 })),
+      })),
+    }
+    const res = await api.put(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/payment`, body)
+    payment.exists = !!res.data.exists
+    payment.ok = 'Saved'
+    setTimeout(() => { payment.ok = '' }, 2500)
+  } catch (err) {
+    payment.error = err.response?.data?.error ?? err.message ?? 'Save failed'
+  } finally {
+    payment.saving = false
+  }
+}
+
+// New additional invoice: always starts with one line (amount + description).
+function addAdditionalInvoice() {
+  payment.additional.push({
+    lines: [{ text: '', amount: 0 }],
+    dueDate: '', isPaid: false, paidDate: '',
+    payByCard: false, cardPaymentLink: '', payByBank: false, bankAccountDetails: '',
+  })
+}
+function removeAdditionalInvoice(idx) {
+  payment.additional.splice(idx, 1)
+}
+
+// seq = installment number for a single-installment invoice; omitted = full plan.
+async function downloadInvoice(seq = null, additionalSeq = null) {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || payment.downloadingInvoice) return
+  // Persist any unsaved edits first so the PDF always matches the screen
+  // (amounts, paid flags, payment links / bank details).
+  await savePayment()
+  if (payment.error) return
+  payment.downloadingInvoice = true; payment.error = ''
+  try {
+    const q = seq ? `?installment=${seq}` : additionalSeq ? `?additional=${additionalSeq}` : ''
+    const res = await api.get(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/payment/invoice${q}`,
+      { responseType: 'blob' })
+    openBlobPdf(res.data, seq ? `invoice-installment-${seq}.pdf` : additionalSeq ? `invoice-additional-${additionalSeq}.pdf` : 'invoice.pdf')
+  } catch (err) {
+    payment.error = err.response?.status === 404 ? 'Save the payment plan first.' : (err.response?.data?.error ?? err.message ?? 'Download failed')
+  } finally {
+    payment.downloadingInvoice = false
+  }
+}
+function downloadAdditionalInvoice(seq) { return downloadInvoice(null, seq) }
+
+async function saveMoodle() {
+  if (!detailModal.value?.studentId || savingMoodle.value) return
+  savingMoodle.value = true
+  moodleError.value = ''
+  moodleOk.value = false
+  try {
+    const res = await api.patch(
+      `/v1/admin/students/${detailModal.value.studentId}/moodle`,
+      { enabled: moodleDraft.enabled, username: moodleDraft.username, password: moodleDraft.password })
+    if (detailModal.value?.data) {
+      detailModal.value.data.moodleEnabled = res.data.moodleEnabled
+      detailModal.value.data.moodleUsername = res.data.moodleUsername
+      detailModal.value.data.moodlePassword = res.data.moodlePassword
+    }
+    moodleOk.value = true
+    setTimeout(() => { moodleOk.value = false }, 2500)
+  } catch (err) {
+    moodleError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
+  } finally {
+    savingMoodle.value = false
+  }
+}
 
 async function saveLetterDates() {
   if (!detailModal.value?.studentId || !activeEnrollment.value || savingLetterDates.value) return
@@ -1003,10 +1673,12 @@ async function saveLetterDates() {
         offerLetterDate: offerLetterDateDraft.value || null,
         admissionLetterDate: admissionLetterDateDraft.value || null,
         transcriptDate: transcriptDateDraft.value || null,
+        graduationDate: graduationDateDraft.value || null,
       })
     activeEnrollment.value.offerLetterDate = res.data.offerLetterDate
     activeEnrollment.value.admissionLetterDate = res.data.admissionLetterDate
     activeEnrollment.value.transcriptDate = res.data.transcriptDate
+    activeEnrollment.value.graduationDate = res.data.graduationDate
     letterDatesOk.value = true
     setTimeout(() => { letterDatesOk.value = false }, 2500)
     await refreshDetailModal()
@@ -1047,6 +1719,47 @@ async function saveTeachingLanguage() {
     savingLanguage.value = false
   }
 }
+// ── Mode of study (Admission-Office editable, like study language) ──────────
+const modeOptions = ref([])
+const modeDraft = ref(null)
+const savingMode = ref(false)
+const modeSaveError = ref('')
+const modeSaveOk = ref(false)
+
+async function loadModeOptions() {
+  if (modeOptions.value.length) return
+  try {
+    const res = await api.get('/v1/school/system-config/modes-of-study')
+    modeOptions.value = res.data.items ?? []
+  } catch { /* dropdown stays empty; read-only name still shows for non-editors */ }
+}
+
+watch(() => [activeEnrollment.value?.studentEnrollmentId, activeEnrollment.value?.modeOfStudyId], () => {
+  modeDraft.value = activeEnrollment.value?.modeOfStudyId ?? null
+  if (activeEnrollment.value) loadModeOptions()
+}, { immediate: true })
+
+async function saveModeOfStudy() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || savingMode.value || !modeDraft.value) return
+  savingMode.value = true
+  modeSaveError.value = ''
+  modeSaveOk.value = false
+  try {
+    const res = await api.patch(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/mode-of-study`,
+      { modeOfStudyId: modeDraft.value })
+    activeEnrollment.value.modeOfStudyId = res.data.modeOfStudyId
+    activeEnrollment.value.modeOfStudyName = res.data.modeOfStudyName
+    modeSaveOk.value = true
+    setTimeout(() => { modeSaveOk.value = false }, 2500)
+    await refreshDetailModal()
+  } catch (err) {
+    modeSaveError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
+  } finally {
+    savingMode.value = false
+  }
+}
+
 const commencementPastWarning = computed(() => {
   const v = commencementDraft.value
   if (!v) return ''
@@ -1147,6 +1860,7 @@ const expectedCompletion = computed(() => {
   if (!e?.commencementDate || !months) return ''
   const d = new Date(e.commencementDate)
   d.setMonth(d.getMonth() + months)
+  d.setDate(d.getDate() - 1) // last day of study, not the first day after
   return formatDate(d.toISOString())
 })
 
@@ -1419,7 +2133,7 @@ function normaliseDetailForEdit(data) {
   data.account = data.account || { firstName: null, lastName: null }
   data.personal = data.personal || { dateOfBirth: null, passportId: null, nationalityId: null, address: {} }
   data.personal.address = data.personal.address || {}
-  data.background = data.background || { highestDegree: null, yearsWorkExperience: 0, languages: [] }
+  data.background = data.background || { highestDegree: null, degreeSpecialization: null, yearsWorkExperience: 0, languages: [] }
   data.background.languages = data.background.languages || []
   return data
 }
@@ -1484,6 +2198,7 @@ async function saveAdminBackground() {
     const d = detailModal.value.data
     await api.patch(`/v1/admin/students/${detailModal.value.studentId}/background`, {
       highestDegree: d.background?.highestDegree ?? null,
+      degreeSpecialization: d.background?.degreeSpecialization ?? null,
       yearsWorkExperience: d.background?.yearsWorkExperience ?? 0,
       languages: (d.background?.languages || [])
         .filter(l => l.languageId > 0)
@@ -1575,6 +2290,24 @@ async function refreshDetailModal() {
     await loadEnrolmentSpecOptions()
   } catch { /* keep stale view */ }
 }
+
+// (AI) badge: score = average of confidence and (1 - fraudRisk); hue runs
+// red (0) → green (120). High confidence good, low fraud good.
+function aiScore(d) {
+  const c = d.aiConfidence != null ? Number(d.aiConfidence) : null
+  const f = d.aiFraudRisk != null ? Number(d.aiFraudRisk) : null
+  if (c == null && f == null) return null
+  const parts = []
+  if (c != null) parts.push(c)
+  if (f != null) parts.push(1 - f)
+  return parts.reduce((a, b) => a + b, 0) / parts.length
+}
+function aiColor(d) {
+  const s = aiScore(d)
+  if (s == null) return '#999'
+  return `hsl(${Math.round(120 * Math.max(0, Math.min(1, s)))}, 75%, 38%)`
+}
+function fmtScore(v) { return v == null ? '—' : Number(v).toFixed(2) }
 
 function docPillClass(status) {
   if (status === 'VerifiedByPartner' || status === 'VerifiedByEnrolment') return 'doc-pill-ok'
@@ -1709,6 +2442,8 @@ async function openGradeSubmit(s, e) {
     programmeCode: e.programmeCode,
     specializationName: e.specializationName,
     subjects: [],
+    requiredEcts: null,
+    projectTitle: '',
     mode: 'submit',
     rejectReason: '',
     rejectPreset: '',
@@ -1722,6 +2457,8 @@ async function openGradeSubmit(s, e) {
   try {
     const res = await api.get(`/v1/admin/students/${s.studentId}/enrollments/${e.studentEnrollmentId}/subjects`)
     gradeModal.value.subjects = (res.data.items ?? []).map(r => ({ ...r, score: r.score ?? null }))
+    gradeModal.value.requiredEcts = res.data.requiredEcts ?? null
+    gradeModal.value.projectTitle = res.data.projectTitle ?? ''
   } catch (err) {
     gradeModal.value.error = err.response?.data?.error ?? err.message ?? 'Failed to load subjects'
   } finally {
@@ -1729,10 +2466,33 @@ async function openGradeSubmit(s, e) {
   }
 }
 
-const canCommitAdminGrades = computed(() => {
+// A subject counts as completed once any score (0-100) is entered.
+function scoredRows(m) {
+  return (m?.subjects ?? []).filter(r => Number.isInteger(r.score) && r.score >= 0 && r.score <= 100)
+}
+// Sum of ECTS across completed subjects for the admin grade modal.
+const adminCompletedEcts = computed(() =>
+  scoredRows(gradeModal.value).reduce((sum, r) => sum + Number(r.ects || 0), 0))
+// True once a thesis/dissertation module has a grade — reveals the project-title field.
+const adminThesisGraded = computed(() => {
   const m = gradeModal.value
   if (!m?.subjects?.length) return false
-  return m.subjects.every(r => Number.isFinite(r.score) && r.score >= 0 && r.score <= 100)
+  return m.subjects.some(r => r.isThesis && Number.isInteger(r.score) && r.score >= 0 && r.score <= 100)
+})
+// ECTS still needed to reach the programme's completion threshold (0 if met).
+const adminEctsRemaining = computed(() => {
+  const req = Number(gradeModal.value?.requiredEcts || 0)
+  if (!req) return 0
+  return Math.max(0, req - adminCompletedEcts.value)
+})
+// Submit is gated by the threshold: enough completed ECTS. When no threshold
+// is set on the programme, fall back to "at least one subject scored".
+const canCommitAdminGrades = computed(() => {
+  const m = gradeModal.value
+  const scored = scoredRows(m)
+  if (!scored.length) return false
+  const req = Number(m?.requiredEcts || 0)
+  return req ? adminCompletedEcts.value >= req : true
 })
 
 // Admin draft-save (no status change), mirroring the partner draft.
@@ -1742,7 +2502,7 @@ async function saveAdminGradesDraft() {
   m.savingDraft = true; m.error = ''
   try {
     const items = m.subjects.filter(r => Number.isFinite(r.score)).map(r => ({ subjectId: r.subjectId, score: r.score }))
-    await api.post(`/v1/admin/students/${m.studentId}/enrollments/${m.enrollmentId}/grades/draft`, { items })
+    await api.post(`/v1/admin/students/${m.studentId}/enrollments/${m.enrollmentId}/grades/draft`, { items, projectTitle: m.projectTitle })
     reviewToast.value = `Saved ${items.length} grade(s). Provisional transcript updated.`
     setTimeout(() => { reviewToast.value = '' }, 3000)
   } catch (err) {
@@ -1752,10 +2512,13 @@ async function saveAdminGradesDraft() {
   }
 }
 
-// Download the watermarked provisional transcript from current saved grades.
+// Download the provisional transcript. Auto-saves the on-screen grades first
+// so the PDF always matches the editor — no manual Save needed beforehand.
 async function downloadAdminProvisional() {
   const m = gradeModal.value
   if (!m || m.downloadingProvisional) return
+  await saveAdminGradesDraft()
+  if (m.error) return
   m.downloadingProvisional = true; m.error = ''
   try {
     const res = await api.get(
@@ -1779,7 +2542,7 @@ async function confirmGradeSubmission() {
   try {
     await api.post(
       `/v1/admin/students/${m.studentId}/enrollments/${m.enrollmentId}/grades`,
-      { items: m.subjects.map(r => ({ subjectId: r.subjectId, score: r.score })) })
+      { items: scoredRows(m).map(r => ({ subjectId: r.subjectId, score: r.score })), projectTitle: m.projectTitle })
     reviewToast.value = 'Grades submitted.'
     setTimeout(() => { reviewToast.value = '' }, 3000)
     gradeModal.value = null
@@ -1847,8 +2610,28 @@ function scoreClass(score) {
   return 'sc-bad'
 }
 function gradeColumnCount(count) {
-  if (!count || count <= 10) return 1
-  return Math.min(3, Math.ceil(count / 10))
+  if (!count || count <= 12) return 1
+  return 2
+}
+// Live 0–100 → MGW letter grade. Mirrors MapScore in LetterTagResolver.cs
+// so the letter shown here matches the transcript. Display-only; nothing is
+// saved until Save/Submit grades.
+function scoreToLetter(score) {
+  if (score === null || score === undefined || score === '') return '—'
+  const s = Math.floor(Number(score))
+  if (Number.isNaN(s) || s < 0 || s > 100) return '—'
+  // Grade Standard scale — must match MapScore (UkGrade) in the backend so
+  // the letter shown here equals the IBAS Grade on the transcript.
+  if (s >= 75) return 'A+'
+  if (s >= 70) return 'A'
+  if (s >= 65) return 'A-'
+  if (s >= 60) return 'B+'
+  if (s >= 55) return 'B'
+  if (s >= 50) return 'B-'
+  if (s >= 45) return 'C+'
+  if (s >= 41) return 'C'
+  if (s === 40) return 'C-'
+  return 'F'
 }
 function countFor(id) {
   if (id === '') return list.value.length
@@ -1856,6 +2639,7 @@ function countFor(id) {
   if (!f) return 0
   let n = 0
   for (const s of list.value) {
+    if (f.overdue) { if (s.enrollments.some(e => e.paymentOverdue)) n++; continue }
     if (f.includeNoEnrolment && s.enrollments.length === 0) { n++; continue }
     if (s.enrollments.some(e => f.codes?.includes(e.statusCode))) n++
   }
@@ -1896,6 +2680,11 @@ const fuse = computed(() => new Fuse(list.value, {
   minMatchCharLength: 2,
 }))
 
+const filterPartnerName = ref('')
+// Partner filter options come straight from the loaded rows — no extra call.
+const partnersAvailable = computed(() =>
+  [...new Set(list.value.map(s => s.partnerName).filter(Boolean))].sort((a, b) => a.localeCompare(b)))
+
 const filtered = computed(() => {
   const q = search.value.trim()
   // Start either from the fuzzy search hits or the full list.
@@ -1907,9 +2696,12 @@ const filtered = computed(() => {
     rows = rows.filter(s => s.enrollments.some(e => e.programmeId === filterProgrammeId.value))
   if (filterSpecializationId.value)
     rows = rows.filter(s => s.enrollments.some(e => e.specializationId === filterSpecializationId.value))
+  if (filterPartnerName.value)
+    rows = rows.filter(s => s.partnerName === filterPartnerName.value)
   if (filterStatusId.value !== '') {
     const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
     rows = rows.filter(s => {
+      if (f?.overdue) return s.enrollments.some(e => e.paymentOverdue)
       const matchesNoEnrolment = f?.includeNoEnrolment && s.enrollments.length === 0
       const matchesCode = s.enrollments.some(e => f?.codes?.includes(e.statusCode))
       return matchesNoEnrolment || matchesCode
@@ -1990,6 +2782,7 @@ function adaptForWizard(d, targetEnrollmentId = null) {
     passportId: d.personal?.passportId ?? '',
     address: addressStr,
     highestDegree: d.background?.highestDegree ?? '',
+    degreeSpecialization: d.background?.degreeSpecialization ?? '',
     languageResult: langSummary,
     yearsWorkExperience: d.background?.yearsWorkExperience ?? 0,
     docPassport: findDoc(d, /passport|identity|id\b/i),
@@ -2147,10 +2940,14 @@ const EXPORT_FIELD_GROUPS = [
     { id: 'transcriptDate',      label: 'Transcript date' },
     { id: 'certificateDate',     label: 'Certificate date' },
     { id: 'provisionalCertificateDate', label: 'Provisional certificate date' },
-    { id: 'tuitionFeeUsd',       label: 'Tuition fee (USD)' },
-    { id: 'totalDueUsd',         label: 'Total due (USD)' },
-    { id: 'totalPaidUsd',        label: 'Total paid (USD)' },
-    { id: 'outstandingUsd',      label: 'Outstanding (USD)' },
+    { id: 'tuitionFee',          label: 'Tuition fee' },
+    { id: 'additionalFees',      label: 'Additional fees' },
+    { id: 'totalFees',           label: 'Total fees' },
+    { id: 'feeCurrency',         label: 'Fee currency' },
+    { id: 'numberOfPayments',    label: 'Number of payments' },
+    { id: 'paymentsPaid',        label: 'Payments paid' },
+    { id: 'totalPaid',           label: 'Total paid' },
+    { id: 'outstanding',         label: 'Outstanding' },
     { id: 'docsUploaded',        label: 'Documents uploaded' },
     { id: 'docsVerified',        label: 'Documents verified' },
     { id: 'docsRejected',        label: 'Documents rejected' },
@@ -2403,8 +3200,12 @@ async function runExport() {
 .st-grades { background: #ede9fe; color: #5b21b6; }
 
 .enrol-line { font-size: .85rem; }
+.enrol-actions-cell { white-space: nowrap; vertical-align: top; }
+.enrol-actions { display: flex; gap: .35rem; align-items: center; margin-bottom: .45rem; }
+.enrol-actions .btn-review-sm, .enrol-actions .btn-row-details-sm { margin: 0; white-space: nowrap; }
 .enr-prog { background: #e8f0f8; color: #003366; border-radius: 4px; padding: 1px 6px; font-size: .75rem; font-weight: 700; margin: 0 .3rem; }
 .s-badge { font-size: .7rem; padding: 1px 6px; border-radius: 10px; margin-left: .3rem; font-weight: 600; }
+.s-badge-overdue { background: #fde7e5; color: #a8241e; border: 1px solid #e8b3af; }
 .st-submitted { background: #fff7e0; color: #8a6d00; }
 .st-pending   { background: #e8f0f8; color: #0055a5; }
 .st-rejected  { background: #fee2e2; color: #991b1b; }
@@ -2454,11 +3255,13 @@ async function runExport() {
 .grade-grid { column-gap: 1.2rem; margin-top: .5rem; }
 .grade-row {
   break-inside: avoid;
-  display: grid; grid-template-columns: 80px 1fr auto auto; gap: .5rem;
+  display: grid; grid-template-columns: max-content minmax(140px, 1fr) auto auto auto; gap: .55rem;
   align-items: center; padding: .35rem .25rem;
   border-bottom: 1px solid #eef2f7; font-size: .82rem;
 }
-.gr-code { font-family: ui-monospace, monospace; font-size: .76rem; color: #003366; }
+.gr-letter { display: inline-block; min-width: 30px; text-align: center; padding: 2px 6px;
+  border-radius: 6px; font-weight: 700; font-size: .78rem; background: #eef2f7; color: #334155; }
+.gr-code { font-family: ui-monospace, monospace; font-size: .76rem; color: #003366; overflow-wrap: anywhere; }
 .gr-name { color: #222; line-height: 1.3; min-width: 0; word-break: break-word; }
 .gr-ects { color: #888; font-size: .72rem; white-space: nowrap; }
 .grade-score { display: inline-block; min-width: 44px; padding: 2px 9px; border-radius: 12px; font-weight: 700; font-size: .8rem; text-align: center; }
@@ -2485,7 +3288,7 @@ async function runExport() {
 
 /* Student detail modal (3 tabs) — fixed height so switching tabs
    doesn't make the modal grow or shrink. Tab content scrolls within. */
-.detail-modal { width: 760px; max-width: 95vw; height: 80vh; max-height: 720px; display: flex; flex-direction: column; }
+.detail-modal { width: 1180px; max-width: 96vw; height: 88vh; max-height: 980px; display: flex; flex-direction: column; }
 .muted-sub { color: #6b7888; font-weight: 400; font-size: .82rem; margin-left: .25rem; }
 .detail-loading { padding: 1.5rem; }
 .enr-switch { display: flex; align-items: center; gap: .65rem; padding: .55rem 1rem; background: #f6f9fc; border-bottom: 1px solid #eef2f7; font-size: .85rem; }
@@ -2513,6 +3316,43 @@ async function runExport() {
 .edit-field input, .edit-field select { padding: .35rem .55rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .85rem; background: #fff; color: #1a2d4f; }
 .btn-save-admin { margin-top: .75rem; }
 .ok-banner { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; padding: .4rem .65rem; border-radius: 5px; font-size: .8rem; margin: .35rem 0; }
+.ects-warn { color: #92400e; font-weight: 600; }
+.ects-ok { color: #065f46; font-weight: 600; }
+.moodle-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1rem; background: #f6f9fd; border: 1px solid #e0e6ee; border-radius: 8px; max-width: 460px; }
+.moodle-title { font-weight: 600; color: #1a2d4f; }
+.moodle-toggle { display: flex; align-items: center; gap: .45rem; font-weight: 600; cursor: pointer; }
+.moodle-toggle input { width: 1.05rem; height: 1.05rem; cursor: pointer; }
+.moodle-creds { display: flex; gap: 1rem; margin-top: .85rem; max-width: 460px; }
+.moodle-field { display: flex; flex-direction: column; gap: .3rem; flex: 1; }
+.moodle-field label { font-size: .78rem; font-weight: 600; color: #44506a; }
+.moodle-field input { padding: .45rem .6rem; border: 1px solid #cfd7e3; border-radius: 6px; font-size: .85rem; }
+.pay-config { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-bottom: .8rem; }
+.pay-field { display: flex; flex-direction: column; gap: .3rem; }
+.pay-field label { font-size: .78rem; font-weight: 600; color: #44506a; }
+.pay-field select, .pay-field input { padding: .4rem .55rem; border: 1px solid #cfd7e3; border-radius: 6px; font-size: .85rem; }
+.pay-fee-row { display: flex; gap: .35rem; }
+.pay-cur { width: 72px; }
+.pay-table { width: 100%; border-collapse: collapse; font-size: .84rem; margin-bottom: .6rem; }
+.pay-table th { text-align: left; padding: .4rem .5rem; background: #f6f9fd; border-bottom: 1px solid #e0e6ee; font-size: .74rem; text-transform: uppercase; color: #5f6e85; }
+.pay-table td { padding: .3rem .5rem; border-bottom: 1px solid #f0f3f7; }
+.pay-center { text-align: center; }
+.pay-inp { padding: .3rem .45rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; width: 130px; }
+.pay-summary { display: flex; gap: 1.5rem; font-size: .88rem; padding: .5rem 0; border-top: 1px solid #eef1f5; }
+.pay-methods-row td { border-bottom: 1px solid #eef1f5; padding: 0 0 .5rem; }
+.pay-methods { display: flex; gap: 1.25rem; flex-wrap: wrap; padding: .35rem .5rem; background: #f7f9fc; border: 1px solid #e3e9f1; border-radius: 8px; }
+.pay-method { flex: 1 1 240px; }
+.pay-method-toggle { display: flex; align-items: center; gap: .4rem; font-size: .78rem; font-weight: 600; cursor: pointer; }
+.pay-method-input { display: block; width: 100%; margin-top: .25rem; padding: .3rem .5rem; font-size: .78rem; border: 1px solid #ccd5e0; border-radius: 6px; font-family: inherit; }
+.pay-invoice-link { color: #1a4d8c; font-weight: 600; cursor: pointer; font-size: .85rem; text-decoration: underline; }
+.pay-invoice-link.disabled { color: #9aa5b5; cursor: default; text-decoration: none; }
+.pay-add-head { display: flex; align-items: center; gap: .75rem; margin-top: 1rem; padding-top: .6rem; border-top: 1px solid #eef1f5; }
+.pay-ai-card { margin: .5rem 0; padding: .6rem .7rem; background: #fbfcfe; border: 1px solid #e3e9f1; border-radius: 8px; }
+.pay-ai-head { display: flex; align-items: center; gap: .75rem; margin-bottom: .45rem; }
+.pay-ai-line { display: flex; align-items: flex-start; gap: .4rem; margin-bottom: .35rem; }
+.pay-ai-line-fields { display: flex; flex-direction: column; gap: .25rem; flex: 1; max-width: 520px; }
+.pay-ai-line-fields .pay-ai-text { width: 100%; }
+.pay-ai-meta { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin: .35rem 0 .45rem; font-size: .78rem; }
+.pay-ai-meta label { display: flex; align-items: center; gap: .35rem; font-weight: 600; }
 .lang-block { margin-top: .6rem; }
 .lang-head { display: flex; align-items: center; justify-content: space-between; font-size: .78rem; color: #6b7888; margin-bottom: .35rem; }
 .lang-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: .35rem; margin-bottom: .3rem; }
@@ -2601,4 +3441,27 @@ async function runExport() {
 .export-preview-table th { position: sticky; top: 0; background: #f1f5f9; text-align: left; padding: .4rem .55rem; border-bottom: 1px solid #e2e8f0; font-weight: 700; white-space: nowrap; }
 .export-preview-table td { padding: .35rem .55rem; border-bottom: 1px solid #f1f5f9; vertical-align: top; white-space: nowrap; }
 .export-preview-table tr:nth-child(even) td { background: #fbfdff; }
+.ai-badge-none { background:#fff !important; color:#888 !important; border:1px solid #ccc; }
+.ai-badge { display: inline-block; margin-right: .35rem; padding: .1rem .4rem; border-radius: 9px; color: #fff; font-size: .68rem; font-weight: 800; cursor: help; }
+</style>
+
+<style scoped>
+.project-title-row { margin: .6rem 0; display: flex; flex-direction: column; gap: .3rem; }
+.project-title-row label { font-size: .82rem; font-weight: 600; color: #1a2d4f; }
+
+.programs-layout { display: flex; gap: 1rem; align-items: flex-start; }
+.add-prog-box { background: #f7f9fb; border: 1.5px solid #dfe6ee; border-radius: 8px; padding: .5rem; }
+.programs-menu { width: 215px; flex-shrink: 0; display: flex; flex-direction: column; gap: .4rem; }
+.prog-menu-item { display: flex; flex-direction: column; gap: .1rem; text-align: left; background: #f7f9fb; border: 1.5px solid #dfe6ee; border-radius: 8px; padding: .55rem .7rem; cursor: pointer; }
+.prog-menu-item:hover { border-color: #a0b8d0; }
+.prog-menu-item.active { border-color: #0b2e59; background: #eef3fb; }
+.prog-menu-name { font-weight: 700; font-size: .82rem; color: #0b2e59; }
+.prog-menu-spec { font-size: .76rem; color: #667; }
+.prog-menu-status { font-size: .7rem; color: #856404; }
+.programs-content { flex: 1; min-width: 0; }
+.prog-subtabs { display: flex; gap: .25rem; border-bottom: 2px solid #e8edf4; margin-bottom: .9rem; }
+.prog-enrol-grid { grid-template-columns: 1fr; }
+
+.grade-inline-wrap { position: static; }
+.grade-modal.grade-inline { width: 100%; max-width: 100%; box-shadow: none; border: 1px solid #e3e9f1; border-radius: 8px; }
 </style>

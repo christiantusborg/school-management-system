@@ -2,9 +2,18 @@
   <div class="es-wrap">
     <h2>Email (outbound mail)</h2>
     <p class="es-intro">
-      Letter emails (offer &amp; admission) are sent through this transport. System mail
-      (login codes, verification) always uses the built-in SMTP and is unaffected.
+      Student-facing mail is sent through these transports. Each school can have its own
+      completely separate SMTP or Gmail service; schools set to "Default" use the default
+      configuration. If a school's own service fails, sending falls back to the default.
     </p>
+
+    <div class="es-field">
+      <label>Configure for</label>
+      <select v-model="scope" @change="load">
+        <option value="">Default (all schools)</option>
+        <option v-for="s in schools" :key="s.schoolId" :value="s.schoolId">{{ s.name }}</option>
+      </select>
+    </div>
 
     <div v-if="loading" class="muted">Loading…</div>
     <div v-else-if="loadError" class="es-err">{{ loadError }}</div>
@@ -12,20 +21,23 @@
       <div class="es-field">
         <label>Transport</label>
         <select v-model="form.provider">
-          <option value="Brevo">Built-in SMTP (Brevo)</option>
+          <option v-if="scope" value="Default">Default (use the default settings)</option>
+          <option v-else value="Brevo">Built-in SMTP (Brevo)</option>
           <option value="Gmail">Gmail (Google Workspace service account)</option>
           <option value="Smtp">Custom SMTP (e.g. SiteGround)</option>
         </select>
       </div>
 
-      <div class="es-field">
-        <label>From address</label>
-        <input v-model="form.fromEmail" type="email" placeholder="admissions@ibss.edu.eu" />
-      </div>
-      <div class="es-field">
-        <label>From name</label>
-        <input v-model="form.fromName" type="text" placeholder="Admission Team" />
-      </div>
+      <template v-if="!scope || form.provider !== 'Default'">
+        <div class="es-field">
+          <label>From address</label>
+          <input v-model="form.fromEmail" type="email" placeholder="admissions@ibss.edu.eu" />
+        </div>
+        <div class="es-field">
+          <label>From name</label>
+          <input v-model="form.fromName" type="text" placeholder="Admission Team" />
+        </div>
+      </template>
 
       <template v-if="form.provider === 'Gmail'">
         <div class="es-divider">Gmail service account</div>
@@ -91,7 +103,10 @@
         <button class="btn-ghost" :disabled="testing || !testTo" @click="sendTest">{{ testing ? 'Sending…' : 'Send test' }}</button>
       </div>
       <p v-if="testResult" :class="testOk ? 'es-ok-tag' : 'es-err-inline'">{{ testResult }}</p>
-      <p class="es-hint">The test uses the <strong>saved</strong> settings — save first, then test.</p>
+      <p class="es-hint">
+        The test uses the <strong>saved</strong> settings, save first, then test.
+        <template v-if="scope"> The test goes strictly through this school's own service (no fallback).</template>
+      </p>
     </template>
   </div>
 </template>
@@ -112,6 +127,21 @@ const testing = ref(false)
 const testResult = ref('')
 const testOk = ref(false)
 
+// '' = the default (global) settings; a schoolId = that school's own settings.
+const scope = ref('')
+const schools = ref([])
+
+function settingsUrl() {
+  return scope.value ? `/v1/admin/schools/${scope.value}/mail-settings` : '/v1/admin/mail-settings'
+}
+
+async function loadSchools() {
+  try {
+    const { data } = await apiClient.get('/v1/school/schools/options')
+    schools.value = data.items ?? []
+  } catch { /* selector just shows Default */ }
+}
+
 const form = reactive({
   provider: 'Brevo',
   fromEmail: '',
@@ -128,9 +158,11 @@ const form = reactive({
 async function load() {
   loading.value = true
   loadError.value = ''
+  testResult.value = ''
+  saveError.value = ''
   try {
-    const { data } = await apiClient.get('/v1/admin/mail-settings')
-    form.provider = data.provider ?? 'Brevo'
+    const { data } = await apiClient.get(settingsUrl())
+    form.provider = data.provider ?? (scope.value ? 'Default' : 'Brevo')
     form.fromEmail = data.fromEmail ?? ''
     form.fromName = data.fromName ?? ''
     form.gmailImpersonatedUser = data.gmailImpersonatedUser ?? ''
@@ -167,7 +199,7 @@ async function save() {
     // Only send secrets when the admin typed a new one.
     if (form.gmailServiceAccountJson.trim()) payload.gmailServiceAccountJson = form.gmailServiceAccountJson.trim()
     if (form.smtpPassword) payload.smtpPassword = form.smtpPassword
-    const { data } = await apiClient.put('/v1/admin/mail-settings', payload)
+    const { data } = await apiClient.put(settingsUrl(), payload)
     hasServiceAccount.value = !!data.hasServiceAccount
     hasSmtpPassword.value = !!data.hasSmtpPassword
     form.gmailServiceAccountJson = ''
@@ -185,7 +217,7 @@ async function sendTest() {
   testing.value = true
   testResult.value = ''
   try {
-    const { data } = await apiClient.post('/v1/admin/mail-settings/test', { to: testTo.value.trim() })
+    const { data } = await apiClient.post(`${settingsUrl()}/test`, { to: testTo.value.trim() })
     testOk.value = true
     testResult.value = `Sent to ${data.to}. Check the inbox.`
   } catch (err) {
@@ -196,7 +228,7 @@ async function sendTest() {
   }
 }
 
-onMounted(load)
+onMounted(() => { loadSchools(); load() })
 </script>
 
 <style scoped>

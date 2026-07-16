@@ -30,8 +30,10 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
         (SystemDocumentTypeIds.OfferLetter,            LetterType.OfferLetter),
         (SystemDocumentTypeIds.AdmissionLetter,        LetterType.AdmissionLetter),
         (SystemDocumentTypeIds.Transcript,             LetterType.Transcript),
+        (SystemDocumentTypeIds.PrintableTranscript,    LetterType.PrintableTranscript),
         (SystemDocumentTypeIds.Certificate,            LetterType.Certificate),
         (SystemDocumentTypeIds.ProvisionalCertificate, LetterType.ProvisionalCertificate),
+        (SystemDocumentTypeIds.StudentIdCard,          LetterType.StudentIdCard),
     ];
 
     private static async Task<IResult> HandleAsync(
@@ -61,11 +63,19 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
             onlyType = parsed;
         }
 
-        var enrolmentExists = await db.Enrollments
-            .AnyAsync(e => e.StudentEnrollmentId == enrollmentId
+        var enrolment = await db.Enrollments
+            .Where(e => e.StudentEnrollmentId == enrollmentId
                 && e.StudentId == studentId
-                && e.DeletedAt == null, ct);
-        if (!enrolmentExists) return Results.NotFound();
+                && e.DeletedAt == null)
+            .Select(e => new
+            {
+                IssueCard = db.Programmes
+                    .Where(p => p.ProgrammeId == e.Specialization.ProgrammeId)
+                    .Select(p => p.IssueDigitalStudentCard)
+                    .FirstOrDefault(),
+            })
+            .FirstOrDefaultAsync(ct);
+        if (enrolment is null) return Results.NotFound();
 
         var releasedDocTypeIds = await db.StudentDocuments
             .Where(d => d.EnrollmentId == enrollmentId && d.DeletedAt == null)
@@ -77,6 +87,8 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
         foreach (var (docTypeId, type) in LetterDocTypes)
         {
             if (onlyType is not null && type != onlyType) continue;
+            // The student ID card only exists for programmes that opted in.
+            if (type == LetterType.StudentIdCard && !enrolment.IssueCard) continue;
             // "Regenerate all" (no explicit type) only re-renders letters already
             // released. An explicit single-letter request (the per-row Generate
             // button) may issue one for the first time — used to back-fill a

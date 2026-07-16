@@ -22,4 +22,5 @@ public sealed record EmailMessage(
     IReadOnlyList<string>? Bcc = null,
     IReadOnlyList<EmailAttachment>? Attachments = null,
     string? FromEmail = null,
-    string? FromName = null);
+    string? FromName = null,
+    Guid? SchoolId = null);

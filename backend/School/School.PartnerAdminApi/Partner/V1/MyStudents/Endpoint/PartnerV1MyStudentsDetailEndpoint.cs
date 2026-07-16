@@ -32,6 +32,7 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
                 s.PassportId,
                 s.DateOfBirth,
                 s.HighestDegree,
+                s.DegreeSpecialization,
                 s.YearsWorkExperience,
                 s.NationalityId,
                 User = new { s.User.UserName, s.User.Email, s.User.EmailConfirmed },
@@ -276,6 +277,7 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
             background = new
             {
                 highestDegree = student.HighestDegree,
+                degreeSpecialization = student.DegreeSpecialization,
                 yearsWorkExperience = student.YearsWorkExperience,
                 languages,
             },

@@ -84,6 +84,14 @@ public sealed class AdminV1StudentsApproveGradesEndpoint : IEndpointMarker
         }
         try
         {
+            await letterRelease.ReleaseAsync(enrollmentId, LetterType.PrintableTranscript, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[Letters] Printable transcript release failed for enrollment {EnrollmentId}", enrollmentId);
+        }
+        try
+        {
             await letterRelease.ReleaseAsync(enrollmentId, LetterType.Certificate, ct);
         }
         catch (Exception ex)

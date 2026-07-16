@@ -1,6 +1,6 @@
 <template>
   <div class="cp-tab">
-    <p class="hint-text">Toggle specializations to grant or revoke this partner's access to IBSS core programmes. A partner can further disable individual specializations from their own portal.</p>
+    <p class="hint-text">Toggle specializations to grant or revoke this partner's access to MGW core programmes. A partner can further disable individual specializations from their own portal.</p>
 
     <div v-if="loading" class="loading-row">Loading…</div>
     <div v-else-if="error" class="err-banner">{{ error }}</div>
@@ -10,7 +10,7 @@
       <div v-for="p in programmes" :key="p.programmeId" class="prog-card">
         <div class="prog-head" @click="toggleOpen(p.programmeId)">
           <div>
-            <strong>{{ p.name }}</strong>
+            <strong>{{ p.name }}{{ p.schoolName ? ` (${p.schoolName})` : '' }}</strong>
             <span class="mono-code">{{ p.code }}</span>
           </div>
           <div>
@@ -27,7 +27,16 @@
             <span v-if="partnerDisabled(m.specializationId)" class="pill pill-muted" title="Partner has disabled this specialization from their portal">Partner-disabled</span>
           </div>
           <p v-if="specializationsByProg(p.programmeId).length === 0" class="empty-note">No specializations defined.</p>
-          <LetterButtonsRow :programme-id="p.programmeId" :programme-name="p.name" :partner-id="partnerId" />
+          <div class="card-toggle-row">
+            <label class="card-toggle">
+              <input type="checkbox" :checked="p.issueDigitalStudentCard" @change="toggleStudentCard(p, $event.target.checked)" />
+              Digital student card
+            </label>
+            <span v-if="cardErr[p.programmeId]" class="card-toggle-err">{{ cardErr[p.programmeId] }}</span>
+            <span v-else-if="cardSaved[p.programmeId]" class="card-toggle-ok">✓ Saved</span>
+          </div>
+          <LetterButtonsRow :programme-id="p.programmeId" :programme-name="p.name" :partner-id="partnerId"
+            :show-student-card="!!p.issueDigitalStudentCard" />
         </div>
       </div>
     </div>
@@ -95,6 +104,28 @@ async function load() {
 
 onMounted(load)
 watch(() => props.partnerId, load)
+
+// ── Digital student card toggle (admin drawer; Admission-only surface) ──────
+const cardErr = reactive({})
+const cardSaved = reactive({})
+async function toggleStudentCard(prog, checked) {
+  const id = prog.programmeId
+  cardErr[id] = ''
+  try {
+    // PUT overwrites awardEducationLevelId unconditionally, so echo it back.
+    await apiClient.put(`/v1/school/programmes/${id}`, {
+      name: prog.name,
+      code: prog.code,
+      awardEducationLevelId: prog.awardEducationLevelId ?? null,
+      issueDigitalStudentCard: checked,
+    })
+    prog.issueDigitalStudentCard = checked
+    cardSaved[id] = true
+    setTimeout(() => { cardSaved[id] = false }, 3000)
+  } catch (e) {
+    cardErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save'
+  }
+}
 </script>
 
 <style scoped>
@@ -116,4 +147,9 @@ watch(() => props.partnerId, load)
 .loading-row { padding: 1rem; color: #5f6e85; font-size: .9rem; }
 .err-banner { background: #fde7e5; color: #a8241e; padding: .55rem .8rem; border-radius: 6px; margin: .4rem 0; font-size: .88rem; }
 .empty-state-card { padding: 1rem; background: #f6f9fd; color: #5f6e85; border-radius: 8px; text-align: center; }
+
+.card-toggle-row { display: flex; align-items: center; gap: .7rem; padding: .35rem 0 0; }
+.card-toggle { display: flex; align-items: center; gap: .4rem; font-size: .8rem; font-weight: 600; color: #1a4d8c; cursor: pointer; }
+.card-toggle-ok { color: #1c7a4a; font-size: .76rem; font-weight: 600; }
+.card-toggle-err { color: #b42318; font-size: .76rem; }
 </style>

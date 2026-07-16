@@ -2,7 +2,7 @@
   <div class="page-wrapper">
     <!-- Navbar -->
     <nav class="navbar">
-      <span class="brand-text">IBSS Admin Portal</span>
+      <span class="brand-text">MGW Admin Portal</span>
       <div class="nav-right">
         <span class="nav-user">{{ auth.user?.displayName }}</span>
         <button class="btn-logout" @click="logout">Log out</button>
@@ -268,7 +268,7 @@ function generateStudentId(programme, seq) {
   const now = new Date()
   const yy = String(now.getFullYear()).slice(2)
   const mm = String(now.getMonth() + 1).padStart(2, '0')
-  return `IBSS.${code}.${yy}${mm}${String(seq).padStart(4, '0')}`
+  return `MGW.${code}.${yy}${mm}${String(seq).padStart(4, '0')}`
 }
 
 function submitStudent() {

@@ -25,6 +25,8 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
         public string? Name { get; init; }
         public int? MinDurationMonths { get; init; }
         public int? MaxDurationMonths { get; init; }
+        public decimal? RequiredEcts { get; init; }
+        public Guid? SchoolId { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
@@ -43,7 +45,7 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
 
             var source = await db.Programmes
                 .Where(p => p.ProgrammeId == sourceId && p.DeletedAt == null)
-                .Select(p => new { p.Name, p.Code, p.Description, p.AwardEducationLevelId, p.MinDurationMonths, p.MaxDurationMonths })
+                .Select(p => new { p.Name, p.Code, p.Description, p.AwardEducationLevelId, p.MinDurationMonths, p.MaxDurationMonths, p.RequiredEcts, p.SchoolId })
                 .FirstOrDefaultAsync(ct);
             if (source is null) return Results.BadRequest(new { error = "Source programme not found." });
 
@@ -57,6 +59,11 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
                 AwardEducationLevelId = source.AwardEducationLevelId,
                 MinDurationMonths = source.MinDurationMonths,
                 MaxDurationMonths = source.MaxDurationMonths,
+                // A clone inherits the source's completion threshold; the partner
+                // can adjust it afterwards.
+                RequiredEcts = source.RequiredEcts,
+                // Clone inherits the source's school unless the caller overrides.
+                SchoolId = body.SchoolId ?? source.SchoolId,
             });
 
             var sourceSpecs = await db.Specializations
@@ -148,6 +155,9 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
                 return Results.BadRequest(new { error = "minDurationMonths and maxDurationMonths are required." });
             if (body.MinDurationMonths < 1 || body.MaxDurationMonths < body.MinDurationMonths)
                 return Results.BadRequest(new { error = "Invalid duration range: need 1 ≤ min ≤ max." });
+            if (body.SchoolId is not { } schoolId
+                || !await db.Schools.AnyAsync(s => s.SchoolId == schoolId && s.DeletedAt == null, ct))
+                return Results.BadRequest(new { error = "A valid school is required." });
 
             db.Programmes.Add(new Programme
             {
@@ -158,6 +168,8 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
                 Description = string.Empty,
                 MinDurationMonths = body.MinDurationMonths.Value,
                 MaxDurationMonths = body.MaxDurationMonths.Value,
+                RequiredEcts = body.RequiredEcts,
+                SchoolId = schoolId,
             });
         }
 

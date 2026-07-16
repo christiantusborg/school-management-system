@@ -27,6 +27,9 @@ public sealed class PartnerV1MyProgramsDetailEndpoint : IEndpointMarker
                 p.Code,
                 p.MinDurationMonths,
                 p.MaxDurationMonths,
+                p.RequiredEcts,
+                p.SchoolId,
+                SchoolName = p.School != null ? p.School.Name : null,
             })
             .FirstOrDefaultAsync(ct);
         if (programme is null) return Results.NotFound();
@@ -57,6 +60,7 @@ public sealed class PartnerV1MyProgramsDetailEndpoint : IEndpointMarker
                         code = sub.Code,
                         name = sub.Name,
                         ects = sub.Ects,
+                        isThesis = sub.IsThesis,
                     })
                     .ToList(),
             })
@@ -69,6 +73,9 @@ public sealed class PartnerV1MyProgramsDetailEndpoint : IEndpointMarker
             code = programme.Code,
             minDurationMonths = programme.MinDurationMonths,
             maxDurationMonths = programme.MaxDurationMonths,
+            requiredEcts = programme.RequiredEcts,
+            schoolId = programme.SchoolId,
+            schoolName = programme.SchoolName,
             status = MyProgramsHelpers.StatusLabel(status?.Status ?? MyProgramsHelpers.StatusDraft),
             isActive = status?.IsActive ?? false,
             isDisabledByAdmin = status?.IsDisabledByAdmin ?? false,

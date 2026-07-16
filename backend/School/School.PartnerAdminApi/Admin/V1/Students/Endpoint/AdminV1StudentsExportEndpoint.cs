@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using ClosedXML.Excel;
+using Odin.Api.Base.Payments;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 
@@ -140,7 +141,10 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         DateTime? TranscriptDate,
         DateTime? CertificateDate,
         DateTime? ProvisionalCertificateDate,
-        decimal? TuitionFeeUsd,
+        decimal? TuitionFee,
+        decimal? AdditionalFees,
+        decimal? TotalFees,
+        string? FeeCurrency,
         string? InstructionLanguage,
         string? PathwayName,
         int? PathwayMinYearsExperience,
@@ -148,9 +152,10 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         int? DocsUploaded,
         int? DocsVerified,
         int? DocsRejected,
-        decimal? TotalDueUsd,
-        decimal? TotalPaidUsd,
-        decimal? OutstandingUsd,
+        int? NumberOfPayments,
+        int? PaymentsPaid,
+        decimal? TotalPaid,
+        decimal? Outstanding,
         DateTime? CurrentStatusEnteredAt,
         int? DaysInCurrentStatus,
         int? DaysSinceApplication);
@@ -331,19 +336,24 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                 })
                 .ToListAsync(ct);
 
-        // Payment sums per enrolment. TotalPaid = sum of amounts whose
-        // PaymentDateAt is set (we treat them as fully paid because the
-        // schema has no partial-payment column today).
+        // Fee + installment sums per enrolment, from the Admission-Office
+        // payment plan (the Payment tab). TotalPaid = sum of installments
+        // ticked paid; Outstanding = tuition minus paid, matching the tab.
         var paymentSums = enrolmentIds.Count == 0
             ? new()
-            : await db.Set<EnrollmentPayment>()
-                .Where(p => enrolmentIds.Contains(p.StudentEnrollmentId))
-                .GroupBy(p => p.StudentEnrollmentId)
-                .Select(g => new
+            : await db.EnrollmentPaymentPlans
+                .Where(p => enrolmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null)
+                .Select(p => new
                 {
-                    EnrollmentId = g.Key,
-                    TotalDue  = g.Sum(p => p.PaymentDueAmount),
-                    TotalPaid = g.Where(p => p.PaymentDateAt != null).Sum(p => p.PaymentDueAmount),
+                    EnrollmentId = p.StudentEnrollmentId,
+                    p.TotalTuitionFee,
+                    p.Currency,
+                    NumberOfPayments = p.Installments.Count,
+                    PaymentsPaid = p.Installments.Count(i => i.IsPaid),
+                    TotalPaid = p.Installments.Where(i => i.IsPaid).Sum(i => (decimal?)i.Amount) ?? 0m,
+                    // Line sums live in JSON — computed in memory below.
+                    AdditionalInvoices = p.AdditionalInvoices
+                        .Select(a => new { a.LinesJson, a.IsPaid }).ToList(),
                 })
                 .ToListAsync(ct);
 
@@ -361,9 +371,12 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                     var ps = paymentSums.FirstOrDefault(p => p.EnrollmentId == e.StudentEnrollmentId);
                     var applicationDate = FirstAt(e.StudentEnrollmentId, EnrollmentStatusIds.ApplicationSubmitted);
                     var currentEnteredAt = LastAt(e.StudentEnrollmentId, e.StatusId);
-                    decimal? totalDue = ps?.TotalDue;
-                    decimal? totalPaid = ps?.TotalPaid;
-                    decimal? outstanding = totalDue is null ? null : totalDue - (totalPaid ?? 0m);
+                    decimal? additionalFees = ps is null ? null
+                        : ps.AdditionalInvoices.Sum(a => AdditionalInvoiceLines.Total(a.LinesJson));
+                    decimal? totalPaid = ps is null ? null
+                        : ps.TotalPaid + ps.AdditionalInvoices.Where(a => a.IsPaid).Sum(a => AdditionalInvoiceLines.Total(a.LinesJson));
+                    decimal? outstanding = ps is null ? null : ps.TotalTuitionFee + (additionalFees ?? 0m) - (totalPaid ?? 0m);
+                    decimal? totalFees = ps is null ? null : ps.TotalTuitionFee + (additionalFees ?? 0m);
 
                     return new ExportEnrolment(
                         e.StudentEnrollmentId,
@@ -386,7 +399,10 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                         LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.Transcript),
                         LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.Certificate),
                         LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.ProvisionalCertificate),
-                        e.TuitionFeeUsd,
+                        ps?.TotalTuitionFee,
+                        additionalFees,
+                        totalFees,
+                        ps?.Currency,
                         e.InstructionLanguage,
                         e.PathwayName,
                         e.PathwayMinYears,
@@ -394,7 +410,8 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                         dc?.Total,
                         dc?.Verified,
                         dc?.Rejected,
-                        totalDue,
+                        ps?.NumberOfPayments,
+                        ps?.PaymentsPaid,
                         totalPaid,
                         outstanding,
                         currentEnteredAt,
@@ -518,10 +535,14 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         new("transcriptDate",      "Transcript date",  true,  (_, e) => Iso(e?.TranscriptDate)),
         new("certificateDate",     "Certificate date", true,  (_, e) => Iso(e?.CertificateDate)),
         new("provisionalCertificateDate", "Provisional certificate date", true, (_, e) => Iso(e?.ProvisionalCertificateDate)),
-        new("tuitionFeeUsd",       "Tuition fee (USD)",true,  (_, e) => e?.TuitionFeeUsd),
-        new("totalDueUsd",         "Total due (USD)",  true,  (_, e) => e?.TotalDueUsd),
-        new("totalPaidUsd",        "Total paid (USD)", true,  (_, e) => e?.TotalPaidUsd),
-        new("outstandingUsd",      "Outstanding (USD)",true,  (_, e) => e?.OutstandingUsd),
+        new("tuitionFee",          "Tuition fee",      true,  (_, e) => e?.TuitionFee),
+        new("additionalFees",      "Additional fees",  true,  (_, e) => e?.AdditionalFees),
+        new("totalFees",           "Total fees",       true,  (_, e) => e?.TotalFees),
+        new("feeCurrency",         "Fee currency",     true,  (_, e) => e?.FeeCurrency),
+        new("numberOfPayments",    "Number of payments", true, (_, e) => e?.NumberOfPayments),
+        new("paymentsPaid",        "Payments paid",    true,  (_, e) => e?.PaymentsPaid),
+        new("totalPaid",           "Total paid",       true,  (_, e) => e?.TotalPaid),
+        new("outstanding",         "Outstanding",      true,  (_, e) => e?.Outstanding),
         new("docsUploaded",        "Docs uploaded",    true,  (_, e) => e?.DocsUploaded),
         new("docsVerified",        "Docs verified",    true,  (_, e) => e?.DocsVerified),
         new("docsRejected",        "Docs rejected",    true,  (_, e) => e?.DocsRejected),

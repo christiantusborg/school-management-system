@@ -1,7 +1,7 @@
 <template>
   <div class="student-portal">
     <nav class="navbar">
-      <div class="navbar-brand">IBSS Student Portal — {{ displayName }}</div>
+      <div class="navbar-brand">MGW Student Portal — {{ displayName }}</div>
       <button class="btn-logout" @click="logout">Log Out</button>
     </nav>
 
@@ -150,7 +150,7 @@
             <div class="doc-mini" :class="{ disabled: !canDownloadTranscript(enr) && !inGrading(enr) }">
               <div class="doc-mini-icon">📑</div>
               <div class="doc-mini-info">
-                <div class="doc-mini-name">Transcript</div>
+                <div class="doc-mini-name">Digital Transcript</div>
                 <div class="doc-mini-sub">
                   {{ canDownloadTranscript(enr) ? 'Ready'
                      : inGrading(enr) ? 'Provisional available while grading'
@@ -188,6 +188,12 @@
       :enrollment-id="additionalDialog.enrollmentId"
       @close="additionalDialog.open = false"
       @uploaded="onAdditionalUploaded" />
+
+    <!-- Assigned intake forms (admin-authored questionnaires) -->
+    <div class="tab-content" style="padding-top:0;">
+      <h2 style="font-size:1rem; color:#0b2e59; margin:0 0 .5rem;">Forms</h2>
+      <IntakeFillPanel api-base="/v1/student/me/intake-forms" />
+    </div>
   </div>
 </template>
 
@@ -195,6 +201,7 @@
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import EnrollmentActivityLog from '../components/letters/EnrollmentActivityLog.vue'
+import IntakeFillPanel from '../components/intake/IntakeFillPanel.vue'
 import AdditionalDocumentUploadDialog from '../components/letters/AdditionalDocumentUploadDialog.vue'
 import { auth } from '../store/auth.js'
 import api from '../api/client.js'

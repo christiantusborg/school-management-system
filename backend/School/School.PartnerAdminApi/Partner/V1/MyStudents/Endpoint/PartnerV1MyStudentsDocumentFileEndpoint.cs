@@ -39,9 +39,10 @@ public sealed class PartnerV1MyStudentsDocumentFileEndpoint : IEndpointMarker
             .FirstOrDefaultAsync(ct);
         if (doc is null) return Results.NotFound();
 
-        // Only the Admission Office may download the printable certificate.
-        if (doc.DocumentTypeId == SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.ProvisionalCertificate)
-            return Results.Json(new { error = "The printable certificate is available from the Admission Office only." },
+        // The printable certificate and printable transcript are Admission-Office only.
+        if (doc.DocumentTypeId == SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.ProvisionalCertificate
+            || doc.DocumentTypeId == SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.PrintableTranscript)
+            return Results.Json(new { error = "This document is available from the Admission Office only." },
                 statusCode: StatusCodes.Status403Forbidden);
 
         // Resolve the storage key. New uploads carry it; legacy rows fall

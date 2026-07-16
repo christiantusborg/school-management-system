@@ -33,6 +33,7 @@ public sealed class SchoolSubjectsV1ListEndpoint : IEndpointMarker
                 name = s.Name,
                 description = s.Description,
                 ects = s.Ects,
+                isThesis = s.IsThesis,
                 deletedAt = s.DeletedAt,
             })
             .ToListAsync(cancellationToken);

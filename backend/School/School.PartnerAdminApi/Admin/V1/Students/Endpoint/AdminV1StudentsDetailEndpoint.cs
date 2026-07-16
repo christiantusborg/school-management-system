@@ -25,10 +25,14 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 s.StudentId,
                 s.StudentNumber,
                 s.IsLegacyStudent,
+                s.MoodleEnabled,
+                s.MoodleUsername,
+                s.MoodlePassword,
                 s.UserId,
                 s.PassportId,
                 s.DateOfBirth,
                 s.HighestDegree,
+                s.DegreeSpecialization,
                 s.YearsWorkExperience,
                 s.NationalityId,
                 s.PartnerId,
@@ -60,6 +64,9 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 documentTypeName = d.DocumentType.Name,
                 fileName = d.FileName,
                 uploadedAt = d.UploadedAt,
+                aiConfidence = d.AiConfidence,
+                aiFraudRisk = d.AiFraudRisk,
+                aiScannable = !d.DocumentType.IsSystemGenerated,
                 status = d.CurrentStatus.Code,
                 statusName = d.CurrentStatus.Name,
                 isVerified = d.CurrentStatus.Code == "VerifiedByPartner"
@@ -115,6 +122,9 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             d.documentTypeName,
             d.fileName,
             d.uploadedAt,
+            d.aiConfidence,
+            d.aiFraudRisk,
+            d.aiScannable,
             d.status,
             d.statusName,
             d.isVerified,
@@ -175,6 +185,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 offerLetterDate = e.OfferLetterDate,
                 admissionLetterDate = e.AdmissionLetterDate,
                 transcriptDate = e.TranscriptDate,
+                graduationDate = e.GraduationDate,
                 pathwayId = (int?)e.PathwayId,
                 modeOfStudyId = e.ModeOfStudyId,
                 modeOfStudyName = e.ModeOfStudy.Name,
@@ -222,6 +233,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             e.offerLetterDate,
             e.admissionLetterDate,
             e.transcriptDate,
+            e.graduationDate,
             e.pathwayId,
             e.modeOfStudyId,
             e.modeOfStudyName,
@@ -237,9 +249,15 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 offerLetter            = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.OfferLetter),
                 admissionLetter        = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.AdmissionLetter),
                 transcript             = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.Transcript),
+                printableTranscript    = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.PrintableTranscript),
                 certificate            = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.Certificate),
                 provisionalCertificate = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.ProvisionalCertificate),
+                studentIdCard          = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.StudentIdCard),
             },
+            issueDigitalStudentCard = db.Programmes
+                .Where(p => p.ProgrammeId == e.programmeId)
+                .Select(p => p.IssueDigitalStudentCard)
+                .FirstOrDefault(),
         }).ToList();
 
         var languages = await db.UserLanguages
@@ -256,6 +274,9 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             studentId = student.StudentId,
             studentNumber = student.StudentNumber,
             isLegacyStudent = student.IsLegacyStudent,
+            moodleEnabled = student.MoodleEnabled,
+            moodleUsername = student.MoodleUsername,
+            moodlePassword = student.MoodlePassword,
             partner = new { partnerId = student.PartnerId, name = student.PartnerName },
             account = new
             {
@@ -283,6 +304,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             background = new
             {
                 highestDegree = student.HighestDegree,
+                degreeSpecialization = student.DegreeSpecialization,
                 yearsWorkExperience = student.YearsWorkExperience,
                 languages,
             },

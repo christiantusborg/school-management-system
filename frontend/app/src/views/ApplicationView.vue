@@ -1,7 +1,7 @@
 <template>
   <div class="app-page">
     <nav class="navbar">
-      <span class="brand">IBSS Application</span>
+      <span class="brand">MGW Application</span>
       <div class="nav-right">
         <span class="user">{{ auth.user?.displayName }}</span>
         <button class="btn-logout" @click="logout">Log out</button>

@@ -1,3 +1,6 @@
+using Odin.Api.Base.Letters;
+using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
+
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 
 /// <summary>
@@ -10,14 +13,6 @@ namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 [EndpointTag("Admin.Students")]
 public sealed class AdminV1StudentsSaveGradesEndpoint : IEndpointMarker
 {
-    private static readonly HashSet<Guid> AllowedStatuses = new()
-    {
-        EnrollmentStatusIds.AcceptOffer,
-        EnrollmentStatusIds.ApplicationApprovedAdmission,
-        EnrollmentStatusIds.AcceptAdmission,
-        EnrollmentStatusIds.AwaitingGradesSubmit,
-    };
-
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
         app.MapPost("/v1/admin/students/{studentId:guid}/enrollments/{enrollmentId:guid}/grades/draft", HandleAsync)
@@ -34,11 +29,12 @@ public sealed class AdminV1StudentsSaveGradesEndpoint : IEndpointMarker
     public sealed class SaveGradesRequest
     {
         public List<GradeEntry>? Items { get; init; }
+        public string? ProjectTitle { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId, [FromBody] SaveGradesRequest body,
-        OdinDbContext db, CancellationToken ct)
+        OdinDbContext db, LetterReleaseService letterRelease, CancellationToken ct)
     {
         var enrolment = await db.Enrollments
             .FirstOrDefaultAsync(e => e.StudentEnrollmentId == enrollmentId
@@ -46,9 +42,11 @@ public sealed class AdminV1StudentsSaveGradesEndpoint : IEndpointMarker
                 && e.DeletedAt == null, ct);
         if (enrolment is null) return Results.NotFound();
 
-        if (!AllowedStatuses.Contains(enrolment.StatusId))
-            return Results.BadRequest(new { error = "This enrolment isn't in the grading stage." });
-
+        // No status gate for the Admission Office: a draft save never changes
+        // the enrolment status, so scores may be entered/corrected at ANY
+        // stage (even before offer acceptance or after grade approval) and
+        // previewed on the provisional transcript. Submission and the
+        // partner-side save keep their stricter gates.
         var entries = body.Items ?? new();
         var validSet = (await db.Subjects
             .Where(s => s.SpecializationId == enrolment.SpecializationId && s.DeletedAt == null)
@@ -89,8 +87,31 @@ public sealed class AdminV1StudentsSaveGradesEndpoint : IEndpointMarker
             }
         }
 
+        enrolment.ProjectTitle = string.IsNullOrWhiteSpace(body.ProjectTitle) ? null : body.ProjectTitle.Trim();
+
         // Draft save: no status change, no audit note (silent, repeatable).
         await db.SaveChangesAsync(ct);
+
+        // Grade-bearing letters that were already released must never go
+        // stale: re-render each one automatically from the new scores.
+        // Best-effort — a render failure never fails the grade save.
+        foreach (var (docTypeId, type) in new[]
+        {
+            (SystemDocumentTypeIds.Transcript, LetterType.Transcript),
+            (SystemDocumentTypeIds.PrintableTranscript, LetterType.PrintableTranscript),
+            (SystemDocumentTypeIds.Certificate, LetterType.Certificate),
+            (SystemDocumentTypeIds.ProvisionalCertificate, LetterType.ProvisionalCertificate),
+        })
+        {
+            var released = await db.StudentDocuments.AnyAsync(d =>
+                d.EnrollmentId == enrollmentId && d.DocumentTypeId == docTypeId && d.DeletedAt == null, ct);
+            if (released)
+            {
+                try { await letterRelease.ReleaseAsync(enrollmentId, type, ct); }
+                catch { /* keep the grade save even if a re-render fails */ }
+            }
+        }
+
         return Results.Ok(new { enrollmentId, saved = entries.Count, statusUnchanged = true });
     }
 }

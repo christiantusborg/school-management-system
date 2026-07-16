@@ -35,6 +35,17 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
         public int? MinDurationMonths { get; init; }
         public int? MaxDurationMonths { get; init; }
         /// <summary>
+        /// ECTS credits required to complete the programme (grade-submission
+        /// threshold). Admission can set/edit this at any time. Omit to leave
+        /// unchanged on update.
+        /// </summary>
+        public decimal? RequiredEcts { get; init; }
+        /// <summary>Awarding school. Required on create; omit on update to keep.</summary>
+        public Guid? SchoolId { get; init; }
+        /// <summary>When true, enrolments under this programme get a Digital
+        /// Student Card letter. Omit on update to leave unchanged.</summary>
+        public bool? IssueDigitalStudentCard { get; init; }
+        /// <summary>
         /// Partner the programme belongs to. null = core (admin-shared) programme.
         /// </summary>
         public Guid? OwnerPartnerId { get; init; }
@@ -69,6 +80,9 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
             AwardEducationLevelId = body.AwardEducationLevelId,
             MinDurationMonths = body.MinDurationMonths!.Value,
             MaxDurationMonths = body.MaxDurationMonths!.Value,
+            RequiredEcts = body.RequiredEcts,
+            SchoolId = body.SchoolId,
+            IssueDigitalStudentCard = body.IssueDigitalStudentCard ?? false,
         };
         db.Programmes.Add(entity);
 
@@ -90,7 +104,7 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
     {
         var prog = await db.Programmes
             .Where(p => p.ProgrammeId == id)
-            .Select(p => new { p.ProgrammeId, p.Code, p.Name, p.Description, p.OwnerId, p.AwardEducationLevelId, p.MinDurationMonths, p.MaxDurationMonths, p.DeletedAt })
+            .Select(p => new { p.ProgrammeId, p.Code, p.Name, p.Description, p.OwnerId, p.AwardEducationLevelId, p.MinDurationMonths, p.MaxDurationMonths, p.RequiredEcts, p.SchoolId, SchoolName = p.School != null ? p.School.Name : null, p.IssueDigitalStudentCard, p.DeletedAt })
             .FirstOrDefaultAsync(ct);
         if (prog is null) return Results.NotFound();
 
@@ -109,6 +123,10 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
             awardEducationLevelId = prog.AwardEducationLevelId,
             minDurationMonths = prog.MinDurationMonths,
             maxDurationMonths = prog.MaxDurationMonths,
+            requiredEcts = prog.RequiredEcts,
+            schoolId = prog.SchoolId,
+            schoolName = prog.SchoolName,
+            issueDigitalStudentCard = prog.IssueDigitalStudentCard,
             deletedAt = prog.DeletedAt,
             pathwayIds,
         });
@@ -121,7 +139,9 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
         if (prog is null) return Results.NotFound();
 
         if (!string.IsNullOrWhiteSpace(body.Name)) prog.Name = body.Name.Trim();
-        if (!string.IsNullOrWhiteSpace(body.Code)) prog.Code = body.Code.Trim().ToUpperInvariant();
+        // Preserve the code exactly as entered (mixed-case partner codes like
+        // "ADipDMPE" must survive an admin rename); just trim whitespace.
+        if (!string.IsNullOrWhiteSpace(body.Code)) prog.Code = body.Code.Trim();
         if (body.Description is not null)          prog.Description = body.Description;
         // Allow explicit clear-to-null on the award level (PATCH-style behaviour
         // would be cleaner, but PUT here accepts null as "no award").
@@ -134,6 +154,16 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
         if (ValidateDurationRange(newMin, newMax) is { } durErr) return durErr;
         prog.MinDurationMonths = newMin;
         prog.MaxDurationMonths = newMax;
+
+        // Completion threshold: omit to leave unchanged; a supplied value must
+        // be non-negative. Admission can edit this at any time.
+        if (body.RequiredEcts is { } reqEcts)
+        {
+            if (reqEcts < 0) return Results.BadRequest(new { message = "requiredEcts cannot be negative" });
+            prog.RequiredEcts = reqEcts;
+        }
+        if (body.SchoolId is { } schoolId) prog.SchoolId = schoolId;
+        if (body.IssueDigitalStudentCard is { } issueCard) prog.IssueDigitalStudentCard = issueCard;
 
         if (body.PathwayIds is not null)
         {

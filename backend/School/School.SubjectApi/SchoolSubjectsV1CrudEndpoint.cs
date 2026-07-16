@@ -12,7 +12,27 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
         app.MapDelete("/v1/school/subjects/{id:guid}",           SoftDeleteAsync).RequireAuthorization();
         app.MapPost("/v1/school/subjects/{id:guid}/restore",     RestoreAsync).RequireAuthorization();
         app.MapDelete("/v1/school/subjects/{id:guid}/permanent", PermanentDeleteAsync).RequireAuthorization();
+        app.MapPut("/v1/school/subjects/{id:guid}/thesis",       SetThesisAsync).RequireAuthorization();
         return app;
+    }
+
+    /// <summary>
+    /// Marks this subject as THE thesis of its specialization, atomically
+    /// clearing the flag on every sibling — a specialization has at most one
+    /// thesis subject (radio-button semantics in the admin drawer).
+    /// </summary>
+    private static async Task<IResult> SetThesisAsync(Guid id, OdinDbContext db, CancellationToken ct)
+    {
+        var subject = await db.Subjects.FirstOrDefaultAsync(s => s.SubjectId == id && s.DeletedAt == null, ct);
+        if (subject is null) return Results.NotFound();
+
+        var siblings = await db.Subjects
+            .Where(s => s.SpecializationId == subject.SpecializationId && s.DeletedAt == null)
+            .ToListAsync(ct);
+        foreach (var s in siblings) s.IsThesis = s.SubjectId == id;
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(new { subjectId = id, specializationId = subject.SpecializationId, isThesis = true });
     }
 
     public sealed class WriteRequest
@@ -22,6 +42,7 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
         public string? Name { get; init; }
         public string? Description { get; init; }
         public decimal? Ects { get; init; }
+        public bool? IsThesis { get; init; }
     }
 
     private static async Task<IResult> CreateAsync(
@@ -40,6 +61,7 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
                 : body.Code.Trim().ToUpperInvariant(),
             Description = body.Description ?? string.Empty,
             Ects = body.Ects ?? 0,
+            IsThesis = body.IsThesis ?? false,
             IsActive = DateTime.UtcNow,
         };
         db.Subjects.Add(entity);
@@ -60,6 +82,7 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
                 name = x.Name,
                 description = x.Description,
                 ects = x.Ects,
+                isThesis = x.IsThesis,
                 deletedAt = x.DeletedAt,
             })
             .FirstOrDefaultAsync(ct);
@@ -76,6 +99,7 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
         if (!string.IsNullOrWhiteSpace(body.Code)) entity.Code = body.Code.Trim().ToUpperInvariant();
         if (body.Description is not null) entity.Description = body.Description;
         if (body.Ects is not null) entity.Ects = body.Ects.Value;
+        if (body.IsThesis is not null) entity.IsThesis = body.IsThesis.Value;
 
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { subjectId = id });

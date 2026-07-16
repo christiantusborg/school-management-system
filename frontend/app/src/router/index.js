@@ -11,6 +11,8 @@ import AdminStudentView  from '../views/AdminStudentView.vue'
 import AdminConfigView   from '../views/AdminConfigView.vue'
 import AdminAcademicView from '../views/AdminAcademicView.vue'
 import StudentView       from '../views/StudentView.vue'
+import PublicVerifyView  from '../views/PublicVerifyView.vue'
+import AdminQuestionnairesView from '../views/AdminQuestionnairesView.vue'
 import { auth } from '../store/auth.js'
 
 const routes = [
@@ -18,6 +20,8 @@ const routes = [
   { path: '/login', component: LoginView },
   { path: '/apply', component: ApplyView },
   { path: '/apply/verify-email', component: VerifyEmailView },
+  { path: '/verify', component: PublicVerifyView },
+  { path: '/f/:slug', component: () => import('../views/PublicFormFillView.vue') },
   {
     path: '/student/application',
     component: ApplicationView,
@@ -37,6 +41,14 @@ const routes = [
   {
     path: '/admin/config',
     component: AdminConfigView,
+    beforeEnter: () => {
+      if (!auth.user) return '/login'
+      if (!auth.isEmployee) return '/partner'
+    },
+  },
+  {
+    path: '/admin/questionnaires',
+    component: AdminQuestionnairesView,
     beforeEnter: () => {
       if (!auth.user) return '/login'
       if (!auth.isEmployee) return '/partner'

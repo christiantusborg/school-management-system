@@ -37,6 +37,7 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
                 s.PassportId,
                 s.DateOfBirth,
                 s.HighestDegree,
+                s.DegreeSpecialization,
                 s.YearsWorkExperience,
                 s.NationalityId,
                 User = new { s.User.UserName, s.User.Email, s.User.EmailConfirmed },
@@ -360,6 +361,7 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
             background = new
             {
                 highestDegree = student.HighestDegree,
+                degreeSpecialization = student.DegreeSpecialization,
                 yearsWorkExperience = student.YearsWorkExperience,
             },
             enrollments = ordered,

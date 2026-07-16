@@ -2,7 +2,7 @@
   <div class="page-wrapper">
     <!-- Navbar -->
     <nav class="navbar">
-      <span class="brand-text">IBSS Partner Portal &nbsp;—&nbsp; {{ auth.user?.name }}</span>
+      <span class="brand-text">MGW Partner Portal &nbsp;—&nbsp; {{ auth.user?.name }}</span>
       <div class="nav-right">
         <router-link class="btn-logout btn-nav-link" to="/partner/change-password">Change password</router-link>
         <button class="btn-logout" @click="logout">Log out</button>
@@ -25,6 +25,8 @@
         <span v-if="pendingProgCount" class="tab-badge">{{ pendingProgCount }}</span>
       </button>
       <button :class="['main-tab-btn', { active: mainTab === 'users' }]" @click="mainTab = 'users'">My Users</button>
+      <button :class="['main-tab-btn', { active: mainTab === 'forms' }]" @click="mainTab = 'forms'">Forms</button>
+      <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Certificates</button>
     </div>
 
     <!-- ══ MY CORE PROGRAMMES TAB ══════════════════════════════════════════════ -->
@@ -32,18 +34,18 @@
       <div class="page-header">
         <div>
           <h1 class="page-title">My Core Programmes</h1>
-          <p class="page-sub">Programmes granted to you by IBSS admin. Disable any specialization you don't currently offer — it will be hidden from new enrolments.</p>
+          <p class="page-sub">Programmes granted to you by MGW admin. Disable any specialization you don't currently offer — it will be hidden from new enrolments.</p>
         </div>
       </div>
 
       <div v-if="coreAccessLoading" class="loading-row">Loading…</div>
       <div v-else-if="coreAccessError" class="err-banner">{{ coreAccessError }}</div>
-      <div v-else-if="coreAccessItems.length === 0" class="empty-state-card">No programme access has been granted yet. Contact your IBSS admin.</div>
+      <div v-else-if="coreAccessItems.length === 0" class="empty-state-card">No programme access has been granted yet. Contact your MGW admin.</div>
 
       <div v-else class="core-groups">
         <div v-for="group in coreAccessGrouped" :key="group.programmeId" class="core-group">
           <div class="core-group-head">
-            <strong>{{ group.programmeName }}</strong>
+            <strong>{{ group.programmeName }}{{ group.schoolName ? ` (${group.schoolName})` : '' }}</strong>
             <span class="core-count">{{ group.specializations.length }} specialization{{ group.specializations.length === 1 ? '' : 's' }}</span>
           </div>
           <div class="core-specialization-list">
@@ -116,7 +118,7 @@
           <div class="search-hint-tip">
             <strong>Fuzzy search</strong> — characters don't need to be consecutive.<br>
             <code>jnd</code> matches <em>Jane Doe</em><br>
-            <code>ibsmba</code> matches <em>IBSS.MBA.23110102</em><br>
+            <code>mgwmba</code> matches <em>MGW.MBA.23110102</em><br>
             Works on both full name and student ID.
           </div>
         </div>
@@ -228,7 +230,7 @@
                   <span :class="['enr-status-badge', enrollStatusClass(enr.enrollmentStatus)]">
                     {{ enr.enrollmentStatus }}
                   </span>
-                  <div class="status-note">Set by IBSS Admin</div>
+                  <div class="status-note">Set by MGW Admin</div>
                 </td>
                 <!-- Col 3: Academic Progress -->
                 <td class="td-acad">
@@ -250,7 +252,7 @@
                     <div class="ap-lbl">Other Fees</div>
                     <span :class="['pay-chip', payChipClass(enr.otherFeesStatus)]">{{ enr.otherFeesStatus }}</span>
                   </div>
-                  <div class="status-note">Managed by IBSS Admin</div>
+                  <div class="status-note">Managed by MGW Admin</div>
                 </td>
                 <!-- Col 5: Notes on Changes (read-only list) -->
                 <td class="td-notes">
@@ -331,7 +333,7 @@
       <div class="page-header">
         <div>
           <h1 class="page-title">My Programs</h1>
-          <p class="page-sub">Clone IBSS core programmes, customise them, and submit for approval. Students can only be enrolled in approved programmes.</p>
+          <p class="page-sub">Clone MGW core programmes, customise them, and submit for approval. Students can only be enrolled in approved programmes.</p>
         </div>
         <div style="display:flex;gap:.6rem">
           <button class="btn-primary" @click="showCloneModal = true">+ Clone a Core Programme</button>
@@ -352,7 +354,7 @@
         <!-- Card header — always visible -->
         <div class="prog-card-header">
           <div class="prog-card-info">
-            <strong class="prog-card-name">{{ clone.name }}</strong>
+            <strong class="prog-card-name">{{ clone.name }}{{ clone.schoolName ? ` (${clone.schoolName})` : '' }}</strong>
             <span class="badge-code-p">{{ clone.code }}</span>
             <span :class="progStatusClass(clone.status)">{{ progStatusLabel(clone.status) }}</span>
             <span v-if="clone.isDisabledByAdmin" class="prog-admin-disabled-pill">Disabled by Admin</span>
@@ -363,7 +365,7 @@
           </div>
           <div class="prog-card-actions">
             <template v-if="clone.isDisabledByAdmin">
-              <span class="prog-approved-note">Locked by IBSS Admin</span>
+              <span class="prog-approved-note">Locked by MGW Admin</span>
               <button class="btn-act-p btn-view-p" @click="toggleProgEdit(clone.id)">
                 {{ expandedProg === clone.id ? '▲ Collapse' : '▾ View Details' }}
               </button>
@@ -394,7 +396,7 @@
         </div>
 
         <div v-if="clone.isDisabledByAdmin" class="prog-admin-disabled-banner">
-          &#128274; This programme has been disabled by IBSS Admin. It is read-only and not available to students. Contact IBSS if you believe this is in error.
+          &#128274; This programme has been disabled by MGW Admin. It is read-only and not available to students. Contact MGW if you believe this is in error.
         </div>
 
         <!-- Rejection reason -->
@@ -408,7 +410,7 @@
           <!-- ── EDITABLE (draft / rejected / approved-no-enrolments) ── -->
           <template v-if="isProgEditable(clone)">
             <div v-if="clone.status === 'approved'" class="prog-readonly-notice" style="background:#fff7e0;color:#8a6d00">
-              &#9888; Editing will flip this approved programme back to Pending IBSS review.
+              &#9888; Editing will flip this approved programme back to Pending MGW review.
             </div>
             <div class="prog-edit-row">
               <label class="prog-edit-label">Programme Name</label>
@@ -417,6 +419,22 @@
             <div class="prog-edit-row">
               <label class="prog-edit-label">Programme Code</label>
               <input v-model="clone.code" class="prog-edit-input" placeholder="Unique code…" />
+            </div>
+            <div class="prog-edit-row">
+              <label class="prog-edit-label">School</label>
+              <select v-model="clone.schoolId" class="prog-edit-input">
+                <option :value="null">— select a school —</option>
+                <option v-for="s in schools" :key="s.schoolId" :value="s.schoolId">{{ s.name }}</option>
+              </select>
+            </div>
+            <div class="prog-edit-row">
+              <label class="prog-edit-label">ECTS to complete</label>
+              <input v-model.number="clone.requiredEcts" type="number" min="0" step="0.5"
+                     class="prog-edit-input" placeholder="e.g. 120" />
+            </div>
+            <div class="prog-edit-row">
+              <label class="prog-edit-label"></label>
+              <small class="muted">Credits a student must complete before grades can be submitted. Admission can adjust this later.</small>
             </div>
 
             <div class="prog-edit-row pathway-row-toggle" @click="togglePathwayPanel(clone.id)">
@@ -461,12 +479,14 @@
                     <input v-model="s.code" class="inp-s-code" placeholder="e.g. MBA501" />
                     <input v-model="s.name" class="inp-s-name" placeholder="Module name" />
                     <input v-model.number="s.ects" class="inp-s-cr" type="number" min="1" placeholder="15" />
+                    <label class="thesis-chk-p" title="Thesis / dissertation module"><input type="checkbox" v-model="s.isThesis" /> Thesis</label>
                     <button class="btn-x-s" @click="removeSubjFromMaj(maj, s.id)">✕</button>
                   </div>
                   <div class="prog-add-subj-row">
                     <input v-model="newSubjForms[clone.id + maj.id + '_code']" class="inp-s-code" placeholder="Code" />
                     <input v-model="newSubjForms[clone.id + maj.id + '_n']" class="inp-s-name" placeholder="Module name" />
                     <input v-model.number="newSubjForms[clone.id + maj.id + '_c']" class="inp-s-cr" type="number" min="1" placeholder="15" />
+                    <label class="thesis-chk-p"><input type="checkbox" v-model="newSubjForms[clone.id + maj.id + '_th']" /> Thesis</label>
                     <button class="btn-add-s" @click="addSubjToMaj(clone, maj)">+ Add</button>
                   </div>
                 </div>
@@ -485,10 +505,10 @@
           <!-- ── READ-ONLY (disabled, pending, or approved-with-enrolments) ── -->
           <template v-else>
             <div class="prog-readonly-notice">
-              <span v-if="clone.isDisabledByAdmin">&#128274; Disabled by IBSS Admin — this programme is fully locked.</span>
+              <span v-if="clone.isDisabledByAdmin">&#128274; Disabled by MGW Admin — this programme is fully locked.</span>
               <span v-else-if="clone.hasEnrolments">&#128274; Students have enrolled in this programme — it is locked.</span>
-              <span v-else-if="clone.status === 'approved'">&#128274; This programme has been approved by IBSS.</span>
-              <span v-else>&#9203; Awaiting IBSS review — editing is locked while under review.</span>
+              <span v-else-if="clone.status === 'approved'">&#128274; This programme has been approved by MGW.</span>
+              <span v-else>&#9203; Awaiting MGW review — editing is locked while under review.</span>
             </div>
             <div v-if="(clone.pathwayIds ?? []).length" class="prog-edit-row">
               <label class="prog-edit-label">Pathways</label>
@@ -539,6 +559,33 @@
       <PartnerUsersTab v-if="mainTab === 'users'" :key="usersRefreshKey" />
     </div>
 
+    <div v-show="mainTab === 'forms'" class="container">
+      <IntakeFillPanel v-if="mainTab === 'forms'" api-base="/v1/partner/intake-forms" />
+    </div>
+
+    <!-- Partner cooperation certificates (issued by the Admission Office) -->
+    <div v-show="mainTab === 'certs'" class="container">
+      <div class="page-head"><h1>Certificates</h1></div>
+      <p class="cert-tab-sub">Cooperation certificates issued to your institution by the schools of MGW.</p>
+      <div v-if="certsError" class="err-banner">{{ certsError }}</div>
+      <div v-if="certsLoading" class="loading-row">Loading…</div>
+      <table v-else-if="certs.length" class="partner-tbl">
+        <thead><tr><th>School</th><th>Certificate</th><th style="width:160px"></th></tr></thead>
+        <tbody>
+          <tr v-for="c in certs" :key="c.partnerCertificateId">
+            <td>{{ c.schoolName || '—' }}</td>
+            <td>{{ c.title }}</td>
+            <td>
+              <button class="cert-dl-btn" :disabled="c.downloading" @click="downloadCertificate(c)">
+                {{ c.downloading ? 'Preparing…' : '⤓ Download' }}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else-if="!certsLoading" class="cert-tab-sub">No certificates have been issued yet.</p>
+    </div>
+
     <!-- Clone core programme modal -->
     <transition name="fade">
       <div v-if="showCloneModal" class="modal-overlay" @click.self="showCloneModal = false">
@@ -547,9 +594,9 @@
             <h3>Clone a Core Programme</h3>
             <button class="btn-modal-close" @click="showCloneModal = false">✕</button>
           </div>
-          <p class="clone-modal-sub">Creates a copy of the programme under your account. You can then customise it before submitting for IBSS approval.</p>
+          <p class="clone-modal-sub">Creates a copy of the programme under your account. You can then customise it before submitting for MGW approval.</p>
           <div v-if="cloneSources.length === 0" class="prog-empty-state">
-            You have no core programmes granted yet. Contact your IBSS admin.
+            You have no core programmes granted yet. Contact your MGW admin.
           </div>
           <div class="clone-modal-list">
             <div v-for="prog in cloneSources" :key="prog.id" class="clone-modal-item">
@@ -572,14 +619,27 @@
             <h3>Create Programme from Scratch</h3>
             <button class="btn-modal-close" @click="showFromScratchModal = false">✕</button>
           </div>
-          <p class="clone-modal-sub">Creates a new blank programme under your account. Add specializations and subjects, then submit it for IBSS approval.</p>
+          <p class="clone-modal-sub">Creates a new blank programme under your account. Add specializations and subjects, then submit it for MGW approval.</p>
           <div class="field" style="margin:.6rem 0">
             <label>Programme Name</label>
             <input v-model="fromScratchName" class="prog-edit-input" placeholder="e.g. Executive MBA" />
           </div>
+          <div class="field" style="margin:.6rem 0">
+            <label>School</label>
+            <select v-model="fromScratchSchoolId" class="prog-edit-input">
+              <option :value="null">— select a school —</option>
+              <option v-for="s in schools" :key="s.schoolId" :value="s.schoolId">{{ s.name }}</option>
+            </select>
+          </div>
+          <div class="field" style="margin:.6rem 0; display:flex; gap:.6rem;">
+            <div style="flex:1"><label>Min duration (months)</label>
+              <input v-model.number="fromScratchMin" type="number" min="1" class="prog-edit-input" /></div>
+            <div style="flex:1"><label>Max duration (months)</label>
+              <input v-model.number="fromScratchMax" type="number" min="1" class="prog-edit-input" /></div>
+          </div>
           <div class="drawer-actions">
             <button class="btn-cancel" @click="showFromScratchModal = false">Cancel</button>
-            <button class="btn-save" :disabled="!fromScratchName.trim() || fromScratchBusy" @click="doCreateFromScratch">Create</button>
+            <button class="btn-save" :disabled="!fromScratchName.trim() || !fromScratchSchoolId || fromScratchBusy" @click="doCreateFromScratch">Create</button>
           </div>
         </div>
       </div>
@@ -652,7 +712,7 @@
                 <tr>
                   <th>Module</th>
                   <th class="num-col">Credit<br>Hours</th>
-                  <th class="num-col">IBSS<br>Grade</th>
+                  <th class="num-col">MGW<br>Grade</th>
                   <th class="num-col">UK<br>Grade</th>
                   <th class="num-col">ECTS<br>Grade</th>
                   <th class="num-col">ECTS<br>Points</th>
@@ -747,7 +807,7 @@
             </div>
 
             <div class="section-heading" style="margin-top:1.25rem">Request Drop / Status Change</div>
-            <p class="hint-text">Use this to formally request a status change (e.g. drop out, deferral). The request will be reviewed by IBSS Admin.</p>
+            <p class="hint-text">Use this to formally request a status change (e.g. drop out, deferral). The request will be reviewed by MGW Admin.</p>
             <div class="field">
               <label>Requested Status</label>
               <select v-model="dropRequest.status">
@@ -806,13 +866,13 @@
               <label>Programme <span class="req">*</span></label>
               <select v-model="regForm.programme" required @change="regForm.specialization = ''">
                 <option value="">— Select —</option>
-                <optgroup label="IBSS Core Programmes">
+                <optgroup label="MGW Core Programmes">
                   <option v-for="p in corePrograms" :key="p.id" :value="p.name">{{ p.name }}</option>
                 </optgroup>
                 <optgroup v-if="myProgClones.length" label="My Programmes">
                   <option v-for="c in myProgClones" :key="c.id" :value="c.name"
                     :disabled="c.status !== 'approved'"
-                    :title="c.status !== 'approved' ? 'Pending IBSS approval — cannot enrol students yet' : ''">
+                    :title="c.status !== 'approved' ? 'Pending MGW approval — cannot enrol students yet' : ''">
                     {{ c.name }}{{ c.status !== 'approved' ? ' (not approved)' : '' }}
                   </option>
                 </optgroup>
@@ -986,9 +1046,9 @@
         <div class="modal-body letter-body">
           <div class="letter-sheet">
             <div class="letter-header-block">
-              <div class="letter-logo-text">IBSS</div>
+              <div class="letter-logo-text">MGW</div>
               <div class="letter-org">
-                <strong>International Business School of Scandinavia</strong><br>
+                <strong>My Global World Education Group</strong><br>
                 <span class="letter-org-sub">in partnership with {{ letterStudent.partner }}</span>
               </div>
             </div>
@@ -997,12 +1057,12 @@
             <h3 class="letter-type-heading">{{ letterType === 'offer' ? 'LETTER OF OFFER' : 'LETTER OF ADMISSION' }}</h3>
             <p class="letter-dear">Dear {{ letterStudent.firstName }} {{ letterStudent.lastName }},</p>
             <p class="letter-body-text" v-if="letterType === 'offer'">
-              We are pleased to offer you a place at the International Business School of Scandinavia
+              We are pleased to offer you a place at the My Global World Education Group
               through our partner institution <strong>{{ letterStudent.partner }}</strong>. This offer
               is subject to the verification of your academic qualifications and supporting documents.
             </p>
             <p class="letter-body-text" v-else>
-              We are pleased to confirm your admission to the International Business School of Scandinavia
+              We are pleased to confirm your admission to the My Global World Education Group
               through our partner institution <strong>{{ letterStudent.partner }}</strong>. Your place
               has been formally reserved and we look forward to welcoming you.
             </p>
@@ -1026,8 +1086,8 @@
             <div class="letter-sign">
               <p>Yours sincerely,</p>
               <div class="letter-sig-line"></div>
-              <p class="letter-sig-name">IBSS Admissions Office</p>
-              <p class="letter-sig-org">International Business School of Scandinavia</p>
+              <p class="letter-sig-name">MGW Admissions Office</p>
+              <p class="letter-sig-org">My Global World Education Group</p>
             </div>
           </div>
         </div>
@@ -1048,9 +1108,9 @@
         <div class="modal-body">
           <div class="letter-sheet">
             <div class="letter-header-block">
-              <div class="letter-logo-text">IBSS</div>
+              <div class="letter-logo-text">MGW</div>
               <div class="letter-org">
-                <strong>International Business School of Scandinavia</strong><br>
+                <strong>My Global World Education Group</strong><br>
                 <span class="letter-org-sub">Academic Transcript — Official Record</span>
               </div>
             </div>
@@ -1070,7 +1130,7 @@
                 <tr>
                   <th>Subject</th>
                   <th class="tc">Credits</th>
-                  <th class="tc">IBSS Grade</th>
+                  <th class="tc">MGW Grade</th>
                   <th class="tc">UK Grade</th>
                   <th class="tc">ECTS Grade</th>
                   <th class="tc">ECTS Points</th>
@@ -1110,8 +1170,8 @@
             <div class="letter-sign" style="margin-top:2rem">
               <p>Certified by,</p>
               <div class="letter-sig-line"></div>
-              <p class="letter-sig-name">IBSS Academic Registry</p>
-              <p class="letter-sig-org">International Business School of Scandinavia</p>
+              <p class="letter-sig-name">MGW Academic Registry</p>
+              <p class="letter-sig-org">My Global World Education Group</p>
             </div>
           </div>
         </div>
@@ -1134,13 +1194,13 @@
             <label>Programme <span class="req">*</span></label>
             <select v-model="addEnrollForm.programme" @change="addEnrollForm.specialization = ''">
               <option value="">— Select —</option>
-              <optgroup label="IBSS Core Programmes">
+              <optgroup label="MGW Core Programmes">
                 <option v-for="p in corePrograms" :key="p.id" :value="p.name">{{ p.name }}</option>
               </optgroup>
               <optgroup v-if="myProgClones.length" label="My Programmes">
                 <option v-for="c in myProgClones" :key="c.id" :value="c.name"
                   :disabled="c.status !== 'approved'"
-                  :title="c.status !== 'approved' ? 'Pending IBSS approval — cannot enrol students yet' : ''">
+                  :title="c.status !== 'approved' ? 'Pending MGW approval — cannot enrol students yet' : ''">
                   {{ c.name }}{{ c.status !== 'approved' ? ' (not approved)' : '' }}
                 </option>
               </optgroup>
@@ -1237,12 +1297,46 @@ import { absences } from '../mock/absences.js'
 import { tickets } from '../mock/tickets.js'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
 import PartnerUsersTab from '../components/partner/tabs/PartnerUsersTab.vue'
+import IntakeFillPanel from '../components/intake/IntakeFillPanel.vue'
 import StudentReviewWizard from '../components/partner/StudentReviewWizard.vue'
 
 const router = useRouter()
 
 // ── Main tab ──────────────────────────────────────────────────────────────────
 const mainTab = ref('students')
+
+// ── Certificates tab (cooperation certs issued by the Admission Office) ──────
+const certs = ref([])
+const certsLoading = ref(false)
+const certsError = ref('')
+async function loadCertificates() {
+  certsLoading.value = true
+  certsError.value = ''
+  try {
+    const res = await apiClient.get('/v1/partner/my/certificates')
+    certs.value = (res.data.items ?? []).map(c => ({ ...c, downloading: false }))
+  } catch (e) {
+    certsError.value = e.response?.data?.error ?? e.message ?? 'Failed to load certificates'
+  } finally {
+    certsLoading.value = false
+  }
+}
+async function downloadCertificate(c) {
+  if (c.downloading) return
+  c.downloading = true
+  certsError.value = ''
+  try {
+    const res = await apiClient.get(`/v1/partner/my/certificates/${c.partnerCertificateId}/download`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch {
+    certsError.value = 'Download failed'
+  } finally {
+    c.downloading = false
+  }
+}
+watch(mainTab, (t) => { if (t === 'certs') loadCertificates() })
 
 // ── Add Student modal ────────────────────────────────────────────────────────
 // Hosts the public signup wizard inside an iframe, scoped to this partner's
@@ -1267,7 +1361,7 @@ const coreAccessGrouped = computed(() => {
   const map = new Map()
   for (const item of coreAccessItems.value) {
     if (!map.has(item.programmeId)) {
-      map.set(item.programmeId, { programmeId: item.programmeId, programmeName: item.programmeName, specializations: [] })
+      map.set(item.programmeId, { programmeId: item.programmeId, programmeName: item.programmeName, schoolName: item.schoolName, specializations: [] })
     }
     map.get(item.programmeId).specializations.push(item)
   }
@@ -1356,6 +1450,7 @@ async function loadMyPrograms() {
   myProgLoading.value = true
   myProgError.value = ''
   try {
+    if (schools.value.length === 0) await loadSchools()
     const res = await apiClient.get('/v1/partner/my-programs')
     myProgClones.value = (res.data.items ?? []).map(toLocalProg)
   } catch (e) {
@@ -1370,6 +1465,8 @@ function toLocalProg(row) {
     id: row.programmeId,
     name: row.name,
     code: row.code,
+    schoolName: row.schoolName ?? null,
+    schoolId: null,
     status: (row.status ?? 'Draft').toLowerCase(),
     isActive: !!row.isActive,
     isDisabledByAdmin: !!row.isDisabledByAdmin,
@@ -1387,6 +1484,9 @@ async function loadProgDetail(clone) {
   const d = res.data
   clone.name = d.name
   clone.code = d.code
+  clone.requiredEcts = d.requiredEcts ?? null
+  clone.schoolId = d.schoolId ?? null
+  clone.schoolName = d.schoolName ?? null
   clone.status = (d.status ?? 'Draft').toLowerCase()
   clone.isActive = !!d.isActive
   clone.isDisabledByAdmin = !!d.isDisabledByAdmin
@@ -1401,6 +1501,7 @@ async function loadProgDetail(clone) {
       code: s.code,
       name: s.name,
       ects: s.ects,
+      isThesis: !!s.isThesis,
     })),
   }))
   clone._detailLoaded = true
@@ -1411,6 +1512,18 @@ const showCloneModal       = ref(false)
 const showFromScratchModal = ref(false)
 const fromScratchName      = ref('')
 const fromScratchBusy      = ref(false)
+const fromScratchSchoolId  = ref(null)
+const fromScratchMin       = ref(12)
+const fromScratchMax       = ref(24)
+
+// Awarding schools for the school dropdowns (create + edit).
+const schools = ref([])
+async function loadSchools() {
+  try {
+    const res = await apiClient.get('/v1/school/schools/options')
+    schools.value = res.data.items ?? []
+  } catch { schools.value = [] }
+}
 const expandedProg    = ref(null)
 const expandedMaj     = ref(null)
 const newSubjForms    = reactive({})
@@ -1457,12 +1570,19 @@ async function doCloneProgram(srcProgId) {
 
 async function doCreateFromScratch() {
   const name = fromScratchName.value.trim()
-  if (!name) return
+  if (!name || !fromScratchSchoolId.value) return
   fromScratchBusy.value = true
   try {
-    await apiClient.post('/v1/partner/my-programs', { sourceProgrammeId: null, name })
+    await apiClient.post('/v1/partner/my-programs', {
+      sourceProgrammeId: null,
+      name,
+      schoolId: fromScratchSchoolId.value,
+      minDurationMonths: fromScratchMin.value,
+      maxDurationMonths: fromScratchMax.value,
+    })
     showFromScratchModal.value = false
     fromScratchName.value = ''
+    fromScratchSchoolId.value = null
     await loadMyPrograms()
   } catch (e) {
     myProgError.value = e.response?.data?.error ?? e.message ?? 'Failed to create'
@@ -1478,6 +1598,8 @@ async function saveProgEdit(clone) {
     await apiClient.patch(`/v1/partner/my-programs/${clone.id}`, {
       name: clone.name,
       code: clone.code,
+      requiredEcts: (clone.requiredEcts === '' || clone.requiredEcts == null) ? 0 : Number(clone.requiredEcts),
+      schoolId: clone.schoolId || null,
       specializations: clone.specializations.map(m => ({
         specializationId: isServerId(m.id) ? m.id : null,
         name: m.name,
@@ -1486,6 +1608,7 @@ async function saveProgEdit(clone) {
           code: s.code ?? '',
           name: s.name ?? '',
           ects: Number(s.ects) || 0,
+          isThesis: !!s.isThesis,
         })),
       })),
       pathwayIds: Array.isArray(clone.pathwayIds) ? [...clone.pathwayIds] : [],
@@ -1571,12 +1694,14 @@ function addSubjToMaj(clone, maj) {
   const codeKey = clone.id + maj.id + '_code'
   const nKey    = clone.id + maj.id + '_n'
   const cKey    = clone.id + maj.id + '_c'
+  const thKey   = clone.id + maj.id + '_th'
   const name = (newSubjForms[nKey] ?? '').trim()
   if (!name) return
-  maj.subjects.push({ id: uid(), code: (newSubjForms[codeKey] ?? '').trim(), name, ects: Number(newSubjForms[cKey]) || 15 })
+  maj.subjects.push({ id: uid(), code: (newSubjForms[codeKey] ?? '').trim(), name, ects: Number(newSubjForms[cKey]) || 15, isThesis: !!newSubjForms[thKey] })
   newSubjForms[codeKey] = ''
   newSubjForms[nKey] = ''
   newSubjForms[cKey] = 15
+  newSubjForms[thKey] = false
 }
 
 watch(mainTab, t => {
@@ -1744,7 +1869,7 @@ function submitRegistration() {
   const seq  = getNextId()
   const code = progCodeMap[regForm.programme] ?? 'GEN'
   const now  = new Date()
-  const sid  = `IBSS.${code}.${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(seq).padStart(4,'0')}`
+  const sid  = `MGW.${code}.${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(seq).padStart(4,'0')}`
   students.push({
     id: seq, studentId: sid,
     firstName: regForm.firstName, lastName: regForm.lastName,
@@ -1878,8 +2003,8 @@ function printLetter() {
   const type = letterType.value
   const title = type === 'offer' ? 'LETTER OF OFFER' : 'LETTER OF ADMISSION'
   const bodyText = type === 'offer'
-    ? `We are pleased to offer you a place at the International Business School of Scandinavia through our partner institution <strong>${s.partner}</strong>. This offer is subject to the verification of your academic qualifications and supporting documents.`
-    : `We are pleased to confirm your admission to the International Business School of Scandinavia through our partner institution <strong>${s.partner}</strong>. Your place has been formally reserved and we look forward to welcoming you.`
+    ? `We are pleased to offer you a place at the My Global World Education Group through our partner institution <strong>${s.partner}</strong>. This offer is subject to the verification of your academic qualifications and supporting documents.`
+    : `We are pleased to confirm your admission to the My Global World Education Group through our partner institution <strong>${s.partner}</strong>. Your place has been formally reserved and we look forward to welcoming you.`
   const closing = type === 'offer'
     ? 'Please accept this offer by confirming your enrolment with your partner institution. Should you have any questions, please do not hesitate to contact our admissions office.'
     : 'Please retain this letter as confirmation of your admission. Your student ID and programme details are as stated above. We wish you every success in your studies.'
@@ -1906,7 +2031,7 @@ function printLetter() {
     .sig-name { font-weight: bold; font-size: 10pt; margin: 0; }
     .sig-org { font-size: 9pt; color: #555; margin: 2px 0; }
   </style></head><body>
-  <div class="header"><div class="logo">IBSS</div><div class="org"><strong>International Business School of Scandinavia</strong><br>in partnership with ${s.partner}</div></div>
+  <div class="header"><div class="logo">MGW</div><div class="org"><strong>My Global World Education Group</strong><br>in partnership with ${s.partner}</div></div>
   <hr/>
   <div class="date">${todayFormatted}</div>
   <div class="type">${title}</div>
@@ -1922,7 +2047,7 @@ function printLetter() {
     <tr><td>Partner Institution</td><td>${s.partner}</td></tr>
   </table>
   <p class="bodytext">${closing}</p>
-  <div class="sign"><p>Yours sincerely,</p><div class="sig-line"></div><p class="sig-name">IBSS Admissions Office</p><p class="sig-org">International Business School of Scandinavia</p></div>
+  <div class="sign"><p>Yours sincerely,</p><div class="sig-line"></div><p class="sig-name">MGW Admissions Office</p><p class="sig-org">My Global World Education Group</p></div>
   <script>window.onload=function(){window.print()}<\/script></body></html>`
 
   const win = window.open('', '_blank', 'width=820,height=680')
@@ -2002,7 +2127,7 @@ function printCert() {
     .sig-name { font-weight: bold; font-size: 10pt; margin: 0; }
     .sig-org { font-size: 9pt; color: #555; }
   </style></head><body>
-  <div class="header"><div class="logo">IBSS</div><div class="org"><strong>International Business School of Scandinavia</strong><br><span>Academic Transcript — Official Record</span></div></div>
+  <div class="header"><div class="logo">MGW</div><div class="org"><strong>My Global World Education Group</strong><br><span>Academic Transcript — Official Record</span></div></div>
   <hr/>
   <table class="info-table">
     <tr><td>Student Name</td><td>${s.firstName} ${s.lastName}</td></tr>
@@ -2014,7 +2139,7 @@ function printCert() {
   </table>
   <h4>Subject Results</h4>
   <table class="grade-table">
-    <thead><tr><th>Subject</th><th>Credits</th><th>IBSS</th><th>UK</th><th>ECTS</th><th>ECTS Pts</th><th>Grade Pts</th></tr></thead>
+    <thead><tr><th>Subject</th><th>Credits</th><th>MGW</th><th>UK</th><th>ECTS</th><th>ECTS Pts</th><th>Grade Pts</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot>
       <tr class="total-row"><td><strong>Total</strong></td><td class="tc">${totalCr}</td><td class="tc" colspan="4"></td><td class="tc gp">${totalGP.toFixed(1)}</td></tr>
@@ -2022,7 +2147,7 @@ function printCert() {
     </tfoot>
   </table>
   <div class="stamp"><div class="stamp-text">APPROVED ✓</div><div class="stamp-date">${todayFormatted}</div></div>
-  <div class="sign"><p>Certified by,</p><div class="sig-line"></div><p class="sig-name">IBSS Academic Registry</p><p class="sig-org">International Business School of Scandinavia</p></div>
+  <div class="sign"><p>Certified by,</p><div class="sig-line"></div><p class="sig-name">MGW Academic Registry</p><p class="sig-org">My Global World Education Group</p></div>
   <script>window.onload=function(){window.print()}<\/script></body></html>`
 
   const win = window.open('', '_blank', 'width=820,height=680')
@@ -2300,6 +2425,7 @@ function logout() { auth.logout(); router.push('/login') }
 /* Letter preview */
 .letter-sheet { background: #fff; border: 1px solid #e0e8f0; border-radius: 6px; padding: 2rem 2.25rem; max-width: 580px; margin: 0 auto; font-size: 0.9rem; line-height: 1.7; }
 .letter-header-block { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 0.75rem; }
+.thesis-chk-p { display: inline-flex; align-items: center; gap: .2rem; font-size: .72rem; color: #5f6e85; margin: 0 .4rem; white-space: nowrap; cursor: pointer; }
 .letter-logo-text { font-size: 2rem; font-weight: 900; color: #003366; letter-spacing: -1px; flex-shrink: 0; line-height: 1; }
 .letter-org { font-size: 0.82rem; }
 .letter-org strong { color: #003366; font-size: 0.9rem; }
@@ -2587,6 +2713,9 @@ function logout() { auth.logout(); router.push('/login') }
 .toggle { display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; color: #5f6e85; cursor: pointer; }
 .err-banner { background: #fde7e5; color: #a8241e; padding: .55rem .8rem; border-radius: 6px; font-size: .88rem; margin: .4rem 0; }
 .loading-row { padding: 1rem; color: #5f6e85; font-size: .9rem; }
+.cert-tab-sub { color: #5f6e85; font-size: .88rem; margin: .3rem 0 .9rem; }
+.cert-dl-btn { background: #003366; color: #fff; border: none; border-radius: 6px; padding: .4rem .85rem; font-size: .82rem; font-weight: 600; cursor: pointer; }
+.cert-dl-btn:disabled { opacity: .55; cursor: default; }
 .empty-state-card { padding: 1rem; background: #f6f9fd; color: #5f6e85; border-radius: 8px; text-align: center; }
 .main-tab-btn:hover:not(.active) { color: #555; }
 .tab-badge { background: #f59e0b; color: #fff; border-radius: 20px; padding: 1px 7px; font-size: 0.72rem; font-weight: 700; }

@@ -1,10 +1,11 @@
 <template>
   <div class="page-wrapper">
     <nav class="navbar">
-      <span class="brand-text">IBSS Admin Portal</span>
+      <span class="brand-text">MGW Admin Portal</span>
       <div class="nav-links">
         <RouterLink to="/admin"          class="nav-link">Dashboard</RouterLink>
         <RouterLink to="/admin/academic" class="nav-link">Academic</RouterLink>
+        <RouterLink to="/admin/questionnaires" class="nav-link">Questionnaires</RouterLink>
         <RouterLink to="/admin/config"   class="nav-link">System Config</RouterLink>
       </div>
       <div class="nav-right">
@@ -18,7 +19,7 @@
       <!-- Header -->
       <div class="page-header">
         <div>
-          <h1 class="page-title">IBSS Core Programmes</h1>
+          <h1 class="page-title">MGW Core Programmes</h1>
           <p class="page-sub" v-if="!loading">
             {{ programmes.length }} programme{{ programmes.length !== 1 ? 's' : '' }}
           </p>
@@ -67,6 +68,18 @@
           </div>
         </div>
         <div class="field" style="margin-top:0.85rem">
+          <label>ECTS to complete</label>
+          <input type="number" min="0" step="0.5" v-model.number="newProg.requiredEcts" placeholder="e.g. 120" />
+          <small class="muted">Credits required before grades can be submitted. Blank = no gate.</small>
+        </div>
+        <div class="field" style="margin-top:0.85rem">
+          <label>School <span class="req">*</span></label>
+          <select v-model="newProg.schoolId">
+            <option :value="null">— select a school —</option>
+            <option v-for="s in schools" :key="s.schoolId" :value="s.schoolId">{{ s.name }}</option>
+          </select>
+        </div>
+        <div class="field" style="margin-top:0.85rem">
           <label>Owner partner</label>
           <select v-model="newProg.ownerPartnerId">
             <option :value="null">— Core (shared across all partners) —</option>
@@ -100,7 +113,7 @@
       <div v-for="prog in programmes" :key="prog.programmeId" class="prog-card">
         <div class="prog-header">
           <div class="prog-header-left">
-            <strong class="prog-name">{{ prog.name }}</strong>
+            <strong class="prog-name">{{ prog.name }}{{ prog.schoolName ? ` (${prog.schoolName})` : '' }}</strong>
             <span class="badge-code">{{ prog.code }}</span>
             <span class="badge-count">{{ specializationsFor(prog.programmeId).length }} specialization{{ specializationsFor(prog.programmeId).length !== 1 ? 's' : '' }}</span>
             <span v-if="awardNameFor(progAward[prog.programmeId])" class="badge-count">awards {{ awardNameFor(progAward[prog.programmeId]) }}</span>
@@ -114,6 +127,27 @@
         </div>
 
         <div v-if="xProg === prog.programmeId" class="prog-body">
+          <div class="section-label">NAME &amp; CODE</div>
+          <div class="pathway-edit-block">
+            <div class="duration-row">
+              <label style="flex:2">Name
+                <input :value="renameDraft[prog.programmeId]?.name ?? prog.name"
+                       @input="setRenameDraft(prog, 'name', $event.target.value)" />
+              </label>
+              <label>Code
+                <input :value="renameDraft[prog.programmeId]?.code ?? prog.code"
+                       @input="setRenameDraft(prog, 'code', $event.target.value)" />
+              </label>
+              <button class="btn-primary-sm"
+                      :disabled="renameBusy[prog.programmeId] || !renameDraft[prog.programmeId]"
+                      @click="saveRenameForProg(prog)">
+                {{ renameBusy[prog.programmeId] ? 'Saving…' : 'Save' }}
+              </button>
+              <span v-if="renameErr[prog.programmeId]" class="form-error-inline">{{ renameErr[prog.programmeId] }}</span>
+              <span v-else-if="renameSaved[prog.programmeId]" class="duration-saved">✓ Saved</span>
+            </div>
+          </div>
+
           <div class="section-label section-label-toggle" @click="togglePathwaySection(prog.programmeId)">
             <span class="section-arrow">{{ xPathway === prog.programmeId ? '▾' : '▸' }}</span>
             PATHWAYS
@@ -156,6 +190,25 @@
             </div>
           </div>
 
+          <div class="section-label">ECTS TO COMPLETE</div>
+          <div class="pathway-edit-block">
+            <div class="duration-row">
+              <label>Required ECTS
+                <input type="number" min="0" step="0.5"
+                       :value="ectsDraft[prog.programmeId] ?? prog.requiredEcts ?? ''"
+                       @input="setEctsDraft(prog, $event.target.value)" />
+              </label>
+              <button class="btn-primary-sm"
+                      :disabled="ectsBusy[prog.programmeId] || ectsDraft[prog.programmeId] === undefined"
+                      @click="saveEctsForProg(prog)">
+                {{ ectsBusy[prog.programmeId] ? 'Saving…' : 'Save' }}
+              </button>
+              <span v-if="ectsErr[prog.programmeId]" class="form-error-inline">{{ ectsErr[prog.programmeId] }}</span>
+              <span v-else-if="ectsSaved[prog.programmeId]" class="duration-saved">✓ Saved</span>
+              <span class="muted" style="font-size:.72rem;">Blank = no submit gate</span>
+            </div>
+          </div>
+
           <div class="section-label">AWARD ON COMPLETION</div>
           <div class="pathway-edit-block">
             <select :value="progAward[prog.programmeId] ?? ''"
@@ -165,6 +218,18 @@
             </select>
             <div v-if="awardBusy[prog.programmeId]" class="form-error-inline">Saving…</div>
             <div v-if="awardErr[prog.programmeId]" class="form-error">{{ awardErr[prog.programmeId] }}</div>
+          </div>
+
+          <div class="section-label">SCHOOL</div>
+          <div class="pathway-edit-block">
+            <select :value="prog.schoolId ?? ''"
+                    @change="setSchoolForProg(prog, $event.target.value || null)">
+              <option value="">— none —</option>
+              <option v-for="s in schools" :key="s.schoolId" :value="s.schoolId">{{ s.name }}</option>
+            </select>
+            <div v-if="schoolBusy[prog.programmeId]" class="form-error-inline">Saving…</div>
+            <div v-if="schoolErr[prog.programmeId]" class="form-error">{{ schoolErr[prog.programmeId] }}</div>
+            <div v-else-if="schoolSaved[prog.programmeId]" class="duration-saved">✓ Saved</div>
           </div>
 
           <div class="section-label">LETTERS</div>
@@ -178,7 +243,8 @@
             </div>
             <LetterButtonsRow v-if="letterPartner[prog.programmeId]"
               :programme-id="prog.programmeId" :programme-name="prog.name"
-              :partner-id="letterPartner[prog.programmeId]" />
+              :partner-id="letterPartner[prog.programmeId]"
+              :show-student-card="!!prog.issueDigitalStudentCard" />
             <p v-else class="letter-partner-hint">Letters are per partner. Pick a partner above to edit their offer/admission/transcript/certificate.</p>
           </div>
 
@@ -211,14 +277,18 @@
               <div v-if="subjectsFor(maj.specializationId).length === 0" class="subj-empty">No modules yet.</div>
               <div v-for="s in subjectsFor(maj.specializationId)" :key="s.subjectId" class="subj-row">
                 <span class="col-code scode">{{ s.code || '—' }}</span>
-                <span class="col-name">{{ s.name }}</span>
+                <span class="col-name">{{ s.name }}<span v-if="s.isThesis" class="thesis-tag">Thesis</span></span>
                 <span class="col-ects ects-val">{{ s.ects }}</span>
+                <label class="thesis-chk" title="Mark as thesis / dissertation module">
+                  <input type="checkbox" :checked="s.isThesis" @change="toggleThesis(s, $event.target.checked)" /> Thesis
+                </label>
                 <span class="col-act"><button class="btn-x" @click="softDeleteSubject(s)">✕</button></span>
               </div>
               <div class="add-subj-row">
                 <input v-model="sf[maj.specializationId + '_code']" class="inp-code col-code" placeholder="Code" />
                 <input v-model="sf[maj.specializationId + '_n']" class="inp-name col-name" placeholder="Module name" @keyup.enter="addSubject(maj.specializationId)" />
                 <input v-model.number="sf[maj.specializationId + '_e']" class="inp-ects col-ects" type="number" min="0.5" step="0.5" placeholder="15" />
+                <label class="thesis-chk"><input type="checkbox" v-model="sf[maj.specializationId + '_th']" /> Thesis</label>
                 <span class="col-act"><button class="btn-add" @click="addSubject(maj.specializationId)">+ Add</button></span>
               </div>
               <p v-if="sf[maj.specializationId + '_err']" class="form-error">{{ sf[maj.specializationId + '_err'] }}</p>
@@ -446,7 +516,41 @@ function togglePathwaySection(id) { xPathway.value = xPathway.value === id ? nul
 
 // ── Forms ──────────────────────────────────────────────────────────────────────
 const showAddProg = ref(false)
-const newProg = reactive({ name: '', code: '', saving: false, error: '', pathwayIds: [], awardEducationLevelId: null, minDurationMonths: null, maxDurationMonths: null, ownerPartnerId: null })
+const newProg = reactive({ name: '', code: '', saving: false, error: '', pathwayIds: [], awardEducationLevelId: null, minDurationMonths: null, maxDurationMonths: null, requiredEcts: null, schoolId: null, ownerPartnerId: null })
+
+// Awarding schools (System Config → Schools) for the create form + per-programme editor.
+const schools = ref([])
+const schoolBusy = reactive({})
+const schoolErr = reactive({})
+const schoolSaved = reactive({})
+async function loadSchools() {
+  try {
+    const res = await api.get('/v1/school/schools/options')
+    schools.value = res.data.items ?? []
+  } catch { schools.value = [] }
+}
+async function setSchoolForProg(prog, schoolId) {
+  const id = prog.programmeId
+  schoolBusy[id] = true; schoolErr[id] = ''; schoolSaved[id] = false
+  try {
+    await api.put(`/v1/school/programmes/${id}`, {
+      name: prog.name,
+      code: prog.code,
+      awardEducationLevelId: progAward[id] ?? prog.awardEducationLevelId ?? null,
+      minDurationMonths: prog.minDurationMonths,
+      maxDurationMonths: prog.maxDurationMonths,
+      schoolId,
+    })
+    prog.schoolId = schoolId
+    prog.schoolName = schools.value.find(s => s.schoolId === schoolId)?.name ?? null
+    schoolSaved[id] = true
+    setTimeout(() => { schoolSaved[id] = false }, 3000)
+  } catch (e) {
+    schoolErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save'
+  } finally {
+    schoolBusy[id] = false
+  }
+}
 const partnersForOwner = ref([])
 async function loadPartnersForOwner() {
   if (partnersForOwner.value.length) return
@@ -534,6 +638,7 @@ function toggleShowDeleted() {
 
 onMounted(loadAll)
 onMounted(loadPartnersForOwner)
+onMounted(loadSchools)
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const awardNameFor = id => id ? (educationLevels.value.find(e => e.educationLevelId === id)?.name ?? null) : null
@@ -586,6 +691,7 @@ async function addProgramme() {
   if (newProg.minDurationMonths < 1 || newProg.maxDurationMonths < newProg.minDurationMonths) {
     newProg.error = 'Need 1 ≤ min ≤ max.'; return
   }
+  if (!newProg.schoolId) { newProg.error = 'A school is required.'; return }
   newProg.saving = true; newProg.error = ''
   try {
     const res = await api.post('/v1/school/programmes', {
@@ -595,6 +701,8 @@ async function addProgramme() {
       awardEducationLevelId: newProg.awardEducationLevelId,
       minDurationMonths: newProg.minDurationMonths,
       maxDurationMonths: newProg.maxDurationMonths,
+      requiredEcts: (newProg.requiredEcts === '' || newProg.requiredEcts == null) ? null : Number(newProg.requiredEcts),
+      schoolId: newProg.schoolId,
       ownerPartnerId: newProg.ownerPartnerId,
     })
     const created = await api.get(`/v1/school/programmes/${res.data.programmeId}`)
@@ -602,7 +710,7 @@ async function addProgramme() {
     progPathways[created.data.programmeId] = created.data.pathwayIds ?? []
     progAward[created.data.programmeId] = created.data.awardEducationLevelId ?? null
     newProg.name = ''; newProg.code = ''; newProg.pathwayIds = []; newProg.awardEducationLevelId = null
-    newProg.minDurationMonths = null; newProg.maxDurationMonths = null; newProg.ownerPartnerId = null
+    newProg.minDurationMonths = null; newProg.maxDurationMonths = null; newProg.requiredEcts = null; newProg.schoolId = null; newProg.ownerPartnerId = null
     showAddProg.value = false
   } catch (e) {
     newProg.error = e.response?.data?.message ?? e.message ?? 'Failed to save'
@@ -685,6 +793,95 @@ async function saveDurationForProg(prog) {
   }
 }
 
+// Per-programme completion-ECTS editor (admin can change any programme, any
+// time). Draft holds the typed value ('' = clear to null); undefined = untouched.
+const ectsBusy = reactive({})
+const ectsErr = reactive({})
+const ectsSaved = reactive({})
+const ectsDraft = reactive({})
+
+function setEctsDraft(prog, raw) {
+  const id = prog.programmeId
+  ectsDraft[id] = raw === '' ? '' : Number(raw)
+  ectsErr[id] = ''
+  ectsSaved[id] = false
+}
+
+async function saveEctsForProg(prog) {
+  const id = prog.programmeId
+  const draft = ectsDraft[id]
+  if (draft === undefined) return
+  if (draft !== '' && (Number.isNaN(draft) || draft < 0)) {
+    ectsErr[id] = 'Enter a non-negative number, or leave blank.'
+    return
+  }
+  ectsBusy[id] = true; ectsErr[id] = ''
+  try {
+    await api.put(`/v1/school/programmes/${id}`, {
+      name: prog.name,
+      code: prog.code,
+      awardEducationLevelId: progAward[id] ?? prog.awardEducationLevelId ?? null,
+      minDurationMonths: prog.minDurationMonths,
+      maxDurationMonths: prog.maxDurationMonths,
+      // 0 disables the gate; the backend only writes when a value is present,
+      // so blank must send an explicit 0 rather than null to take effect.
+      requiredEcts: draft === '' ? 0 : draft,
+    })
+    prog.requiredEcts = draft === '' ? 0 : draft
+    delete ectsDraft[id]
+    ectsSaved[id] = true
+    setTimeout(() => { ectsSaved[id] = false }, 3000)
+  } catch (e) {
+    ectsErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save'
+  } finally {
+    ectsBusy[id] = false
+  }
+}
+
+// Per-programme name/code rename (core + custom). Draft holds typed values;
+// undefined = untouched. Award/school are re-sent so the PUT doesn't wipe them.
+const renameBusy = reactive({})
+const renameErr = reactive({})
+const renameSaved = reactive({})
+const renameDraft = reactive({})
+
+function setRenameDraft(prog, field, val) {
+  const id = prog.programmeId
+  const draft = renameDraft[id] ?? (renameDraft[id] = { name: prog.name, code: prog.code })
+  draft[field] = val
+  renameErr[id] = ''
+  renameSaved[id] = false
+}
+
+async function saveRenameForProg(prog) {
+  const id = prog.programmeId
+  const draft = renameDraft[id]
+  if (!draft) return
+  const name = (draft.name ?? '').trim()
+  const code = (draft.code ?? '').trim()
+  if (!name || !code) { renameErr[id] = 'Name and code are required.'; return }
+  renameBusy[id] = true; renameErr[id] = ''
+  try {
+    await api.put(`/v1/school/programmes/${id}`, {
+      name,
+      code,
+      awardEducationLevelId: progAward[id] ?? prog.awardEducationLevelId ?? null,
+      minDurationMonths: prog.minDurationMonths,
+      maxDurationMonths: prog.maxDurationMonths,
+      schoolId: prog.schoolId ?? null,
+    })
+    prog.name = name
+    prog.code = code
+    delete renameDraft[id]
+    renameSaved[id] = true
+    setTimeout(() => { renameSaved[id] = false }, 3000)
+  } catch (e) {
+    renameErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save'
+  } finally {
+    renameBusy[id] = false
+  }
+}
+
 async function setAwardForProg(prog, awardEducationLevelId) {
   const id = prog.programmeId
   awardBusy[id] = true
@@ -757,14 +954,23 @@ async function addSubject(specializationId) {
   const name = (sf[specializationId + '_n'] ?? '').trim()
   const code = (sf[specializationId + '_code'] ?? '').trim()
   const ects = Number(sf[specializationId + '_e']) || 15
+  const isThesis = !!sf[specializationId + '_th']
   if (!name) { sf[errKey] = 'Module name is required.'; return }
   sf[errKey] = ''
   try {
-    const res = await api.post('/v1/school/subjects', { specializationId, code, name, ects })
+    const res = await api.post('/v1/school/subjects', { specializationId, code, name, ects, isThesis })
     const created = await api.get(`/v1/school/subjects/${res.data.subjectId}`)
     subjects.value.push(created.data)
-    sf[specializationId + '_code'] = ''; sf[specializationId + '_n'] = ''; sf[specializationId + '_e'] = 15
+    sf[specializationId + '_code'] = ''; sf[specializationId + '_n'] = ''; sf[specializationId + '_e'] = 15; sf[specializationId + '_th'] = false
   } catch (e) { sf[errKey] = e.response?.data?.message ?? e.message ?? 'Failed to save' }
+}
+
+// Toggle a subject's thesis flag (marks it as the thesis/dissertation module).
+async function toggleThesis(subj, val) {
+  try {
+    await api.put(`/v1/school/subjects/${subj.subjectId}`, { isThesis: val })
+    subj.isThesis = val
+  } catch (e) { loadError.value = e.response?.data?.message ?? e.message ?? 'Failed to update' }
 }
 
 async function softDeleteSubject(subj) {
@@ -958,6 +1164,8 @@ async function permanentDeleteProgramme(prog) {
 .inp-name:focus { border-color: #003366; }
 .inp-ects { width: 56px; flex-shrink: 0; padding: 0.32rem 0.4rem; border: 1.5px solid #d0dbe8; border-radius: 5px; font-size: 0.84rem; text-align: right; outline: none; margin-right: 0.75rem; }
 .inp-ects:focus { border-color: #003366; }
+.thesis-chk { display: inline-flex; align-items: center; gap: .25rem; font-size: .78rem; color: #5f6e85; margin-right: .6rem; white-space: nowrap; cursor: pointer; }
+.thesis-tag { margin-left: .4rem; font-size: .66rem; background: #eef3fb; color: #1a4d8c; padding: 1px 6px; border-radius: 8px; text-transform: uppercase; letter-spacing: .03em; }
 .add-maj-row { display: flex; align-items: center; gap: 0.55rem; margin: 0.65rem 1.4rem 0; padding-top: 0.65rem; border-top: 1px dashed #dde6f0; }
 .inp-maj { flex: 1; padding: 0.42rem 0.75rem; border: 1.5px solid #ccc; border-radius: 6px; font-size: 0.87rem; outline: none; }
 .inp-maj:focus { border-color: #003366; }

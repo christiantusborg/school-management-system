@@ -149,6 +149,7 @@ public static class DatabaseSeeder
 
         await SeedDocumentTypesAsync(context, logger);
         await SeedSystemDocumentTypesAsync(context, logger);
+        await SeedDocumentTypeAiPromptsAsync(context, logger);
         var fileStorage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
         await SeedSystemLetterAssetsAsync(context, fileStorage, logger);
         await SeedDefaultAdmissionLetterAsync(context, logger);
@@ -156,8 +157,13 @@ public static class DatabaseSeeder
         await SeedDefaultTranscriptAsync(context, logger);
         await SeedDefaultCertificateAsync(context, logger);
         await SeedDefaultProvisionalCertificateAsync(context, logger);
+        await SeedDefaultPrintableTranscriptAsync(context, logger);
+        await SeedDefaultStudentIdCardAsync(context, logger);
         await SeedDefaultLetterLayoutsAsync(context, logger);
         var eduLevelByName = await SeedEducationLevelsAsync(context, logger);
+        await SeedPositionFunctionsAsync(context, logger);
+        await SeedEmploymentIndustriesAsync(context, logger);
+        await DecryptLegacyIntakeAnswersAsync(context, logger);
         await SeedPathwaysAsync(context, logger, eduLevelByName);
         await SeedIbssCoreProgrammesAsync(context, logger);
         await SeedDemoPartnersAsync(context, logger);
@@ -734,9 +740,14 @@ public static class DatabaseSeeder
                 }
                 if (type == LetterType.Transcript)
                 {
+                    // Only refresh layouts that still carry a seed fingerprint:
+                    // those are untouched seeded defaults. The letter editor
+                    // strips the fingerprint when an admin saves, so a missing
+                    // fingerprint means the layout is admin-owned — it must
+                    // survive every restart/redeploy untouched.
                     var existing = CertificateLayout.TryParse(row.CertificateLayoutJson);
                     var existingFp = existing?.SeedFingerprint ?? 0;
-                    if (existingFp < DefaultLetterLayouts.CurrentTranscriptFingerprint)
+                    if (existingFp > 0 && existingFp < DefaultLetterLayouts.CurrentTranscriptFingerprint)
                     {
                         row.CertificateLayoutJson = json;
                         row.UpdatedAt = DateTime.UtcNow;
@@ -777,20 +788,116 @@ public static class DatabaseSeeder
         => EnsureTemplatePerPairAsync(context, logger, LetterType.ProvisionalCertificate,
             "Default provisional certificate layout", t => t.CertificateLayoutJson = DefaultCertificateLayoutJson);
 
+    /// <summary>
+    /// Seeds a starting layout for the Printable Transcript (the Admission-only
+    /// transcript variant). Reuses the standard Transcript layout so it renders
+    /// the grade table out of the box, and publishes it so it releases at
+    /// graduation alongside the digital transcript. Idempotent per (programme,
+    /// partner) pair — admin edits are never overwritten.
+    /// </summary>
+    private static Task SeedDefaultPrintableTranscriptAsync(OdinDbContext context, ILogger logger)
+        => EnsureTemplatePerPairAsync(context, logger, LetterType.PrintableTranscript,
+            "Default printable transcript layout", t =>
+            {
+                t.CertificateLayoutJson = DefaultLetterLayouts.TranscriptJson();
+                t.IsPublished = true;
+            });
+
+    /// <summary>
+    /// Digital Student ID Card starter layout. Editable per (programme,
+    /// partner) in the same editor as certificates; only reachable in the UI
+    /// when the programme's IssueDigitalStudentCard toggle is on.
+    /// </summary>
+    private static async Task SeedDefaultStudentIdCardAsync(OdinDbContext context, ILogger logger)
+    {
+        // One-time refresh: card templates seeded with the original text-only
+        // default (no background artwork) get upgraded to the designed layout.
+        // Admin-edited layouts (which have a backgroundAssetId or changed
+        // structure) are left alone.
+        // CertificateLayoutJson is jsonb — Postgres has no LIKE for jsonb, so
+        // the substring check must run in memory. Card templates are few.
+        var cardTemplates = await context.LetterTemplates
+            .Where(t => t.LetterType == LetterType.StudentIdCard && t.DeletedAt == null)
+            .ToListAsync();
+        var stale = cardTemplates
+            .Where(t => t.CertificateLayoutJson != null
+                && t.CertificateLayoutJson.Contains("STUDENT ID CARD")
+                && !t.CertificateLayoutJson.Contains("backgroundAssetId"))
+            .ToList();
+        foreach (var t in stale)
+        {
+            t.CertificateLayoutJson = DefaultStudentIdCardLayoutJson;
+            t.UpdatedAt = DateTime.UtcNow;
+        }
+        if (stale.Count > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Student ID card: upgraded {Count} templates to the designed card layout", stale.Count);
+        }
+
+        var missingPhoto = cardTemplates.Where(t => t.CertificateLayoutJson != null
+            && t.CertificateLayoutJson.Contains(SystemLetterAssetIds.StudentCardBg.ToString())
+            && !t.CertificateLayoutJson.Contains(SystemLetterAssetIds.StudentPhoto.ToString())).ToList();
+        foreach (var t in missingPhoto)
+        {
+            t.CertificateLayoutJson = t.CertificateLayoutJson!.Replace("\"fields\": [",
+                "\"fields\": [{\"id\": \"photo\", \"kind\": \"image\", \"imageAssetId\": \""
+                + SystemLetterAssetIds.StudentPhoto + "\", \"x\": 40, \"y\": 270, \"width\": 250, \"height\": 350}, ");
+            t.UpdatedAt = DateTime.UtcNow;
+        }
+        if (missingPhoto.Count > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Student ID card: added student-photo field to {Count} layouts", missingPhoto.Count);
+        }
+
+        await EnsureTemplatePerPairAsync(context, logger, LetterType.StudentIdCard,
+            "Default student ID card layout", t =>
+            {
+                t.CertificateLayoutJson = DefaultStudentIdCardLayoutJson;
+                t.IsPublished = true;
+            });
+    }
+
+    /// <summary>
+    /// Designed card layout: the seeded background PNG carries all static
+    /// artwork (title, amber bands, labels, photo/QR/signature placeholders,
+    /// terms); these fields overlay only the per-student values.
+    /// </summary>
+    private static string DefaultStudentIdCardLayoutJson { get; } = $@"{{
+  ""backgroundAssetId"": ""{SystemLetterAssetIds.StudentCardBg}"",
+  ""width"": 1000,
+  ""height"": 1414,
+  ""pageSize"": ""A4"",
+  ""orientation"": ""portrait"",
+  ""fields"": [
+    {{ ""id"": ""photo"",  ""kind"": ""image"", ""imageAssetId"": ""{SystemLetterAssetIds.StudentPhoto}"", ""x"": 40, ""y"": 270, ""width"": 250, ""height"": 350 }},
+    {{ ""id"": ""name"",   ""tag"": ""[student full name]"",  ""x"": 640, ""y"": 263,  ""fontSize"": 28, ""color"": ""#4D3D99"" }},
+    {{ ""id"": ""id"",     ""tag"": ""[student number]"",     ""x"": 640, ""y"": 345,  ""fontSize"": 28, ""color"": ""#4D3D99"" }},
+    {{ ""id"": ""intake"", ""tag"": ""[commencement date]"",  ""x"": 640, ""y"": 427,  ""fontSize"": 28, ""color"": ""#4D3D99"" }},
+    {{ ""id"": ""prog"",   ""tag"": ""[program name]"",       ""x"": 640, ""y"": 509,  ""fontSize"": 28, ""color"": ""#4D3D99"" }},
+    {{ ""id"": ""center"", ""tag"": ""[partner name]"",       ""x"": 640, ""y"": 591,  ""fontSize"": 28, ""color"": ""#4D3D99"" }},
+    {{ ""id"": ""dob"",    ""tag"": ""[date of birth]"",      ""x"": 600, ""y"": 827,  ""fontSize"": 26, ""color"": ""#4D3D99"" }},
+    {{ ""id"": ""tel"",    ""tag"": ""[student phone]"",      ""x"": 600, ""y"": 905,  ""fontSize"": 26, ""color"": ""#4D3D99"" }},
+    {{ ""id"": ""issue"",  ""tag"": ""[date]"",               ""x"": 600, ""y"": 983,  ""fontSize"": 26, ""color"": ""#4D3D99"" }},
+    {{ ""id"": ""expiry"", ""tag"": ""[completion date]"",    ""x"": 600, ""y"": 1061, ""fontSize"": 26, ""color"": ""#4D3D99"" }}
+  ]
+}}";
+
     private static string DefaultCertificateLayoutJson { get; } = $@"{{
   ""backgroundAssetId"": ""{SystemLetterAssetIds.IbssCertificateBg}"",
   ""width"": 2000,
   ""height"": 1414,
   ""fields"": [
     {{ ""id"": ""studentId"",      ""tag"": ""[student number]"",      ""prefix"": ""Student ID: "", ""x"": 1900, ""y"": 130, ""fontSize"": 28, ""color"": ""#000000"", ""align"": ""right"",  ""bold"": true }},
-    {{ ""id"": ""awardsTo"",       ""text"": ""International Business School of Scandinavia Hereby Awards To"", ""x"": 0, ""y"": 360, ""fontSize"": 28, ""color"": ""#1a2d4f"", ""align"": ""center"", ""italic"": true }},
+    {{ ""id"": ""awardsTo"",       ""text"": ""My Global World Education Group Hereby Awards To"", ""x"": 0, ""y"": 360, ""fontSize"": 28, ""color"": ""#1a2d4f"", ""align"": ""center"", ""italic"": true }},
     {{ ""id"": ""studentName"",    ""tag"": ""[student full name]"",   ""x"": 0, ""y"": 430, ""fontSize"": 52, ""color"": ""#A6862F"", ""align"": ""center"", ""bold"": true }},
     {{ ""id"": ""whoSatisfied"",   ""text"": ""Who has satisfactorily completed the studies prescribed and therefore has been granted the degree of"", ""x"": 0, ""y"": 530, ""fontSize"": 24, ""color"": ""#1a2d4f"", ""align"": ""center"", ""italic"": true }},
     {{ ""id"": ""programmeName"",  ""tag"": ""[program name]"",        ""x"": 0, ""y"": 600, ""fontSize"": 38, ""color"": ""#A6862F"", ""align"": ""center"", ""bold"": true }},
     {{ ""id"": ""withSpec"",       ""text"": ""With a specialisation in"", ""x"": 0, ""y"": 690, ""fontSize"": 24, ""color"": ""#1a2d4f"", ""align"": ""center"", ""italic"": true }},
     {{ ""id"": ""specName"",       ""tag"": ""[specialization name]"", ""x"": 0, ""y"": 760, ""fontSize"": 34, ""color"": ""#A6862F"", ""align"": ""center"", ""bold"": true }},
     {{ ""id"": ""witnessLine1"",   ""text"": ""With all its right and privileges in the witness whereof the seal of the"", ""x"": 0, ""y"": 850, ""fontSize"": 22, ""color"": ""#1a2d4f"", ""align"": ""center"", ""italic"": true }},
-    {{ ""id"": ""witnessLine2"",   ""text"": ""International Business School of Scandinavia is hereunto affixed."", ""x"": 0, ""y"": 890, ""fontSize"": 22, ""color"": ""#1a2d4f"", ""align"": ""center"", ""italic"": true }},
+    {{ ""id"": ""witnessLine2"",   ""text"": ""My Global World Education Group is hereunto affixed."", ""x"": 0, ""y"": 890, ""fontSize"": 22, ""color"": ""#1a2d4f"", ""align"": ""center"", ""italic"": true }},
     {{ ""id"": ""presentedOn"",    ""tag"": ""[graduation date]"",     ""prefix"": ""Presented on "", ""suffix"": "" in Denmark."", ""x"": 0, ""y"": 950, ""fontSize"": 24, ""color"": ""#000000"", ""align"": ""center"", ""bold"": true }}
   ]
 }}";
@@ -804,7 +911,7 @@ public static class DatabaseSeeder
             "Default transcript", t => t.BodyHtml = DefaultTranscriptHtml);
 
     private static string DefaultTranscriptHtml { get; } = $@"
-<p><img data-asset-id=""{SystemLetterAssetIds.IbssLogo}"" alt=""IBSS"" /></p>
+<p><img data-asset-id=""{SystemLetterAssetIds.IbssLogo}"" alt=""MGW"" /></p>
 <p><img data-asset-id=""{SystemLetterAssetIds.IbssSecondaryLogo}"" alt="""" /></p>
 <h1 style=""text-align:center;"">STUDENT TRANSCRIPT</h1>
 <h3 style=""text-align:center;"">Official Transcript</h3>
@@ -832,7 +939,7 @@ public static class DatabaseSeeder
 <h3>Grade Standard</h3>
 <table>
 <thead>
-<tr><th>IBSS Grade</th><th>UK Grade</th><th>US Grade</th><th>ECTS Grade</th><th>ECTS Grade Points</th><th>Remark</th></tr>
+<tr><th>MGW Grade</th><th>UK Grade</th><th>US Grade</th><th>ECTS Grade</th><th>ECTS Grade Points</th><th>Remark</th></tr>
 </thead>
 <tbody>
 <tr><td>75-100</td><td>75-100</td><td>A+</td><td>A</td><td>5.0</td><td>Excellent – outstanding performance with only minor errors</td></tr>
@@ -859,7 +966,7 @@ public static class DatabaseSeeder
     // re-uploads instead of issuing the offer with caveats. The remaining
     // numbered items renumber automatically inside <ol>.
     private static string DefaultOfferLetterHtml { get; } = $@"
-<p><img data-asset-id=""{SystemLetterAssetIds.IbssLogo}"" alt=""IBSS"" /></p>
+<p><img data-asset-id=""{SystemLetterAssetIds.IbssLogo}"" alt=""MGW"" /></p>
 <p><img data-asset-id=""{SystemLetterAssetIds.IbssSecondaryLogo}"" alt="""" /></p>
 <h2 style=""text-align:center;"">Offer Letter</h2>
 <p>Date: [date]</p>
@@ -869,7 +976,7 @@ public static class DatabaseSeeder
 <p>Address: <strong>[student address]</strong></p>
 <p></p>
 <p>Dear <strong>[student full name]</strong>,</p>
-<p>Congratulations. We are pleased to inform you that your application for <strong>International Business School of Scandinavia (IBSS)</strong> is approved. We look forward to having you with us. Our records for your admission will carry the following information:</p>
+<p>Congratulations. We are pleased to inform you that your application for <strong>My Global World Education Group (MGW)</strong> is approved. We look forward to having you with us. Our records for your admission will carry the following information:</p>
 <table>
 <tbody>
 <tr><td><strong>Programme</strong></td><td>:</td><td>[program name]</td></tr>
@@ -890,21 +997,21 @@ public static class DatabaseSeeder
 <li>The duration of study is a maximum of [duration of study]. Should you exceed this study period, you will be charged a penalty fee.</li>
 <li>The tuition fee is not covering the supervisor fee for the final project/dissertation project. Supervisor is not mandatory while doing final project/dissertation project. If the student wishes to have a supervisor from the school, please contact the school's registrar to have the updated supervisor fee.</li>
 </ol>
-<p><strong>International Business School of Scandinavia (IBSS)</strong> would like to congratulate you to join the programme in your quest towards academic and career advancement.</p>
+<p><strong>My Global World Education Group (MGW)</strong> would like to congratulate you to join the programme in your quest towards academic and career advancement.</p>
 <p>We wish you every success!</p>
-<p><img data-asset-id=""{SystemLetterAssetIds.IbssStamp}"" alt=""IBSS Stamp"" /></p>
+<p><img data-asset-id=""{SystemLetterAssetIds.IbssStamp}"" alt=""MGW Stamp"" /></p>
 <p><img data-asset-id=""{SystemLetterAssetIds.IbssSignatureLine}"" alt=""Signature Line"" /></p>
 <p>Anna Phan</p>
 <p>Head of Administration</p>
 <p></p>
 <h3>(Please fill up this part)</h3>
 <h3>Applicant's Confirmation</h3>
-<p>By paying the tuition fee of the program, I, <strong>[student full name]</strong>, <strong>[passport id]</strong> accept the offer to study <strong>[program name]</strong> in International Business School of Scandinavia (IBSS). I hereby acknowledge that I have read and understand the terms and conditions of this offer letter and on the website (<a href=""https://ibss.edu.eu/"">https://ibss.edu.eu/</a>).</p>
+<p>By paying the tuition fee of the program, I, <strong>[student full name]</strong>, <strong>[passport id]</strong> accept the offer to study <strong>[program name]</strong> in My Global World Education Group (MGW). I hereby acknowledge that I have read and understand the terms and conditions of this offer letter and on the website (<a href=""https://ibss.edu.eu/"">https://ibss.edu.eu/</a>).</p>
 <p><img data-asset-id=""{SystemLetterAssetIds.IbssFooter}"" alt=""Footer"" /></p>
 ";
 
     private static string DefaultAdmissionLetterHtml { get; } = $@"
-<p><img data-asset-id=""{SystemLetterAssetIds.IbssLogo}"" alt=""IBSS"" /></p>
+<p><img data-asset-id=""{SystemLetterAssetIds.IbssLogo}"" alt=""MGW"" /></p>
 <p>Date: [date]</p>
 <p>Ref: </p>
 <h2 style=""text-align:center;"">Admission Letter</h2>
@@ -913,7 +1020,7 @@ public static class DatabaseSeeder
 <p>Address: <strong>[student address]</strong></p>
 <p></p>
 <p>Dear <strong>[student full name]</strong>,</p>
-<p><strong>International Business School of Scandinavia (IBSS)</strong> would like to take this opportunity to congratulate and welcome you to the programme in your quest towards academic and career advancement. It is our pleasure that you have been accepted into the programme.</p>
+<p><strong>My Global World Education Group (MGW)</strong> would like to take this opportunity to congratulate and welcome you to the programme in your quest towards academic and career advancement. It is our pleasure that you have been accepted into the programme.</p>
 <table>
 <tbody>
 <tr><td><strong>Programme</strong></td><td>:</td><td>[program name]</td></tr>
@@ -926,8 +1033,8 @@ public static class DatabaseSeeder
 </tbody>
 </table>
 <p>We hereby confirm to register you as our active student for our program as mentioned above.</p>
-<p>Participation in this programme is governed by IBSS Terms &amp; Conditions (see <a href=""http://ibss.edu.eu/"">http://ibss.edu.eu/</a>).</p>
-<p><img data-asset-id=""{SystemLetterAssetIds.IbssStamp}"" alt=""IBSS Stamp"" /></p>
+<p>Participation in this programme is governed by MGW Terms &amp; Conditions (see <a href=""http://ibss.edu.eu/"">http://ibss.edu.eu/</a>).</p>
+<p><img data-asset-id=""{SystemLetterAssetIds.IbssStamp}"" alt=""MGW Stamp"" /></p>
 <p>Thank you,</p>
 <p>Yours sincerely,</p>
 <p><img data-asset-id=""{SystemLetterAssetIds.IbssSignatureLine}"" alt=""Signature Line"" /></p>
@@ -958,9 +1065,22 @@ public static class DatabaseSeeder
                 DocumentTypeId = seed.Id,
                 Name = seed.Name,
                 Description = seed.Description,
-                IsSystemGenerated = true,
+                // Student Card Picture is the one entry in this list that is
+                // UPLOADED (by the student or the Admission Office), not
+                // system-generated — it must stay pickable in upload dialogs.
+                IsSystemGenerated = seed.Id != SystemDocumentTypeIds.StudentCardPicture,
             });
             added++;
+        }
+
+        // Data fix for rows seeded before the rule above existed.
+        var cardPic = await context.DocumentTypes
+            .FirstOrDefaultAsync(d => d.DocumentTypeId == SystemDocumentTypeIds.StudentCardPicture && d.IsSystemGenerated);
+        if (cardPic is not null)
+        {
+            cardPic.IsSystemGenerated = false;
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Student Card Picture: marked uploadable (was system-generated)");
         }
 
         if (added > 0)
@@ -1053,6 +1173,104 @@ public static class DatabaseSeeder
     /// Returns a name → Guid map so callers can resolve references without
     /// re-querying. Idempotent on Name.
     /// </summary>
+    private static async Task SeedPositionFunctionsAsync(OdinDbContext context, ILogger logger)
+    {
+        var seed = new (string Name, int DisplayOrder)[]
+        {
+            ("Consulting",             100),
+            ("Finance - Accounting",   200),
+            ("General Management",     300),
+            ("Human Resources",        400),
+            ("Marketing - Sales",      500),
+            ("Information Technology",  600),
+            ("Operation - Logistics",  700),
+            ("Others",                 900),
+        };
+
+        var existing = await context.PositionFunctions.Select(e => e.Name.ToLower()).ToListAsync();
+        var have = existing.ToHashSet();
+        var added = 0;
+        foreach (var (name, displayOrder) in seed)
+        {
+            if (have.Contains(name.Trim().ToLowerInvariant())) continue;
+            context.PositionFunctions.Add(new PositionFunction { PositionFunctionId = Guid.NewGuid(), Name = name, DisplayOrder = displayOrder });
+            added++;
+        }
+        if (added > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Position functions: +{Count} added", added);
+        }
+        else
+        {
+            logger.LogInformation("[Seeder] Position functions already complete — skipping");
+        }
+    }
+
+    private static async Task SeedEmploymentIndustriesAsync(OdinDbContext context, ILogger logger)
+    {
+        var seed = new (string Name, int DisplayOrder)[]
+        {
+            ("Consulting",                                100),
+            ("Consumer Packaged Goods",                   200),
+            ("Energy",                                    300),
+            ("Financial Services",                        400),
+            ("Government",                                500),
+            ("Healthcare (including products and services)", 600),
+            ("Hospitality",                               700),
+            ("Manufacturing",                             800),
+            ("Media and Entertainment",                   900),
+            ("Non-profit",                               1000),
+            ("Real estate",                              1100),
+            ("Retail",                                   1200),
+            ("Technology",                               1300),
+            ("Transportation and Logistics Services",    1400),
+            ("Others",                                   1900),
+        };
+
+        // Data fix: an earlier seed mistakenly split the single spec entry
+        // "Transportation and Logistics Services" into "Transportation and
+        // Logistics" + "Services". Rename the former and retire the latter
+        // (only when unused). Idempotent — later boots find nothing to do.
+        var wrongTransport = await context.EmploymentIndustries
+            .FirstOrDefaultAsync(e => e.Name == "Transportation and Logistics" && e.DeletedAt == null);
+        if (wrongTransport is not null
+            && !await context.EmploymentIndustries.AnyAsync(e => e.Name == "Transportation and Logistics Services" && e.DeletedAt == null))
+        {
+            wrongTransport.Name = "Transportation and Logistics Services";
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Employment industries: renamed 'Transportation and Logistics' to include 'Services'");
+        }
+        var spuriousServices = await context.EmploymentIndustries
+            .FirstOrDefaultAsync(e => e.Name == "Services" && e.DeletedAt == null);
+        if (spuriousServices is not null
+            && !await context.Students.AnyAsync(s => s.CurrentEmploymentIndustryId == spuriousServices.EmploymentIndustryId))
+        {
+            spuriousServices.DeletedAt = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Employment industries: retired spurious 'Services' entry");
+        }
+
+        var existing = await context.EmploymentIndustries.Select(e => e.Name.ToLower()).ToListAsync();
+        var have = existing.ToHashSet();
+        var added = 0;
+        foreach (var (name, displayOrder) in seed)
+        {
+            if (have.Contains(name.Trim().ToLowerInvariant())) continue;
+            context.EmploymentIndustries.Add(new EmploymentIndustry { EmploymentIndustryId = Guid.NewGuid(), Name = name, DisplayOrder = displayOrder });
+            added++;
+        }
+        if (added > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Employment industries: +{Count} added", added);
+        }
+        else
+        {
+            logger.LogInformation("[Seeder] Employment industries already complete — skipping");
+        }
+    }
+
     private static async Task<Dictionary<string, Guid>> SeedEducationLevelsAsync(
         OdinDbContext context, ILogger logger)
     {
@@ -1644,4 +1862,131 @@ public static class DatabaseSeeder
 
         return (oprfSeed, clientPublicKey, kemPublicKey, kemEncPrivKey, kemNonce);
     }
+
+    /// <summary>
+    /// One-time data fix: intake answers were briefly stored AES-encrypted at
+    /// rest before the explicit decision (2026-07-15) that the intake feature
+    /// carries no field encryption. Rows written in that window hold
+    /// ciphertext; plaintext rows start with '{' or '[' and are skipped.
+    /// Idempotent — once every row is plaintext there is nothing to do.
+    /// </summary>
+    private static async Task DecryptLegacyIntakeAnswersAsync(OdinDbContext context, ILogger logger)
+    {
+        var candidates = await context.IntakeResponses
+            .Where(r => r.AnswersJson != "" && !r.AnswersJson.StartsWith("{") && !r.AnswersJson.StartsWith("["))
+            .ToListAsync();
+        if (candidates.Count == 0) return;
+
+        var fixedCount = 0;
+        foreach (var r in candidates)
+        {
+            try
+            {
+                r.AnswersJson = Odin.Api.Base.Crypto.FieldEncryption.DecryptString(r.AnswersJson);
+                fixedCount++;
+            }
+            catch
+            {
+                // Not our ciphertext — leave the row untouched.
+            }
+        }
+        if (fixedCount > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Intake responses: decrypted {Count} legacy encrypted answer payloads", fixedCount);
+        }
+    }
+
+    /// <summary>
+    /// Fills DocumentType.AiPrompt with a detailed verification prompt for
+    /// the future AI document checker. Every prompt shares ONE strict output
+    /// JSON schema (identical across all types) and adds type-specific
+    /// expectations + fraud checks. Only rows with an empty prompt are
+    /// touched, so admin-edited prompts are never overwritten.
+    /// </summary>
+    private static async Task SeedDocumentTypeAiPromptsAsync(OdinDbContext context, ILogger logger)
+    {
+        var types = await context.DocumentTypes.Where(d => d.DeletedAt == null).ToListAsync();
+        var filled = 0;
+        foreach (var t in types)
+        {
+            if (!string.IsNullOrWhiteSpace(t.AiPrompt)) continue;
+            t.AiPrompt = BuildAiPrompt(t.Name);
+            filled++;
+        }
+        // Schema upgrade: prompts from the first seeding lack the 0.00-1.00
+        // confidence/fraudRisk fields the scan worker stores. Regenerate any
+        // prompt still missing them (admin edits that kept the old schema
+        // marker are regenerated too — acceptable this close to seeding).
+        foreach (var t in types)
+        {
+            if (t.AiPrompt != null && t.AiPrompt.Contains("recommendedAction") && !t.AiPrompt.Contains("fraudRisk"))
+            {
+                t.AiPrompt = BuildAiPrompt(t.Name);
+                filled++;
+            }
+        }
+        if (filled > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Document types: seeded AI verification prompts for {Count} types", filled);
+        }
+    }
+
+    private static string BuildAiPrompt(string typeName)
+    {
+        var n = typeName.ToLowerInvariant();
+        string specifics;
+        if (n.Contains("passport"))
+            specifics = "EXPECTED CHARACTERISTICS: A government-issued passport identity page. Look for: the machine-readable zone (MRZ, two lines of 44 characters with << filler); a portrait photo; document number, issuing state, nationality, date of birth, sex, issue/expiry dates; security printing (guilloche patterns, microtext). VALIDATION: recompute the MRZ check digits for document number, date of birth and expiry and compare them with the printed check digits; verify the printed fields match the MRZ fields exactly; verify the expiry date is in the future. FRAUD CHECKS: photo edges that look pasted or re-compressed differently from the page; font or kerning changes inside a single field; MRZ check-digit failures; issue/expiry ranges that do not match the issuing country's validity rules (usually 5 or 10 years); a date of birth inconsistent with the applicant's stated age.";
+        else if (n.Contains("birth"))
+            specifics = "EXPECTED CHARACTERISTICS: An official civil birth registration document. Look for: an issuing civil authority (registry office, municipality, ministry), a registration number, full name of the child, date and place of birth, parents' names, an official stamp/seal and a signature or digital verification code. FRAUD CHECKS: missing registration number or authority; fonts inconsistent with the rest of the form; a stamp that is perfectly uniform (copy-pasted) or overlaps text unnaturally; a date of birth that conflicts with other documents in the application.";
+        else if (n.Contains("language"))
+            specifics = "EXPECTED CHARACTERISTICS: A recognised language test result (IELTS, TOEFL, Duolingo English Test, Cambridge, PTE or equivalent). Look for: the testing organisation's branding, a candidate/test-report number, test date, per-skill scores (listening/reading/writing/speaking) and an overall score/band consistent with the per-skill scores, and the candidate's name and often photo or date of birth. VALIDATION: check the overall score is mathematically consistent with the sub-scores for the claimed test; check the score scale matches the test (e.g. IELTS 0-9 in 0.5 steps, TOEFL iBT 0-120). FRAUD CHECKS: scores outside the test's scale or granularity; test date older than the test's validity window (usually 2 years); mismatched fonts around the scores; a report number format that does not match the organisation's format.";
+        else if (n.Contains("curriculum") || n == "cv")
+            specifics = "EXPECTED CHARACTERISTICS: A curriculum vitae / resume: personal details, chronological education history and employment history, possibly skills and references. This is a self-authored document, so authenticity of layout is NOT a fraud signal. VALIDATION: check internal chronology (no overlapping impossible periods, education ages plausible), and that the stated qualifications are consistent with the other documents in the application. FRAUD CHECKS: impossible or reversed date ranges; degrees claimed from institutions that do not exist; a work history that contradicts the applicant's date of birth.";
+        else if (n.Contains("motivation"))
+            specifics = "EXPECTED CHARACTERISTICS: A personal statement / letter of motivation authored by the applicant explaining why they pursue the programme. Self-authored: layout carries no authenticity weight. VALIDATION: confirm it is actually a motivation letter (first-person prose about study intentions), reasonably specific to a programme, and not an unrelated document. FRAUD CHECKS: text plagiarised from well-known templates verbatim; a letter clearly written for a different institution or programme; contradictions with the applicant's stated background.";
+        else if (n.Contains("card picture") || n.Contains("photo"))
+            specifics = "EXPECTED CHARACTERISTICS: A portrait photograph of one person suitable for an ID card: face clearly visible, roughly frontal, neutral background preferred, no sunglasses or heavy obstruction, adequate resolution and lighting. VALIDATION: exactly one face; face occupies a reasonable share of the frame; image sharp enough to print at ID size. FRAUD CHECKS: signs of AI generation or heavy retouching (waxy skin, asymmetric artefacts, inconsistent lighting between face and background); a photo of a photo/screen (moiré patterns, screen bezels); celebrity or stock imagery.";
+        else if (n.Contains("transcript"))
+            specifics = "EXPECTED CHARACTERISTICS: An academic transcript / grade report: issuing institution header, student name and ID, programme name, a table of courses/modules with credits (often ECTS) and grades, totals or GPA, issue date, and a stamp/signature or verification code. VALIDATION: recompute totals - credit sums and GPA/averages must match the listed rows; grades must lie within the printed grading scale; the award level must match this document type. FRAUD CHECKS: rows whose font, spacing or baseline differ from the rest of the table (row insertion); arithmetic that does not add up; a grading legend inconsistent with the grades used; an institution name/logo mismatch; issue dates before the covered study period ends.";
+        else if (n.Contains("certificate") || n.Contains("diploma") || n.Contains("degree") || n.Contains("doctorate"))
+            specifics = "EXPECTED CHARACTERISTICS: An award certificate: issuing institution name and branding, the holder's full name, the exact qualification awarded, award/conferral date, signatures of officials and an institutional seal/stamp, often a certificate number or verification URL. VALIDATION: the qualification level printed on the document must match this expected document type (do not accept a diploma where a bachelor's degree is expected); the award date must be plausible relative to the applicant's age and other documents. FRAUD CHECKS: name or qualification text in a different font, size or ink density than surrounding text (overlay editing); pixelation or compression halos around the holder's name; seals/signatures identical to templates found on diploma-mill designs; institutions that cannot be verified to exist; conferral dates on weekends/holidays inconsistent with the institution's practice.";
+        else if (n.Contains("letter"))
+            specifics = "EXPECTED CHARACTERISTICS: An official institutional letter (offer/admission or similar): letterhead with institution branding and contact details, addressee, a reference number, an issue date, body text stating the decision or purpose, and an authorised signature. FRAUD CHECKS: letterhead artwork at different resolution than the text layer; reference numbers that do not match the institution's format; signature images reused pixel-identically from other documents; dates inconsistent with the described process.";
+        else
+            specifics = "EXPECTED CHARACTERISTICS: Judge against the document type name and description. Identify the issuing party, the subject person, key dates and identifiers. FRAUD CHECKS: inconsistent fonts or alignment within fields, compression artefacts localised around names/dates/numbers, missing issuer identification, internally contradictory dates.";
+
+        return
+"You are a meticulous document verification analyst for a university admissions office. " +
+"You are given ONE uploaded document (image or PDF pages) that the applicant claims is of type: \"" + typeName + "\".\n\n" +
+"TASKS - perform ALL of them:\n" +
+"1. CLASSIFY: determine what the document actually is, from its content alone.\n" +
+"2. MATCH: decide whether it genuinely is a \"" + typeName + "\" and state how confident you are (0-100).\n" +
+"3. EXTRACT: pull out the key fields (holder name, issuer, dates, identifying numbers, and the fields listed below).\n" +
+"4. VALIDATE: run the type-specific validation rules below; every failed rule lowers legitimacy.\n" +
+"5. FRAUD ANALYSIS: examine typography consistency, alignment, compression/retouch artefacts around critical fields, seal/signature plausibility, internal arithmetic and date logic, and cross-field consistency. List every indicator you find with a severity.\n" +
+"6. Be conservative: if the image is too blurry, cropped or incomplete to judge, say so via legitimacy=\"unreadable\" rather than guessing.\n\n" +
+specifics + "\n\n" +
+"OUTPUT - respond with ONLY this JSON object, no prose, no markdown fences. The schema is identical for every document type:\n" +
+"{\n" +
+"  \"documentTypeExpected\": \"" + typeName + "\",\n" +
+"  \"detectedType\": \"<what the document actually appears to be>\",\n" +
+"  \"matchesExpectedType\": true,\n" +
+"  \"typeConfidence\": 0,\n" +
+"  \"legitimacy\": \"legitimate | suspicious | likely_fraudulent | unreadable\",\n" +
+"  \"confidence\": 0.00,\n" +
+"  \"fraudRisk\": 0.00,\n" +
+"  \"legitimacyConfidence\": 0,\n" +
+"  \"extracted\": { \"holderName\": \"\", \"issuer\": \"\", \"issueDate\": \"\", \"expiryDate\": \"\", \"documentNumber\": \"\", \"otherKeyFields\": {} },\n" +
+"  \"validationChecks\": [ { \"check\": \"\", \"passed\": true, \"detail\": \"\" } ],\n" +
+"  \"fraudIndicators\": [ { \"indicator\": \"\", \"severity\": \"low | medium | high\", \"detail\": \"\" } ],\n" +
+"  \"qualityIssues\": [ \"\" ],\n" +
+"  \"summary\": \"<2-3 sentences for the admissions officer>\",\n" +
+"  \"recommendedAction\": \"approve | manual_review | reject\"\n" +
+"}\n\n" +
+"SCORING RULES: typeConfidence and legitimacyConfidence are integers 0-100. confidence and fraudRisk are decimals from 0.00 to 1.00: confidence = your overall certainty that this document is genuine AND of the expected type; fraudRisk = the probability it is forged or manipulated. recommendedAction must be \"reject\" if any high-severity fraud indicator exists or the type does not match; \"manual_review\" for medium indicators, low confidence (<70) or unreadable input; \"approve\" only when the type matches with confidence >= 85 and no medium/high indicators exist.";
+    }
+
 }

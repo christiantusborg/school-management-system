@@ -1,10 +1,11 @@
 <template>
   <div class="page-wrapper">
     <nav class="navbar">
-      <span class="brand-text">IBSS Admin Portal</span>
+      <span class="brand-text">MGW Admin Portal</span>
       <div class="nav-links">
         <RouterLink to="/admin" class="nav-link active-link">Dashboard</RouterLink>
         <RouterLink to="/admin/academic" class="nav-link">Academic</RouterLink>
+        <RouterLink to="/admin/questionnaires" class="nav-link">Questionnaires</RouterLink>
         <RouterLink to="/admin/config" class="nav-link">System Config</RouterLink>
       </div>
       <div class="nav-right">
@@ -99,7 +100,7 @@
           <div class="search-hint-tip">
             <strong>Fuzzy search</strong> — characters don't need to be consecutive.<br>
             <code>jnd</code> matches <em>Jane Doe</em><br>
-            <code>ibsmba</code> matches <em>IBSS.MBA.23110102</em><br>
+            <code>mgwmba</code> matches <em>MGW.MBA.23110102</em><br>
             Works on both full name and student ID.
           </div>
         </div>
@@ -455,6 +456,10 @@
           <PartnerCustomProgrammesTab :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
         </div>
 
+        <div v-show="manageTab === 'certs'" class="manage-section">
+          <PartnerCertificatesTab v-if="manageTab === 'certs'" :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
+        </div>
+
         <div v-show="manageTab === 'students'" class="manage-section">
           <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" @add-student="openAddStudentForManagedPartner" />
         </div>
@@ -640,6 +645,7 @@ import CreatePartnerWizard from '../components/partner/CreatePartnerWizard.vue'
 import PartnerProfileTab from '../components/partner/tabs/PartnerProfileTab.vue'
 import PartnerCoreProgrammesTab from '../components/partner/tabs/PartnerCoreProgrammesTab.vue'
 import PartnerCustomProgrammesTab from '../components/partner/tabs/PartnerCustomProgrammesTab.vue'
+import PartnerCertificatesTab from '../components/admin/PartnerCertificatesTab.vue'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
 import AdminStudentsTab from '../components/admin/AdminStudentsTab.vue'
 import AdminUsersTab from '../components/admin/AdminUsersTab.vue'
@@ -757,7 +763,7 @@ function submitStudent() {
   const seq = getNextId()
   const code = progCodeMap[sForm.programme] ?? 'GEN'
   const now = new Date()
-  const sid = `IBSS.${code}.${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(seq).padStart(4,'0')}`
+  const sid = `MGW.${code}.${String(now.getFullYear()).slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(seq).padStart(4,'0')}`
   students.push({
     id: seq, studentId: sid,
     firstName: sForm.firstName, lastName: sForm.lastName,
@@ -807,6 +813,7 @@ const MANAGE_TABS = [
   { k: 'core',     label: 'Core Programmes' },
   { k: 'custom',   label: 'Custom Programmes' },
   { k: 'students', label: 'Students' },
+  { k: 'certs',    label: 'Certificates' },
 ]
 const manageTab = ref('users')
 
@@ -1156,7 +1163,7 @@ function logout() { auth.logout(); router.push('/login') }
 .tab-btn:hover:not(.active) { color: #333; }
 
 /* Container */
-.container { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; }
+.container { max-width: none; margin: 2rem 0; padding: 0 2rem; }
 
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.25rem; }
 .page-title { font-size: 1.5rem; font-weight: 700; color: #003366; }

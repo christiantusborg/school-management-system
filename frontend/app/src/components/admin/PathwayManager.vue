@@ -46,6 +46,7 @@
               </td>
               <td class="actions-cell">
                 <button class="btn-action" @click="openEdit(item)">Edit</button>
+                <button class="btn-action" @click="openClone(item)">Clone</button>
                 <button class="btn-action btn-action-danger" @click="confirmDelete = item">Delete</button>
               </td>
             </tr>
@@ -58,7 +59,7 @@
       <div class="overlay" @click="closeForm"></div>
       <div class="drawer">
         <div class="drawer-header">
-          <h2>{{ editTarget ? 'Edit' : 'Add' }} Pathway</h2>
+          <h2>{{ editTarget ? 'Edit' : (cloning ? 'Clone' : 'Add') }} Pathway</h2>
           <button class="drawer-close" @click="closeForm">✕</button>
         </div>
         <div class="drawer-form">
@@ -139,6 +140,7 @@ const error = ref(null)
 
 const showForm = ref(false)
 const editTarget = ref(null)
+const cloning = ref(false)
 const formName = ref('')
 const formDocIds = ref([])
 const formLevelIds = ref([])
@@ -195,6 +197,7 @@ function toggleLevel(id) {
 
 function openCreate() {
   editTarget.value = null
+  cloning.value = false
   formName.value = ''
   formDocIds.value = []
   formLevelIds.value = []
@@ -205,7 +208,23 @@ function openCreate() {
 
 function openEdit(item) {
   editTarget.value = item
+  cloning.value = false
   formName.value = item.name
+  formDocIds.value = [...(docsByPathway[item.pathwayId] ?? [])]
+  formLevelIds.value = [...(levelsByPathway[item.pathwayId] ?? [])]
+  formMinYears.value = item.minimumYearsWorkExperience ?? 0
+  formError.value = null
+  showForm.value = true
+}
+
+// Clone: open the create form pre-filled with the source pathway's config
+// (accepted degrees, required documents, min years) under a "(copy)" name. It
+// saves as a brand-new pathway (editTarget stays null → POST), so the admin
+// just tweaks the name and confirms.
+function openClone(item) {
+  editTarget.value = null
+  cloning.value = true
+  formName.value = `${item.name} (copy)`
   formDocIds.value = [...(docsByPathway[item.pathwayId] ?? [])]
   formLevelIds.value = [...(levelsByPathway[item.pathwayId] ?? [])]
   formMinYears.value = item.minimumYearsWorkExperience ?? 0
@@ -215,6 +234,7 @@ function openEdit(item) {
 
 function closeForm() {
   showForm.value = false
+  cloning.value = false
 }
 
 async function save() {

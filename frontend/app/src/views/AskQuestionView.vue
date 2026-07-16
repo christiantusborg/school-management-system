@@ -3,7 +3,7 @@
     <!-- Top nav -->
     <nav class="navbar">
       <div class="nav-brand">
-        <span class="brand-text">IBSS Student Portal</span>
+        <span class="brand-text">MGW Student Portal</span>
       </div>
       <div class="nav-user">
         <span>{{ auth.user?.firstName }} {{ auth.user?.lastName }} &nbsp;|&nbsp; {{ auth.user?.studentId }}</span>

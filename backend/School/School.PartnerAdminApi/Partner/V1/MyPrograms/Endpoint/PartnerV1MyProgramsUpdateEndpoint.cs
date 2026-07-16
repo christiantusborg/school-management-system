@@ -19,6 +19,7 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
         public string? Code { get; init; }
         public string? Name { get; init; }
         public decimal Ects { get; init; }
+        public bool IsThesis { get; init; }
     }
 
     public sealed class SpecializationInput
@@ -36,6 +37,8 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
         public List<Guid>? PathwayIds { get; init; }
         public int? MinDurationMonths { get; init; }
         public int? MaxDurationMonths { get; init; }
+        public decimal? RequiredEcts { get; init; }
+        public Guid? SchoolId { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
@@ -69,6 +72,20 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
             return Results.BadRequest(new { error = "Invalid duration range: need 1 ≤ min ≤ max." });
         programme.MinDurationMonths = newMin;
         programme.MaxDurationMonths = newMax;
+
+        // Completion threshold (ECTS). Sent by the edit form; when omitted the
+        // existing value is kept. A supplied value must be non-negative.
+        if (body.RequiredEcts is { } reqEcts)
+        {
+            if (reqEcts < 0) return Results.BadRequest(new { error = "requiredEcts cannot be negative." });
+            programme.RequiredEcts = reqEcts;
+        }
+        if (body.SchoolId is { } schoolId)
+        {
+            if (!await db.Schools.AnyAsync(s => s.SchoolId == schoolId && s.DeletedAt == null, ct))
+                return Results.BadRequest(new { error = "A valid school is required." });
+            programme.SchoolId = schoolId;
+        }
 
         // Sync specializations + subjects (server is the truth: rows not in the
         // payload get soft-deleted, missing IDs are treated as new).
@@ -129,6 +146,7 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
                         existingSub.Code = (subInput.Code ?? string.Empty).Trim();
                         existingSub.Name = subName;
                         existingSub.Ects = subInput.Ects;
+                        existingSub.IsThesis = subInput.IsThesis;
                     }
                     else
                     {
@@ -140,6 +158,7 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
                             Name = subName,
                             Description = string.Empty,
                             Ects = subInput.Ects,
+                            IsThesis = subInput.IsThesis,
                         });
                     }
                 }

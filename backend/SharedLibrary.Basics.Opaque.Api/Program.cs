@@ -134,6 +134,8 @@ var markerTypes = new HashSet<Type>
     typeof(SpecializationApiAssemblyMarker),
     typeof(SubjectApiAssemblyMarker),
     typeof(PartnerAdminApiAssemblyMarker),
+
+    typeof(School.IntakeApi.IntakeApiAssemblyMarker),
 };
 var configuration = builder.Configuration;
 builder.Services.AddEndpointV1Adjunct(configuration);
@@ -175,7 +177,31 @@ builder.Services.AddScoped<ISmsSender, NullSmsSender>();
 // Brevo SMTP for system mail; RoutingEmailSender layers Gmail on top for
 // letter emails when configured in System Config → Email.
 builder.Services.AddScoped<BrevoEmailSender>();
-builder.Services.AddScoped<IEmailSender, RoutingEmailSender>();
+builder.Services.AddScoped<RoutingEmailSender>();
+builder.Services.AddScoped<IEmailSender>(sp => sp.GetRequiredService<RoutingEmailSender>());
+// Per-school test sends (System Config → Schools → Edit → Send test).
+builder.Services.AddScoped<Odin.Api.Base.Email.ISchoolMailTester>(sp => sp.GetRequiredService<RoutingEmailSender>());
+
+// Document scanning factories: engines are chosen here so swapping the OCR
+// engine or AI provider is a one-line config/registration change.
+builder.Services.AddHttpClient("docscan-ollama").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromMinutes(5));
+builder.Services.AddSingleton<Odin.Api.Base.DocumentScanning.IOcrEngine>(sp =>
+    builder.Configuration["DocumentScan:OcrEngine"] switch
+    {
+        // future engines (e.g. "easyocr") plug in here
+        _ => new Odin.Api.Base.DocumentScanning.TesseractCliOcrEngine(
+            builder.Configuration["DocumentScan:OcrLanguages"] ?? "dan+eng+nld+deu+nor+swe"),
+    });
+builder.Services.AddSingleton<Odin.Api.Base.DocumentScanning.IAiDocumentValidator>(sp =>
+    builder.Configuration["DocumentScan:AiProvider"] switch
+    {
+        // future providers (e.g. "claude") plug in here
+        _ => new Odin.Api.Base.DocumentScanning.OllamaAiValidator(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("docscan-ollama"),
+            builder.Configuration["DocumentScan:OllamaUrl"] ?? "http://localhost:11434",
+            builder.Configuration["DocumentScan:OllamaModel"] ?? "llama3.2:latest"),
+    });
+builder.Services.AddHostedService<DocumentScanWorker>();
 
 // Repositories
 
@@ -209,6 +235,8 @@ builder.Services.AddScoped<Odin.Api.Base.Letters.LetterTagResolver>();
 builder.Services.AddSingleton<Odin.Api.Base.Letters.LetterPdfRenderer>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.LetterReleaseService>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.ProvisionalTranscriptService>();
+builder.Services.AddScoped<Odin.Api.Base.Letters.PartnerCertificateService>();
+builder.Services.AddScoped<Odin.Api.Base.Payments.InvoicePdfService>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.LetterEmailService>();
 
 // Per-enrollment activity log reader — used by admin/partner/student

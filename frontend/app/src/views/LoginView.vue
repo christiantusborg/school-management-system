@@ -4,7 +4,7 @@
 
       <!-- Logo / Brand -->
       <div class="logo-area">
-        <img src="/ibss-logo.jpg" alt="IBSS Logo" class="logo-img" />
+        <img src="/mgw-logo.jpg" alt="My Global World Education Group" class="logo-img" />
         <p class="subtitle">Student &amp; Staff Portal</p>
       </div>
 

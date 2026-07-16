@@ -11,6 +11,7 @@ public class ProgrammeConfiguration : IEntityTypeConfiguration<Programme>
         builder.HasKey(e => e.ProgrammeId);
         builder.Property(e => e.Code).HasMaxLength(80).IsRequired();
         builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.RequiredEcts).HasPrecision(7, 1);
         builder.HasIndex(e => e.Code)
             .HasFilter("\"DeletedAt\" IS NULL")
             .IsUnique();
@@ -28,6 +29,11 @@ public class ProgrammeConfiguration : IEntityTypeConfiguration<Programme>
         builder.HasOne(e => e.AwardEducationLevel)
             .WithMany()
             .HasForeignKey(e => e.AwardEducationLevelId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(e => e.School)
+            .WithMany(s => s.Programmes)
+            .HasForeignKey(e => e.SchoolId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

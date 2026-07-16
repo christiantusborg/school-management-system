@@ -121,7 +121,7 @@
           <p v-if="detailError" class="err-banner">{{ detailError }}</p>
           <div v-if="isAdmitted" class="lock-banner">
             🔒 This student has been admitted to at least one programme.
-            Personal and background details are read-only — only IBSS can change them now.
+            Personal and background details are read-only — only MGW can change them now.
           </div>
 
           <!-- Personal -->
@@ -206,6 +206,12 @@
               <span>Current status: <strong>{{ manageModal.statusName || '—' }}</strong></span>
               <span>Final grade (avg): <strong>{{ gradeAverage ?? '—' }}</strong></span>
             </div>
+            <p v-if="manageModal.requiredEcts" class="ects-line"
+               :class="gradeEctsRemaining > 0 ? 'ects-warn' : 'ects-ok'">
+              Completed {{ completedGradeEcts }} of {{ manageModal.requiredEcts }} required ECTS.
+              <span v-if="gradeEctsRemaining > 0">Need {{ gradeEctsRemaining }} more to mark the programme complete.</span>
+              <span v-else>Threshold reached — you can mark the programme complete.</span>
+            </p>
             <div v-if="manageModal.gradesError" class="err-banner">{{ manageModal.gradesError }}</div>
             <div v-if="manageModal.gradesOk" class="ok-banner">{{ manageModal.gradesOk }}</div>
             <div v-if="manageModal.gradesLoading" class="muted">Loading subjects…</div>
@@ -216,9 +222,17 @@
                 <span class="gr-name">{{ row.name }}</span>
                 <span class="gr-ects">{{ row.ects }} ects</span>
                 <input type="number" min="0" max="100" v-model.number="row.score" class="grade-input gr-input" />
+                <span class="gr-letter" :title="`School grade for ${row.score ?? '—'}`">{{ scoreToLetter(row.score) }}</span>
               </div>
             </div>
             <div v-else class="muted">No subjects defined for this specialization.</div>
+
+            <!-- Thesis/dissertation project title — shown once the thesis module has a grade. -->
+            <div v-if="thesisGraded" class="project-title-row">
+              <label>Project title <span class="muted" style="font-weight:400;">(thesis/dissertation — shown on the transcript)</span></label>
+              <input v-model="manageModal.projectTitle" class="grade-input" style="width:100%;" placeholder="e.g. The impact of …" />
+            </div>
+
             <div class="manage-footer">
               <button class="btn-link" @click="manageModal.step = 'choose'">← Back</button>
               <button class="btn-link" :disabled="manageModal.downloadingProvisional" @click="downloadProvisional">
@@ -229,6 +243,7 @@
               </button>
               <button class="btn-confirm-manage"
                       :disabled="!canCommitGrades || manageModal.gradesSubmitting"
+                      :title="gradeEctsRemaining > 0 ? `Need ${gradeEctsRemaining} more ECTS to reach the ${manageModal.requiredEcts} ECTS completion threshold.` : ''"
                       @click="commitGrades">
                 {{ manageModal.gradesSubmitting ? 'Submitting…' : 'Program Complete' }}
               </button>
@@ -308,6 +323,7 @@
                   <h4>Background</h4>
                   <dl>
                     <dt>Highest degree</dt><dd>{{ detailModal.data.background?.highestDegree || '—' }}</dd>
+                    <dt>Specialization for degree</dt><dd>{{ detailModal.data.background?.degreeSpecialization || '—' }}</dd>
                     <dt>Years exp.</dt><dd>{{ detailModal.data.background?.yearsWorkExperience ?? '—' }}</dd>
                   </dl>
                 </div>
@@ -677,7 +693,7 @@ const DETAIL_TABS = [
 const LETTER_TYPES = [
   { key: 'offerLetter',            label: 'Offer Letter',        icon: '📄' },
   { key: 'admissionLetter',        label: 'Admission Letter',    icon: '📋' },
-  { key: 'transcript',             label: 'Transcript',          icon: '📑' },
+  { key: 'transcript',             label: 'Digital Transcript',  icon: '📑' },
   { key: 'certificate',            label: 'Digital Certificate', icon: '🎓' },
 ]
 const detailModal = ref(null)
@@ -910,6 +926,7 @@ async function saveBackground() {
   try {
     await api.patch(`/v1/partner/my-students/${detail.value.studentId}/background`, {
       highestDegree: detail.value.background.highestDegree,
+      degreeSpecialization: detail.value.background.degreeSpecialization ?? null,
       yearsWorkExperience: detail.value.background.yearsWorkExperience,
       languages: detail.value.background.languages
         .filter(l => l.languageId > 0)
@@ -1046,6 +1063,7 @@ function adaptForWizard(d, targetEnrollmentId = null) {
     passportId: d.personal?.passportId ?? '',
     address: addressStr,
     highestDegree: d.background?.highestDegree ?? '',
+    degreeSpecialization: d.background?.degreeSpecialization ?? '',
     languageResult: langSummary,
     yearsWorkExperience: d.background?.yearsWorkExperience ?? 0,
     docPassport: findDoc(d, /passport|identity|id\b/i),
@@ -1209,6 +1227,8 @@ function openManage(s, e) {
     selectedColor: 'gray',
     reasonText: '',
     subjects: [],
+    requiredEcts: null,
+    projectTitle: '',
     rejection: null,
     gradesLoading: false,
     gradesSubmitting: false,
@@ -1232,6 +1252,8 @@ async function loadGradesIntoModal() {
     const res = await api.get(
       `/v1/partner/my-students/${m.studentId}/enrollments/${m.enrollmentId}/subjects`)
     m.subjects = (res.data.items ?? []).map(it => ({ ...it, score: it.score ?? null }))
+    m.requiredEcts = res.data.requiredEcts ?? null
+    m.projectTitle = res.data.projectTitle ?? ''
     m.rejection = res.data.rejection ?? null
   } catch (err) {
     m.gradesError = err.response?.data?.error ?? err.message ?? 'Failed to load subjects'
@@ -1271,11 +1293,53 @@ function gradeColumnCount(count) {
   if (!count || count <= 10) return 1
   return Math.min(3, Math.ceil(count / 10))
 }
+// Live 0–100 → MGW letter grade. Mirrors MapScore in LetterTagResolver.cs
+// so the letter shown here matches the transcript. Display-only; nothing is
+// saved until Save/Submit grades.
+function scoreToLetter(score) {
+  if (score === null || score === undefined || score === '') return '—'
+  const s = Math.floor(Number(score))
+  if (Number.isNaN(s) || s < 0 || s > 100) return '—'
+  // Grade Standard scale — must match MapScore (UkGrade) in the backend so
+  // the letter shown here equals the IBAS Grade on the transcript.
+  if (s >= 75) return 'A+'
+  if (s >= 70) return 'A'
+  if (s >= 65) return 'A-'
+  if (s >= 60) return 'B+'
+  if (s >= 55) return 'B'
+  if (s >= 50) return 'B-'
+  if (s >= 45) return 'C+'
+  if (s >= 41) return 'C'
+  if (s === 40) return 'C-'
+  return 'F'
+}
 
+// A subject counts as completed once any score (0-100) is entered.
+function scoredGradeRows(m) {
+  return (m?.subjects ?? []).filter(r => Number.isInteger(r.score) && r.score >= 0 && r.score <= 100)
+}
+const completedGradeEcts = computed(() =>
+  scoredGradeRows(manageModal.value).reduce((sum, r) => sum + Number(r.ects || 0), 0))
+// True once a thesis/dissertation module has a grade — reveals the project-title field.
+const thesisGraded = computed(() => {
+  const m = manageModal.value
+  if (!m?.subjects?.length) return false
+  return m.subjects.some(r => r.isThesis && Number.isInteger(r.score) && r.score >= 0 && r.score <= 100)
+})
+const gradeEctsRemaining = computed(() => {
+  const req = Number(manageModal.value?.requiredEcts || 0)
+  if (!req) return 0
+  return Math.max(0, req - completedGradeEcts.value)
+})
+// Submit is gated by the programme's completion threshold (enough completed
+// ECTS). With no threshold set, fall back to "at least one subject scored".
 const canCommitGrades = computed(() => {
   const m = manageModal.value
-  if (!m || m.step !== 'grades' || !m.subjects?.length) return false
-  return m.subjects.every(r => Number.isInteger(r.score) && r.score >= 0 && r.score <= 100)
+  if (!m || m.step !== 'grades') return false
+  const scored = scoredGradeRows(m)
+  if (!scored.length) return false
+  const req = Number(m?.requiredEcts || 0)
+  return req ? completedGradeEcts.value >= req : true
 })
 
 // Read-only "Final grade" = average of the scores entered so far (any subset).
@@ -1299,7 +1363,7 @@ async function saveGradesDraft() {
       .map(r => ({ subjectId: r.subjectId, score: r.score }))
     await api.post(
       `/v1/partner/my-students/${m.studentId}/enrollments/${m.enrollmentId}/grades/draft`,
-      { items })
+      { items, projectTitle: m.projectTitle })
     m.gradesOk = `Saved ${items.length} grade(s). You can download a provisional transcript.`
     setTimeout(() => { if (manageModal.value) manageModal.value.gradesOk = '' }, 3000)
   } catch (err) {
@@ -1342,7 +1406,7 @@ async function commitGrades() {
   try {
     await api.post(
       `/v1/partner/my-students/${m.studentId}/enrollments/${m.enrollmentId}/grades`,
-      { items: m.subjects.map(r => ({ subjectId: r.subjectId, score: r.score })) })
+      { items: scoredGradeRows(m).map(r => ({ subjectId: r.subjectId, score: r.score })), projectTitle: m.projectTitle })
     reviewToast.value = 'Grades submitted to Admission for approval.'
     setTimeout(() => { reviewToast.value = '' }, 3200)
     manageModal.value = null
@@ -1513,13 +1577,18 @@ function confirmSubStatus() {
 .grade-grid { column-gap: 1.2rem; margin-top: .5rem; }
 .grade-row {
   break-inside: avoid;
-  display: grid; grid-template-columns: 80px 1fr auto 60px; gap: .5rem;
+  display: grid; grid-template-columns: 80px 1fr auto 60px auto; gap: .5rem;
   align-items: center; padding: .35rem .25rem;
   border-bottom: 1px solid #eef2f7; font-size: .82rem;
 }
+.gr-letter { display: inline-block; min-width: 30px; text-align: center; padding: 2px 6px;
+  border-radius: 6px; font-weight: 700; font-size: .78rem; background: #eef2f7; color: #334155; }
 .gr-code { font-family: ui-monospace, monospace; font-size: .76rem; color: #003366; }
 .gr-name { color: #222; line-height: 1.3; min-width: 0; word-break: break-word; }
 .gr-ects { color: #888; font-size: .72rem; white-space: nowrap; }
+.ects-line { font-size: .82rem; margin: .3rem 0; }
+.ects-warn { color: #92400e; font-weight: 600; }
+.ects-ok { color: #1c7a4a; font-weight: 600; }
 .gr-input { width: 60px; }
 
 .grade-reject-banner { background: #fef2f2; border: 1.5px solid #fca5a5; border-left: 3px solid #b91c1c; border-radius: 7px; padding: .65rem .85rem; margin-bottom: .85rem; }
@@ -1579,4 +1648,9 @@ function confirmSubStatus() {
 .btn-mini-d { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }
 .btn-mini-d:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }
 .btn-mini-d:hover:not(:disabled) { background: #143b6c; }
+</style>
+
+<style scoped>
+.project-title-row { margin: .6rem 0; display: flex; flex-direction: column; gap: .3rem; }
+.project-title-row label { font-size: .82rem; font-weight: 600; color: #1a2d4f; }
 </style>

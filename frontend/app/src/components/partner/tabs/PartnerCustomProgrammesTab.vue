@@ -21,7 +21,7 @@
         <div class="clone-row">
         <div class="clone-main clickable" @click="toggleExpand(c.programmeId)">
           <span class="caret">{{ expanded.has(c.programmeId) ? '▾' : '▸' }}</span>
-          <strong>{{ c.name }}</strong>
+          <strong>{{ c.name }}{{ c.schoolName ? ` (${c.schoolName})` : '' }}</strong>
           <span class="mono-code">{{ c.code }}</span>
           <span :class="['status-pill', `s-${c.status.toLowerCase()}`]">{{ c.status }}</span>
           <span v-if="c.isDisabledByAdmin" class="status-pill s-disabled">Disabled by Admin</span>
@@ -52,12 +52,42 @@
 
         <div v-if="expanded.has(c.programmeId)" class="clone-details">
           <div class="detail-row">
+            <span class="detail-label">Programme name</span>
+            <span class="detail-value rename-row">
+              <input v-model="renameDraft(c).name" class="inp-rename" placeholder="Programme name" />
+            </span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Code</span>
+            <span class="detail-value rename-row">
+              <input v-model="renameDraft(c).code" class="inp-rename mono-code-input" placeholder="Code" />
+              <button class="btn-sm btn-ok" :disabled="renameBusy.has(c.programmeId)" @click="saveRename(c)">
+                {{ renameBusy.has(c.programmeId) ? 'Saving…' : 'Save name & code' }}
+              </button>
+              <span v-if="renameSaved.has(c.programmeId)" class="muted" style="color:#1c7a4a"> ✓ saved</span>
+              <span v-else-if="renameErr[c.programmeId]" class="reject-reason">{{ renameErr[c.programmeId] }}</span>
+            </span>
+          </div>
+          <div class="detail-row">
             <span class="detail-label">Description</span>
             <span class="detail-value">{{ c.description?.trim() || '—' }}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Award on completion</span>
             <span class="detail-value">{{ awardName(c.awardEducationLevelId) || '—' }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">School</span>
+            <span class="detail-value">
+              <select :value="c.schoolId ?? ''" class="inp-status"
+                      @change="setSchool(c, $event.target.value || null)">
+                <option value="">— none —</option>
+                <option v-for="s in schools" :key="s.schoolId" :value="s.schoolId">{{ s.name }}</option>
+              </select>
+              <span v-if="schoolBusy.has(c.programmeId)" class="muted"> saving…</span>
+              <span v-else-if="schoolSaved.has(c.programmeId)" class="muted" style="color:#1c7a4a"> ✓ saved</span>
+              <span v-else-if="schoolErr[c.programmeId]" class="reject-reason">{{ schoolErr[c.programmeId] }}</span>
+            </span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Pathways</span>
@@ -85,19 +115,37 @@
               <div class="subj-header">
                 <span class="col-code">Code</span>
                 <span class="col-name">Subject</span>
+                <span class="col-thesis">Thesis</span>
                 <span class="col-ects">ECTS</span>
               </div>
               <div v-if="subjectsFor(s.specializationId).length === 0" class="empty-note">No subjects.</div>
               <div v-for="sub in subjectsFor(s.specializationId)" :key="sub.subjectId" class="subj-row">
                 <span class="col-code mono-code">{{ sub.code || '—' }}</span>
                 <span class="col-name">{{ sub.name }}</span>
+                <span class="col-thesis">
+                  <input type="radio" :name="`thesis-${s.specializationId}`"
+                         :checked="sub.isThesis" :disabled="thesisBusy.has(s.specializationId)"
+                         @change="setThesis(s.specializationId, sub)"
+                         title="Mark this subject as the thesis / final project" />
+                </span>
                 <span class="col-ects">{{ sub.ects }}</span>
               </div>
+              <p v-if="thesisErr[s.specializationId]" class="card-toggle-err" style="margin:.2rem 0 0;">{{ thesisErr[s.specializationId] }}</p>
             </div>
           </div>
         </div>
 
-        <LetterButtonsRow :programme-id="c.programmeId" :programme-name="c.name" :partner-id="partnerId" />
+        <div class="card-toggle-row">
+          <label class="card-toggle">
+            <input type="checkbox" :checked="c.issueDigitalStudentCard" @change="toggleStudentCard(c, $event.target.checked)" />
+            Digital student card
+          </label>
+          <span v-if="cardErr[c.programmeId]" class="card-toggle-err">{{ cardErr[c.programmeId] }}</span>
+          <span v-else-if="cardSaved[c.programmeId]" class="card-toggle-ok">✓ Saved</span>
+          <span class="muted" style="font-size:.72rem;">Generated at offer acceptance; designable below like the other letters.</span>
+        </div>
+        <LetterButtonsRow :programme-id="c.programmeId" :programme-name="c.name" :partner-id="partnerId"
+          :show-student-card="!!c.issueDigitalStudentCard" />
       </div>
     </div>
   </div>
@@ -118,6 +166,19 @@ const specializations = ref([])
 const subjects = ref([])
 const educationLevels = ref([])
 const pathways = ref([])
+const schools = ref([])
+const schoolBusy = reactive(new Set())
+const schoolSaved = reactive(new Set())
+const schoolErr = reactive({})
+// Editable name/code drafts, seeded from the programme on first access.
+const renameDrafts = reactive({})
+const renameBusy = reactive(new Set())
+const renameSaved = reactive(new Set())
+const renameErr = reactive({})
+function renameDraft(c) {
+  if (!renameDrafts[c.programmeId]) renameDrafts[c.programmeId] = { name: c.name, code: c.code }
+  return renameDrafts[c.programmeId]
+}
 const loading = ref(false)
 const loadError = ref('')
 const statusFilter = ref('')
@@ -167,13 +228,15 @@ async function load() {
     // Load programmes + their child catalogue data in parallel so the inline
     // expansion can render specializations / subjects / pathways without a
     // second roundtrip per row.
-    const [progRes, specRes, subRes, pathRes, elRes] = await Promise.all([
+    const [progRes, specRes, subRes, pathRes, elRes, schoolRes] = await Promise.all([
       apiClient.get('/v1/school/programmes?ownership=partner'),
       apiClient.get('/v1/school/specializations'),
       apiClient.get('/v1/school/subjects'),
       apiClient.get('/v1/school/system-config/pathways'),
       apiClient.get('/v1/school/system-config/education-levels'),
+      apiClient.get('/v1/school/schools/options'),
     ])
+    schools.value = schoolRes.data.items ?? []
     // The list endpoint exposes the owner under `ownerId`, not `partnerId` —
     // the previous filter never matched, so partner-owned programmes were
     // silently hidden in the admin drawer.
@@ -233,6 +296,59 @@ async function reopen(c) {
   finally { busy.value.delete(c.programmeId) }
 }
 
+// Admin renames the programme's name + code. Include award/school so the PUT's
+// direct award assignment doesn't wipe them.
+async function saveRename(c) {
+  if (renameBusy.has(c.programmeId)) return
+  const d = renameDrafts[c.programmeId]
+  const name = (d?.name ?? '').trim()
+  const code = (d?.code ?? '').trim()
+  if (!name || !code) { renameErr[c.programmeId] = 'Name and code are required.'; return }
+  renameBusy.add(c.programmeId)
+  renameSaved.delete(c.programmeId)
+  renameErr[c.programmeId] = ''
+  try {
+    await apiClient.put(`/v1/school/programmes/${c.programmeId}`, {
+      name, code,
+      awardEducationLevelId: c.awardEducationLevelId ?? null,
+      schoolId: c.schoolId ?? null,
+    })
+    c.name = name
+    c.code = code
+    renameSaved.add(c.programmeId)
+    setTimeout(() => renameSaved.delete(c.programmeId), 2500)
+  } catch (e) {
+    renameErr[c.programmeId] = e.response?.data?.message ?? e.message ?? 'Rename failed'
+  } finally {
+    renameBusy.delete(c.programmeId)
+  }
+}
+
+// Admin can reassign a programme's school here. Include name/code/award in the
+// PUT so the endpoint's direct award assignment doesn't wipe the award level.
+async function setSchool(c, schoolId) {
+  if (schoolBusy.has(c.programmeId)) return
+  schoolBusy.add(c.programmeId)
+  schoolSaved.delete(c.programmeId)
+  schoolErr[c.programmeId] = ''
+  try {
+    await apiClient.put(`/v1/school/programmes/${c.programmeId}`, {
+      name: c.name,
+      code: c.code,
+      awardEducationLevelId: c.awardEducationLevelId ?? null,
+      schoolId,
+    })
+    c.schoolId = schoolId
+    c.schoolName = schools.value.find(s => s.schoolId === schoolId)?.name ?? null
+    schoolSaved.add(c.programmeId)
+    setTimeout(() => schoolSaved.delete(c.programmeId), 2500)
+  } catch (e) {
+    schoolErr[c.programmeId] = e.response?.data?.message ?? e.message ?? 'Failed to change school'
+  } finally {
+    schoolBusy.delete(c.programmeId)
+  }
+}
+
 async function toggleDisable(c) {
   if (busy.value.has(c.programmeId)) return
   busy.value.add(c.programmeId)
@@ -245,6 +361,48 @@ async function toggleDisable(c) {
 
 watch(() => props.partnerId, load)
 onMounted(load)
+
+// ── Thesis subject (radio: exactly one per specialization) ──────────────────
+const thesisBusy = reactive(new Set())
+const thesisErr = reactive({})
+async function setThesis(specializationId, sub) {
+  if (thesisBusy.has(specializationId)) return
+  thesisBusy.add(specializationId)
+  thesisErr[specializationId] = ''
+  try {
+    await apiClient.put(`/v1/school/subjects/${sub.subjectId}/thesis`)
+    // Reflect the atomic server change locally: one thesis per specialization.
+    subjects.value.forEach(x => {
+      if (x.specializationId === specializationId) x.isThesis = x.subjectId === sub.subjectId
+    })
+  } catch (e) {
+    thesisErr[specializationId] = e.response?.data?.message ?? e.message ?? 'Failed to save'
+  } finally {
+    thesisBusy.delete(specializationId)
+  }
+}
+
+// ── Digital student card toggle (admin drawer; Admission-only surface) ──────
+const cardErr = reactive({})
+const cardSaved = reactive({})
+async function toggleStudentCard(prog, checked) {
+  const id = prog.programmeId
+  cardErr[id] = ''
+  try {
+    // PUT overwrites awardEducationLevelId unconditionally, so echo it back.
+    await apiClient.put(`/v1/school/programmes/${id}`, {
+      name: prog.name,
+      code: prog.code,
+      awardEducationLevelId: prog.awardEducationLevelId ?? null,
+      issueDigitalStudentCard: checked,
+    })
+    prog.issueDigitalStudentCard = checked
+    cardSaved[id] = true
+    setTimeout(() => { cardSaved[id] = false }, 3000)
+  } catch (e) {
+    cardErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save'
+  }
+}
 </script>
 
 <style scoped>
@@ -270,6 +428,9 @@ onMounted(load)
 .btn-ok { border-color: #1c7a4a; color: #1c7a4a; }
 .btn-warn { border-color: #b63329; color: #b63329; }
 .inp-add { padding: .35rem .6rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; min-width: 200px; }
+.rename-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.inp-rename { padding: .3rem .55rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .84rem; min-width: 240px; }
+.mono-code-input { font-family: monospace; min-width: 160px; }
 .reject-reason { font-size: .78rem; color: #a8241e; }
 
 .clone-card { background: #fff; border: 1px solid #e0e6ee; border-radius: 6px; margin-bottom: .5rem; overflow: hidden; }
@@ -295,4 +456,11 @@ onMounted(load)
 .col-code { width: 110px; flex-shrink: 0; }
 .col-name { flex: 1; }
 .col-ects { width: 50px; text-align: right; flex-shrink: 0; }
+.col-thesis { width: 56px; text-align: center; flex-shrink: 0; }
+.col-thesis input { cursor: pointer; }
+
+.card-toggle-row { display: flex; align-items: center; gap: .7rem; padding: .35rem 0 0; }
+.card-toggle { display: flex; align-items: center; gap: .4rem; font-size: .8rem; font-weight: 600; color: #1a4d8c; cursor: pointer; }
+.card-toggle-ok { color: #1c7a4a; font-size: .76rem; font-weight: 600; }
+.card-toggle-err { color: #b42318; font-size: .76rem; }
 </style>

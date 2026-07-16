@@ -130,6 +130,7 @@
               <h4 class="rw-section-heading">Academic background</h4>
               <p class="rw-hint">Confirm the certificate supports the declared qualification.</p>
               <div class="rw-readonly-field"><label>Highest degree</label><div>{{ student.highestDegree || '—' }}</div></div>
+              <div class="rw-readonly-field"><label>Specialization for degree</label><div>{{ student.degreeSpecialization || '—' }}</div></div>
             </div>
           </div>
         </div>
@@ -284,7 +285,7 @@
         <!-- ═══════ Step 7: Contract confirmation ═══════ -->
         <div v-else-if="step === 7" class="rw-step-content">
           <h4 class="rw-section-heading">Final review &amp; contract attestation</h4>
-          <p class="rw-hint">Review every decision below and confirm against the IBSS partnership contract.</p>
+          <p class="rw-hint">Review every decision below and confirm against the MGW partnership contract.</p>
           <div class="rw-summary">
             <div v-for="s in STEPS.slice(0, 5)" :key="s.key" class="rw-summary-row">
               <span class="rw-summary-label">{{ s.label }}</span>
@@ -302,7 +303,7 @@
           </div>
           <label class="rw-attest">
             <input type="checkbox" v-model="contractAccepted" />
-            <span>I confirm this application complies with the terms of the IBSS partnership agreement, the data has been verified against the submitted documents, and I am authorised to act on behalf of the partner institution.</span>
+            <span>I confirm this application complies with the terms of the MGW partnership agreement, the data has been verified against the submitted documents, and I am authorised to act on behalf of the partner institution.</span>
           </label>
           <div v-if="validationErrors.length" class="rw-err-list">
             <div class="rw-err-title">Cannot submit yet:</div>
@@ -604,7 +605,7 @@ const validationErrors = computed(() => {
   if (!enrolmentDraft.commencementDate) errs.push('Commencement date is required.')
   if (!enrolmentDraft.durationMonths || enrolmentDraft.durationMonths < 3)
     errs.push('Specialization is missing a study duration — fix it on the specialization before reviewing.')
-  if (!contractAccepted.value) errs.push('You must attest to the IBSS partnership contract.')
+  if (!contractAccepted.value) errs.push('You must attest to the MGW partnership contract.')
   return errs
 })
 const canSubmit = computed(() => validationErrors.value.length === 0)

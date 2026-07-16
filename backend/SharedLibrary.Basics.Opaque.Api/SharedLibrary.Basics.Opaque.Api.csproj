@@ -59,6 +59,7 @@
     <ProjectReference Include="..\School\School.SpecializationApi\School.SpecializationApi.csproj" />
     <ProjectReference Include="..\School\School.SubjectApi\School.SubjectApi.csproj" />
     <ProjectReference Include="..\School\School.PartnerAdminApi\School.PartnerAdminApi.csproj" />
+    <ProjectReference Include="..\School\School.IntakeApi\School.IntakeApi.csproj" />
   </ItemGroup>
 
 </Project>

@@ -53,6 +53,21 @@ public class Enrollment : IDeletedAtEntity
     public DateTime? TranscriptDate { get; set; }
 
     /// <summary>
+    /// Admission-Office override for the [graduation date] tag on letters and
+    /// certificates. Null = fall back to the expected completion date
+    /// (commencement + approved duration, minus one day). Set it to record an
+    /// actual graduation day that differs from the computed completion.
+    /// </summary>
+    public DateTime? GraduationDate { get; set; }
+
+    /// <summary>
+    /// Title of the student's thesis / dissertation / final project, entered in
+    /// the grade UI when the specialization's thesis module is graded. Surfaced
+    /// on the transcript via the [project title] tag. Null when no thesis.
+    /// </summary>
+    public string? ProjectTitle { get; set; }
+
+    /// <summary>
     /// Stable per-enrolment reference code: the first 8 hex characters of a
     /// GUID, generated once on the first letter release and reused for every
     /// letter and every regeneration thereafter. Letters render it as

@@ -27,6 +27,7 @@ public sealed class PartnerV1MyProgramsListEndpoint : IEndpointMarker
                 p.ProgrammeId,
                 p.Name,
                 p.Code,
+                SchoolName = p.School != null ? p.School.Name : null,
                 Status = db.PartnerProgrammeStatuses
                     .Where(s => s.ProgrammeId == p.ProgrammeId)
                     .Select(s => (PartnerProgrammeStatus?)s)
@@ -45,6 +46,7 @@ public sealed class PartnerV1MyProgramsListEndpoint : IEndpointMarker
             programmeId = p.ProgrammeId,
             name = p.Name,
             code = p.Code,
+            schoolName = p.SchoolName,
             status = MyProgramsHelpers.StatusLabel(p.Status?.Status ?? MyProgramsHelpers.StatusDraft),
             isActive = p.Status?.IsActive ?? false,
             isDisabledByAdmin = p.Status?.IsDisabledByAdmin ?? false,

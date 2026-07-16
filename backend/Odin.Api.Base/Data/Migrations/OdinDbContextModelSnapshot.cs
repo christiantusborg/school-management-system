@@ -183,6 +183,67 @@ namespace Odin.Api.Base.Data.Migrations
                     b.ToTable("MailSettings");
                 });
 
+            modelBuilder.Entity("Odin.Api.Base.Email.SchoolMailSettings", b =>
+                {
+                    b.Property<Guid>("SchoolMailSettingsId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FromEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("FromName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("GmailImpersonatedUser")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("GmailServiceAccountJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("SchoolId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SmtpHost")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("SmtpPassword")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("SmtpPort")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SmtpSecurity")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SmtpUsername")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("SchoolMailSettingsId");
+
+                    b.HasIndex("SchoolId")
+                        .IsUnique();
+
+                    b.ToTable("SchoolMailSettings");
+                });
+
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.ApplicationRole", b =>
                 {
                     b.Property<string>("Id")
@@ -334,6 +395,9 @@ namespace Odin.Api.Base.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AiPrompt")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -408,6 +472,28 @@ namespace Odin.Api.Base.Data.Migrations
                     b.ToTable("EducationLevels");
                 });
 
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.EmploymentIndustry", b =>
+                {
+                    b.Property<Guid>("EmploymentIndustryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("EmploymentIndustryId");
+
+                    b.ToTable("EmploymentIndustries");
+                });
+
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Enrollment", b =>
                 {
                     b.Property<Guid>("StudentEnrollmentId")
@@ -424,6 +510,9 @@ namespace Odin.Api.Base.Data.Migrations
                         .HasColumnType("timestamp without time zone");
 
                     b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("GraduationDate")
                         .HasColumnType("timestamp without time zone");
 
                     b.Property<string>("InstructionLanguageOverride")
@@ -445,6 +534,9 @@ namespace Odin.Api.Base.Data.Migrations
 
                     b.Property<int>("PathwayId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("ProjectTitle")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("SpecializationId")
                         .HasColumnType("uuid");
@@ -621,6 +713,567 @@ namespace Odin.Api.Base.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Fido2Credentials");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplate", b =>
+                {
+                    b.Property<Guid>("DocumentTemplateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BaseAssetRef")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("MappingJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("Strategy")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DocumentTemplateId");
+
+                    b.ToTable("IntakeDocumentTemplates");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplateAsset", b =>
+                {
+                    b.Property<Guid>("DocumentTemplateAssetId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Bytes")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("DocumentTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Filename")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("DocumentTemplateAssetId");
+
+                    b.HasIndex("DocumentTemplateId")
+                        .IsUnique();
+
+                    b.ToTable("IntakeDocumentTemplateAssets");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplateImage", b =>
+                {
+                    b.Property<Guid>("DocumentTemplateImageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DataBase64")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("UploadedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("DocumentTemplateImageId");
+
+                    b.ToTable("IntakeDocumentTemplateImages");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.FieldLibraryEntry", b =>
+                {
+                    b.Property<Guid>("FieldLibraryEntryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("DefinitionJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("FieldLibraryEntryId");
+
+                    b.ToTable("FieldLibraryEntries");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.GenerationRule", b =>
+                {
+                    b.Property<Guid>("GenerationRuleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("IncludeDocumentTemplateIdsCsv")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RuleJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("GenerationRuleId");
+
+                    b.ToTable("GenerationRules");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.IntakeInstance", b =>
+                {
+                    b.Property<Guid>("IntakeInstanceId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("InlineDefinitionJson")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("OutputProfileJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("QuestionnaireTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("IntakeInstanceId");
+
+                    b.HasIndex("Audience");
+
+                    b.HasIndex("QuestionnaireTemplateId");
+
+                    b.ToTable("IntakeInstances");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.IntakeOutput", b =>
+                {
+                    b.Property<Guid>("IntakeOutputId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("DocumentTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime>("GeneratedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("IntakeResponseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("OutputKind")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.HasKey("IntakeOutputId");
+
+                    b.HasIndex("DocumentTemplateId");
+
+                    b.HasIndex("IntakeResponseId");
+
+                    b.ToTable("IntakeOutputs");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.IntakeResponse", b =>
+                {
+                    b.Property<Guid>("IntakeResponseId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AnswersJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("IntakeInstanceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LifecycleState")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("PartnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("QuestionnaireVersionHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("StudentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("IntakeResponseId");
+
+                    b.HasIndex("IntakeInstanceId");
+
+                    b.HasIndex("PartnerId");
+
+                    b.HasIndex("StudentId");
+
+                    b.ToTable("IntakeResponses");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.PublicForm", b =>
+                {
+                    b.Property<Guid>("PublicFormId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid?>("DocumentTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsPublished")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int>("PriceAmountCents")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("QuestionnaireTemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("PublicFormId");
+
+                    b.HasIndex("DocumentTemplateId");
+
+                    b.HasIndex("QuestionnaireTemplateId");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("PublicForms");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.PublicFormPayment", b =>
+                {
+                    b.Property<Guid>("PublicFormPaymentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AmountCents")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("PublicFormSubmissionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("PublicFormPaymentId");
+
+                    b.HasIndex("PublicFormSubmissionId");
+
+                    b.ToTable("PublicFormPayments");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.PublicFormSubmission", b =>
+                {
+                    b.Property<Guid>("PublicFormSubmissionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AnswersJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("PublicFormId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("QuestionnaireVersionHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RespondentEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("RespondentName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("PublicFormSubmissionId");
+
+                    b.HasIndex("PublicFormId");
+
+                    b.ToTable("PublicFormSubmissions");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.QuestionnaireTemplate", b =>
+                {
+                    b.Property<Guid>("QuestionnaireTemplateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("DefinitionHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("DefinitionJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("QuestionnaireTemplateId");
+
+                    b.HasIndex("Name");
+
+                    b.ToTable("QuestionnaireTemplates");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.TextTemplate", b =>
+                {
+                    b.Property<Guid>("TextTemplateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BodyJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("TextTemplateId");
+
+                    b.ToTable("IntakeTextTemplates");
                 });
 
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.InviteCode", b =>
@@ -3842,6 +4495,44 @@ namespace Odin.Api.Base.Data.Migrations
                     b.ToTable("LetterTemplates");
                 });
 
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerCertificate", b =>
+                {
+                    b.Property<Guid>("PartnerCertificateId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CertificateLayoutJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("PartnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SchoolId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("PartnerCertificateId");
+
+                    b.HasIndex("PartnerId", "SchoolId")
+                        .IsUnique()
+                        .HasFilter("\"DeletedAt\" IS NULL");
+
+                    b.ToTable("PartnerCertificates");
+                });
+
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerProgrammeStatus", b =>
                 {
                     b.Property<Guid>("ProgrammeId")
@@ -3889,6 +4580,9 @@ namespace Odin.Api.Base.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("IssueDigitalStudentCard")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("MaxDurationMonths")
                         .HasColumnType("integer");
 
@@ -3903,6 +4597,13 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Property<Guid?>("OwnerId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal?>("RequiredEcts")
+                        .HasPrecision(7, 1)
+                        .HasColumnType("numeric(7,1)");
+
+                    b.Property<Guid?>("SchoolId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("ProgrammeId");
 
                     b.HasIndex("AwardEducationLevelId");
@@ -3912,6 +4613,8 @@ namespace Odin.Api.Base.Data.Migrations
                         .HasFilter("\"DeletedAt\" IS NULL");
 
                     b.HasIndex("OwnerId");
+
+                    b.HasIndex("SchoolId");
 
                     b.ToTable("Programmes");
                 });
@@ -3965,6 +4668,29 @@ namespace Odin.Api.Base.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ProgrammePartners");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.School", b =>
+                {
+                    b.Property<Guid>("SchoolId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("SchoolId");
+
+                    b.ToTable("Schools");
                 });
 
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.Specialization", b =>
@@ -4071,6 +4797,9 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Property<DateTime?>("IsActive")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<bool>("IsThesis")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -4158,6 +4887,175 @@ namespace Odin.Api.Base.Data.Migrations
                     b.ToTable("PathwayDocumentRequirements");
                 });
 
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice", b =>
+                {
+                    b.Property<Guid>("AdditionalInvoiceId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BankAccountDetails")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CardPaymentLink")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("IsPaid")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LinesJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("PaidDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("PayByBankEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("PayByCardEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("PaymentPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.HasKey("AdditionalInvoiceId");
+
+                    b.HasIndex("PaymentPlanId");
+
+                    b.ToTable("AdditionalInvoices");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Payments.Currency", b =>
+                {
+                    b.Property<Guid>("CurrencyId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.HasKey("CurrencyId");
+
+                    b.ToTable("Currencies");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan", b =>
+                {
+                    b.Property<Guid>("PaymentPlanId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("NumberOfPayments")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StudentEnrollmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("TotalTuitionFee")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.HasKey("PaymentPlanId");
+
+                    b.HasIndex("StudentEnrollmentId")
+                        .IsUnique()
+                        .HasFilter("\"DeletedAt\" IS NULL");
+
+                    b.ToTable("EnrollmentPaymentPlans");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment", b =>
+                {
+                    b.Property<Guid>("PaymentInstallmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("BankAccountDetails")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CardPaymentLink")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("IsPaid")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("PaidDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("PayByBankEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("PayByCardEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("PaymentPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.HasKey("PaymentInstallmentId");
+
+                    b.HasIndex("PaymentPlanId");
+
+                    b.ToTable("PaymentInstallments");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PositionFunction", b =>
+                {
+                    b.Property<Guid>("PositionFunctionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("PositionFunctionId");
+
+                    b.ToTable("PositionFunctions");
+                });
+
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.ProgrammePathway", b =>
                 {
                     b.Property<Guid>("ProgrammePathwayId")
@@ -4228,11 +5126,29 @@ namespace Odin.Api.Base.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CurrentEmploymentIndustryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CurrentPositionFunctionId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("DateOfBirth")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<string>("DegreeSpecialization")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("DisabilityDisclosure")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DisabilitySupportNeeds")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Gender")
+                        .HasColumnType("text");
 
                     b.Property<string>("HighestDegree")
                         .HasColumnType("text");
@@ -4243,6 +5159,22 @@ namespace Odin.Api.Base.Data.Migrations
                         .HasDefaultValue(false);
 
                     b.Property<string>("LanguageResult")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("MonthlySalaryAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid?>("MonthlySalaryCurrencyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("MoodleEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("MoodlePassword")
+                        .HasColumnType("text");
+
+                    b.Property<string>("MoodleUsername")
                         .HasColumnType("text");
 
                     b.Property<int?>("NationalityId")
@@ -4262,6 +5194,9 @@ namespace Odin.Api.Base.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("WantsStudentIdCard")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("WizardStep")
                         .HasColumnType("integer");
 
@@ -4269,6 +5204,12 @@ namespace Odin.Api.Base.Data.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("StudentId");
+
+                    b.HasIndex("CurrentEmploymentIndustryId");
+
+                    b.HasIndex("CurrentPositionFunctionId");
+
+                    b.HasIndex("MonthlySalaryCurrencyId");
 
                     b.HasIndex("NationalityId");
 
@@ -4286,6 +5227,15 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Property<Guid>("StudentDocumentId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<decimal?>("AiConfidence")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("AiFraudRisk")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("AiResult")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("CurrentStatusId")
                         .HasColumnType("uuid");
@@ -4308,6 +5258,9 @@ namespace Odin.Api.Base.Data.Migrations
 
                     b.Property<string>("MimeType")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OcrResult")
                         .HasColumnType("text");
 
                     b.Property<Guid?>("SignupSpecializationId")
@@ -4771,6 +5724,96 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplateAsset", b =>
+                {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplate", "DocumentTemplate")
+                        .WithOne()
+                        .HasForeignKey("SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplateAsset", "DocumentTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DocumentTemplate");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.IntakeInstance", b =>
+                {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Intake.QuestionnaireTemplate", "QuestionnaireTemplate")
+                        .WithMany()
+                        .HasForeignKey("QuestionnaireTemplateId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("QuestionnaireTemplate");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.IntakeOutput", b =>
+                {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplate", "DocumentTemplate")
+                        .WithMany()
+                        .HasForeignKey("DocumentTemplateId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Intake.IntakeResponse", "IntakeResponse")
+                        .WithMany()
+                        .HasForeignKey("IntakeResponseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DocumentTemplate");
+
+                    b.Navigation("IntakeResponse");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.IntakeResponse", b =>
+                {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Intake.IntakeInstance", "IntakeInstance")
+                        .WithMany()
+                        .HasForeignKey("IntakeInstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntakeInstance");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.PublicForm", b =>
+                {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplate", "DocumentTemplate")
+                        .WithMany()
+                        .HasForeignKey("DocumentTemplateId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Intake.QuestionnaireTemplate", "QuestionnaireTemplate")
+                        .WithMany()
+                        .HasForeignKey("QuestionnaireTemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DocumentTemplate");
+
+                    b.Navigation("QuestionnaireTemplate");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.PublicFormPayment", b =>
+                {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Intake.PublicFormSubmission", "PublicFormSubmission")
+                        .WithMany()
+                        .HasForeignKey("PublicFormSubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PublicFormSubmission");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Intake.PublicFormSubmission", b =>
+                {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Intake.PublicForm", "PublicForm")
+                        .WithMany()
+                        .HasForeignKey("PublicFormId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PublicForm");
+                });
+
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.InviteCode", b =>
                 {
                     b.HasOne("SharedLibrary.Basics.Opaque.Domains.ApplicationUser", "CreatedByUser")
@@ -4967,9 +6010,16 @@ namespace Odin.Api.Base.Data.Migrations
                         .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.School", "School")
+                        .WithMany("Programmes")
+                        .HasForeignKey("SchoolId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("AwardEducationLevel");
 
                     b.Navigation("Owner");
+
+                    b.Navigation("School");
                 });
 
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.ProgrammeDocumentRequirement", b =>
@@ -5083,6 +6133,28 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Navigation("Pathway");
                 });
 
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice", b =>
+                {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan", "Plan")
+                        .WithMany("AdditionalInvoices")
+                        .HasForeignKey("PaymentPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment", b =>
+                {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan", "Plan")
+                        .WithMany("Installments")
+                        .HasForeignKey("PaymentPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.ProgrammePathway", b =>
                 {
                     b.HasOne("SharedLibrary.Basics.Opaque.Domains.Pathway", "Pathway")
@@ -5115,6 +6187,21 @@ namespace Odin.Api.Base.Data.Migrations
 
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Student", b =>
                 {
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.EmploymentIndustry", "CurrentEmploymentIndustry")
+                        .WithMany()
+                        .HasForeignKey("CurrentEmploymentIndustryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.PositionFunction", "CurrentPositionFunction")
+                        .WithMany()
+                        .HasForeignKey("CurrentPositionFunctionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SharedLibrary.Basics.Opaque.Domains.Payments.Currency", "MonthlySalaryCurrency")
+                        .WithMany()
+                        .HasForeignKey("MonthlySalaryCurrencyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SharedLibrary.Basics.Opaque.Domains.Nationality", "Nationality")
                         .WithMany()
                         .HasForeignKey("NationalityId")
@@ -5125,6 +6212,12 @@ namespace Odin.Api.Base.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("CurrentEmploymentIndustry");
+
+                    b.Navigation("CurrentPositionFunction");
+
+                    b.Navigation("MonthlySalaryCurrency");
 
                     b.Navigation("Nationality");
 
@@ -5324,6 +6417,11 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Navigation("Specializations");
                 });
 
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.School", b =>
+                {
+                    b.Navigation("Programmes");
+                });
+
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.Specialization", b =>
                 {
                     b.Navigation("Subject");
@@ -5334,6 +6432,13 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Navigation("AcceptedEducationLevels");
 
                     b.Navigation("DocumentRequirements");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan", b =>
+                {
+                    b.Navigation("AdditionalInvoices");
+
+                    b.Navigation("Installments");
                 });
 
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Student", b =>

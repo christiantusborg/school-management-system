@@ -23,7 +23,7 @@ public sealed class StudentEmailVerificationSender(
         var link = $"{origin.TrimEnd('/')}/#/apply/verify-email?userId={Uri.EscapeDataString(userId)}&token={Uri.EscapeDataString(token)}";
 
         var htmlBody =
-            "<p>Welcome to IBSS — please confirm your email and finish your application.</p>" +
+            "<p>Welcome to My Global World Education Group (MGW) — please confirm your email and finish your application.</p>" +
             "<p>Click the button below to confirm your email. You can also use it any time to " +
             "return to your application and continue where you left off:</p>" +
             $"<p><a href=\"{link}\" style=\"display:inline-block;padding:10px 18px;background:#1a4d8c;" +
@@ -36,7 +36,7 @@ public sealed class StudentEmailVerificationSender(
         // the always-Brevo simple overload. The From identity is resolved by
         // the transport from the portal mail settings.
         await emailSender.SendAsync(
-            new EmailMessage(To: email, Subject: "Verify your IBSS application email", HtmlBody: htmlBody),
+            new EmailMessage(To: email, Subject: "Verify your MGW application email", HtmlBody: htmlBody),
             ct);
         return token;
     }

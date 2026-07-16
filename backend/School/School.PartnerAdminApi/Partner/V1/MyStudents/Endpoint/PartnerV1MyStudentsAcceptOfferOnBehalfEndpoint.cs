@@ -24,7 +24,8 @@ public sealed class PartnerV1MyStudentsAcceptOfferOnBehalfEndpoint : IEndpointMa
 
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId,
-        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        HttpContext httpContext, OdinDbContext db,
+        [FromServices] Odin.Api.Base.Letters.LetterReleaseService letterRelease, CancellationToken ct)
     {
         var callerId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
         var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
@@ -52,6 +53,8 @@ public sealed class PartnerV1MyStudentsAcceptOfferOnBehalfEndpoint : IEndpointMa
         });
 
         await db.SaveChangesAsync(ct);
+
+        await Odin.Api.Base.Letters.StudentCardIssuer.TryIssueAsync(db, letterRelease, enrollment.SpecializationId, enrollmentId, ct);
 
         return Results.Ok(new
         {

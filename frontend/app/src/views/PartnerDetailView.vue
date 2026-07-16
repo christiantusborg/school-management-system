@@ -1,7 +1,7 @@
 <template>
   <div class="page-wrapper">
     <nav class="navbar">
-      <span class="brand-text">IBSS Admin Portal</span>
+      <span class="brand-text">MGW Admin Portal</span>
       <div class="nav-links">
         <RouterLink to="/admin"      class="nav-link">Dashboard</RouterLink>
         <RouterLink to="/programmes" class="nav-link">Programmes</RouterLink>
@@ -57,11 +57,11 @@
         <div class="page-header">
           <div>
             <h1 class="page-title">Programme Access</h1>
-            <p class="page-sub">Toggle which IBSS core specializations this partner can access. Partners manage their own programme clones from their portal.</p>
+            <p class="page-sub">Toggle which MGW core specializations this partner can access. Partners manage their own programme clones from their portal.</p>
           </div>
         </div>
 
-        <h2 class="section-heading">IBSS Core Access</h2>
+        <h2 class="section-heading">MGW Core Access</h2>
 
         <div v-for="prog in corePrograms" :key="prog.id" class="acc-card">
           <div class="acc-header" @click="toggleProg(prog.id)">

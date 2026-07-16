@@ -63,7 +63,7 @@
           </select>
         </div>
         <div class="field"><label>Internal notes</label>
-          <textarea v-model="form.internalNotes" rows="2" placeholder="Only visible to IBSS admins" />
+          <textarea v-model="form.internalNotes" rows="2" placeholder="Only visible to MGW admins" />
         </div>
 
         <div class="step-nav">
@@ -74,7 +74,7 @@
 
       <!-- Step 2: Core Programmes -->
       <div v-else-if="step === 2" class="step-body">
-        <p class="step-hint">Select which IBSS Core Programmes and Specializations this partner can enrol students into. You can change this later.</p>
+        <p class="step-hint">Select which MGW Core Programmes and Specializations this partner can enrol students into. You can change this later.</p>
 
         <div v-if="programmesLoading" class="loading-row">Loading programmes…</div>
         <div v-else-if="programmesError" class="err-banner">{{ programmesError }}</div>

@@ -29,6 +29,7 @@ public sealed class AdminV1StudentsLetterDatesEndpoint : IEndpointMarker
         public DateTime? OfferLetterDate { get; init; }
         public DateTime? AdmissionLetterDate { get; init; }
         public DateTime? TranscriptDate { get; init; }
+        public DateTime? GraduationDate { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
@@ -61,10 +62,12 @@ public sealed class AdminV1StudentsLetterDatesEndpoint : IEndpointMarker
         var offerChanged = enrolment.OfferLetterDate != Normalise(body.OfferLetterDate);
         var admissionChanged = enrolment.AdmissionLetterDate != Normalise(body.AdmissionLetterDate);
         var transcriptChanged = enrolment.TranscriptDate != Normalise(body.TranscriptDate);
+        var graduationChanged = enrolment.GraduationDate != Normalise(body.GraduationDate);
 
         enrolment.OfferLetterDate = Normalise(body.OfferLetterDate);
         enrolment.AdmissionLetterDate = Normalise(body.AdmissionLetterDate);
         enrolment.TranscriptDate = Normalise(body.TranscriptDate);
+        enrolment.GraduationDate = Normalise(body.GraduationDate);
         await db.SaveChangesAsync(ct);
 
         // Re-render already-released letters so the new date shows immediately.
@@ -81,13 +84,27 @@ public sealed class AdminV1StudentsLetterDatesEndpoint : IEndpointMarker
         }
         if (offerChanged) await RegenIfReleased(SystemDocumentTypeIds.OfferLetter, LetterType.OfferLetter);
         if (admissionChanged) await RegenIfReleased(SystemDocumentTypeIds.AdmissionLetter, LetterType.AdmissionLetter);
-        if (transcriptChanged) await RegenIfReleased(SystemDocumentTypeIds.Transcript, LetterType.Transcript);
+        if (transcriptChanged)
+        {
+            await RegenIfReleased(SystemDocumentTypeIds.Transcript, LetterType.Transcript);
+            await RegenIfReleased(SystemDocumentTypeIds.PrintableTranscript, LetterType.PrintableTranscript);
+        }
+        // [graduation date] can appear on both transcripts and both certificates,
+        // so a graduation change re-renders each of those if released.
+        if (graduationChanged)
+        {
+            await RegenIfReleased(SystemDocumentTypeIds.Transcript, LetterType.Transcript);
+            await RegenIfReleased(SystemDocumentTypeIds.PrintableTranscript, LetterType.PrintableTranscript);
+            await RegenIfReleased(SystemDocumentTypeIds.Certificate, LetterType.Certificate);
+            await RegenIfReleased(SystemDocumentTypeIds.ProvisionalCertificate, LetterType.ProvisionalCertificate);
+        }
 
         return Results.Ok(new
         {
             offerLetterDate = enrolment.OfferLetterDate,
             admissionLetterDate = enrolment.AdmissionLetterDate,
             transcriptDate = enrolment.TranscriptDate,
+            graduationDate = enrolment.GraduationDate,
         });
     }
 }

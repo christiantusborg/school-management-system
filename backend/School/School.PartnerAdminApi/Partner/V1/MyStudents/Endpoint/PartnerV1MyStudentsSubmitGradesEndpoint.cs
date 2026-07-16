@@ -37,6 +37,7 @@ public sealed class PartnerV1MyStudentsSubmitGradesEndpoint : IEndpointMarker
     public sealed class SubmitGradesRequest
     {
         public List<GradeEntry>? Items { get; init; }
+        public string? ProjectTitle { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
@@ -61,11 +62,12 @@ public sealed class PartnerV1MyStudentsSubmitGradesEndpoint : IEndpointMarker
             return Results.BadRequest(new { error = "No grades supplied." });
 
         // Validate every subject belongs to this enrolment's specialization.
-        var validSubjectIds = await db.Subjects
+        var specSubjects = await db.Subjects
             .Where(s => s.SpecializationId == enrolment.SpecializationId && s.DeletedAt == null)
-            .Select(s => s.SubjectId)
+            .Select(s => new { s.SubjectId, s.Ects })
             .ToListAsync(ct);
-        var validSet = validSubjectIds.ToHashSet();
+        var validSet = specSubjects.Select(s => s.SubjectId).ToHashSet();
+        var ectsBySubject = specSubjects.ToDictionary(s => s.SubjectId, s => s.Ects);
 
         foreach (var entry in entries)
         {
@@ -79,6 +81,27 @@ public sealed class PartnerV1MyStudentsSubmitGradesEndpoint : IEndpointMarker
             .Where(g => g.StudentEnrollmentId == enrollmentId)
             .ToListAsync(ct);
         var byId = existing.ToDictionary(g => g.SubjectId);
+
+        // Completion gate: the ECTS of every completed subject (already-saved
+        // grades ∪ this submission) must reach the programme's required-ECTS
+        // threshold. Null threshold = no gate.
+        var requiredEcts = await db.Enrollments
+            .Where(e => e.StudentEnrollmentId == enrollmentId)
+            .Select(e => e.Specialization.Programmes.RequiredEcts)
+            .FirstOrDefaultAsync(ct);
+        if (requiredEcts is { } required && required > 0)
+        {
+            var completedSubjectIds = existing.Select(g => g.SubjectId)
+                .Concat(entries.Select(e => e.SubjectId)).ToHashSet();
+            var completedEcts = completedSubjectIds
+                .Sum(id => ectsBySubject.TryGetValue(id, out var ec) ? ec : 0m);
+            if (completedEcts < required)
+                return Results.BadRequest(new
+                {
+                    error = $"Completion threshold not met: {completedEcts:0.#} of {required:0.#} required ECTS. "
+                        + "Enter grades for more subjects before submitting."
+                });
+        }
 
         var now = DateTime.UtcNow;
         foreach (var entry in entries)
@@ -101,6 +124,7 @@ public sealed class PartnerV1MyStudentsSubmitGradesEndpoint : IEndpointMarker
             }
         }
 
+        enrolment.ProjectTitle = string.IsNullOrWhiteSpace(body.ProjectTitle) ? null : body.ProjectTitle.Trim();
         enrolment.StatusId = EnrollmentStatusIds.AwaitingGradesApproval;
         db.Set<EnrollmentStatusNote>().Add(new EnrollmentStatusNote
         {

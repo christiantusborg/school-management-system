@@ -20,7 +20,8 @@ public sealed class StudentV1MeApplicationAcceptOfferEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> HandleAsync(
-        Guid enrollmentId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid enrollmentId, HttpContext httpContext, OdinDbContext db,
+        [FromServices] Odin.Api.Base.Letters.LetterReleaseService letterRelease, CancellationToken ct)
     {
         var callerId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
@@ -55,6 +56,8 @@ public sealed class StudentV1MeApplicationAcceptOfferEndpoint : IEndpointMarker
         });
 
         await db.SaveChangesAsync(ct);
+
+        await Odin.Api.Base.Letters.StudentCardIssuer.TryIssueAsync(db, letterRelease, enrollment.SpecializationId, enrollmentId, ct);
 
         return Results.Ok(new
         {

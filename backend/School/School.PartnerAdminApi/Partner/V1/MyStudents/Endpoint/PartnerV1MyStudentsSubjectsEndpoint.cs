@@ -30,7 +30,7 @@ public sealed class PartnerV1MyStudentsSubjectsEndpoint : IEndpointMarker
                 && e.StudentId == studentId
                 && e.PartnerId == partnerId
                 && e.DeletedAt == null)
-            .Select(e => new { e.SpecializationId, e.Status.Code })
+            .Select(e => new { e.SpecializationId, e.Status.Code, RequiredEcts = e.Specialization.Programmes.RequiredEcts, e.ProjectTitle })
             .FirstOrDefaultAsync(ct);
         if (enrolment is null) return Results.NotFound();
 
@@ -47,6 +47,7 @@ public sealed class PartnerV1MyStudentsSubjectsEndpoint : IEndpointMarker
                 code = s.Code,
                 name = s.Name,
                 ects = s.Ects,
+                isThesis = s.IsThesis,
             })
             .ToListAsync(ct);
 
@@ -56,6 +57,7 @@ public sealed class PartnerV1MyStudentsSubjectsEndpoint : IEndpointMarker
             s.code,
             s.name,
             s.ects,
+            s.isThesis,
             score = existingGrades.TryGetValue(s.subjectId, out var sc) ? (int?)sc : null,
         }).ToList();
 
@@ -114,6 +116,8 @@ public sealed class PartnerV1MyStudentsSubjectsEndpoint : IEndpointMarker
         return Results.Ok(new
         {
             enrolmentStatus = enrolment.Code,
+            requiredEcts = enrolment.RequiredEcts,
+            projectTitle = enrolment.ProjectTitle,
             rejection,
             items,
         });

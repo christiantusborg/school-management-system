@@ -51,6 +51,7 @@ public sealed class PartnerV1ProgrammeAccessEndpoint : IEndpointMarker
                 specializationId = s.SpecializationId,
                 programmeId = s.ProgrammeId,
                 programmeName = s.Programmes.Name,
+                schoolName = s.Programmes.School != null ? s.Programmes.School.Name : null,
                 specializationName = s.Name,
                 disabledByPartner = false,
             })

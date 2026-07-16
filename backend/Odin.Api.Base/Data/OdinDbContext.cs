@@ -36,6 +36,12 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
 
     // ── Programme / Specialization / Subject ──────────────────────────────
     public DbSet<Programme> Programmes => Set<Programme>();
+    public DbSet<School> Schools => Set<School>();
+    public DbSet<PartnerCertificate> PartnerCertificates => Set<PartnerCertificate>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan> EnrollmentPaymentPlans => Set<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment> PaymentInstallments => Set<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice> AdditionalInvoices => Set<SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.Currency> Currencies => Set<SharedLibrary.Basics.Opaque.Domains.Payments.Currency>();
     public DbSet<Specialization> Specializations => Set<Specialization>();
     public DbSet<Subject> Subjects => Set<Subject>();
     public DbSet<ProgrammePartner> ProgrammePartners => Set<ProgrammePartner>();
@@ -46,6 +52,35 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<LetterTemplate> LetterTemplates => Set<LetterTemplate>();
     public DbSet<LetterEmailTemplate> LetterEmailTemplates => Set<LetterEmailTemplate>();
     public DbSet<Odin.Api.Base.Email.MailSettings> MailSettings => Set<Odin.Api.Base.Email.MailSettings>();
+    public DbSet<Odin.Api.Base.Email.SchoolMailSettings> SchoolMailSettings => Set<Odin.Api.Base.Email.SchoolMailSettings>();
+
+    // ── Intake / questionnaire builder (ported from QuVian core) ──────────
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.QuestionnaireTemplate> QuestionnaireTemplates
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.QuestionnaireTemplate>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeInstance> IntakeInstances
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeInstance>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeResponse> IntakeResponses
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeResponse>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.FieldLibraryEntry> FieldLibraryEntries
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.FieldLibraryEntry>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.TextTemplate> IntakeTextTemplates
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.TextTemplate>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.GenerationRule> GenerationRules
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.GenerationRule>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplate> IntakeDocumentTemplates
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplate>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplateAsset> IntakeDocumentTemplateAssets
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplateAsset>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplateImage> IntakeDocumentTemplateImages
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.DocumentTemplateImage>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeOutput> IntakeOutputs
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeOutput>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.PublicForm> PublicForms
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.PublicForm>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.PublicFormSubmission> PublicFormSubmissions
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.PublicFormSubmission>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.PublicFormPayment> PublicFormPayments
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.PublicFormPayment>();
     public DbSet<LetterAsset> LetterAssets => Set<LetterAsset>();
 
     // ── Pathway ───────────────────────────────────────────────────────────
@@ -66,6 +101,8 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
 
     // ── Student ───────────────────────────────────────────────────────────
     public DbSet<Student> Students => Set<Student>();
+    public DbSet<PositionFunction> PositionFunctions => Set<PositionFunction>();
+    public DbSet<EmploymentIndustry> EmploymentIndustries => Set<EmploymentIndustry>();
     public DbSet<StudentDocument> StudentDocuments => Set<StudentDocument>();
     public DbSet<StudentDocumentNote> StudentDocumentNotes => Set<StudentDocumentNote>();
     public DbSet<DocumentStatus> DocumentStatuses => Set<DocumentStatus>();
