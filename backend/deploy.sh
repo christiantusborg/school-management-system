@@ -92,6 +92,7 @@ ssh "$REMOTE" "docker run -d \
   -e App__Domain=$PUBLIC_DOMAIN \
   -e App__StudentOrigin=$PUBLIC_ORIGIN \
   -e Cors__AllowedOrigins__0=$PUBLIC_ORIGIN \
+  -e Cors__AllowedOrigins__1=https://hub.mgworld.academy \
   -e Encryption__FieldKey=$ENCRYPTION_FIELD_KEY \
   -e Brevo__SmtpHost=$BREVO_SMTP_HOST \
   -e Brevo__SmtpPort=$BREVO_SMTP_PORT \
