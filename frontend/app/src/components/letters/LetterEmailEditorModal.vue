@@ -22,7 +22,7 @@
 
           <div class="em-field">
             <label>Subject</label>
-            <input type="text" v-model="form.subject" placeholder="Your IBSS Admission Letter — [student full name]" />
+            <input type="text" v-model="form.subject" placeholder="Your MGW Admission Letter — [student full name]" />
             <select class="em-tag" @change="insertTag('subject', $event)">
               <option value="">+ tag…</option>
               <option v-for="t in tags" :key="t.token" :value="t.token">{{ t.token }}</option>

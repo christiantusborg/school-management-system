@@ -13,6 +13,12 @@ public static class SystemLetterAssetIds
     public static readonly Guid IbssSignatureLine  = Guid.Parse("33333333-3333-3333-3333-100000000004");
     public static readonly Guid IbssFooter         = Guid.Parse("33333333-3333-3333-3333-100000000005");
     public static readonly Guid IbssCertificateBg  = Guid.Parse("33333333-3333-3333-3333-100000000006");
+    public static readonly Guid StudentCardBg      = Guid.Parse("33333333-3333-3333-3333-100000000007");
+
+    /// <summary>VIRTUAL asset: never seeded/stored. A layout image field with
+    /// this id is filled at render time with the student's uploaded
+    /// "Student Card Picture" document (photo on the digital student card).</summary>
+    public static readonly Guid StudentPhoto       = Guid.Parse("33333333-3333-3333-3333-1000000000aa");
 
     public sealed record Seed(Guid Id, string Name, string MimeType, string ResourceFileName);
 
@@ -24,5 +30,6 @@ public static class SystemLetterAssetIds
         new(IbssSignatureLine,  "ibss-signature-line",  "image/png",  "ibss-signature-line.png"),
         new(IbssFooter,         "ibss-footer",          "image/png",  "ibss-footer.png"),
         new(IbssCertificateBg,  "ibss-certificate-bg",  "image/png",  "ibss-certificate-bg.png"),
+        new(StudentCardBg,      "student-card-bg",      "image/png",  "student-card-bg.png"),
     };
 }

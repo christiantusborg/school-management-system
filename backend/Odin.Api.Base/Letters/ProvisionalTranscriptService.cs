@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Odin.Api.Base.Data;
 using Odin.Api.Base.Storage;
+using SharedLibrary.Basics.Opaque.Domains;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
 namespace Odin.Api.Base.Letters;
@@ -23,6 +24,15 @@ public sealed class ProvisionalTranscriptService(
 {
     public const string Watermark = "PROVISIONAL";
 
+    // The watermark applies only until grades are SUBMITTED (not just saved
+    // as a draft): from Awaiting grades approval onward the transcript prints
+    // clean even via the provisional download.
+    private static readonly HashSet<Guid> GradesSubmittedStatuses = new()
+    {
+        EnrollmentStatusIds.AwaitingGradesApproval,
+        EnrollmentStatusIds.GradesApproved,
+    };
+
     /// <summary>
     /// Returns the watermarked transcript bytes, or null when there is no
     /// published Transcript template for the enrolment's (programme, partner).
@@ -34,6 +44,7 @@ public sealed class ProvisionalTranscriptService(
             .Select(e => new
             {
                 e.PartnerId,
+                e.StatusId,
                 ProgrammeId = db.Specializations
                     .Where(s => s.SpecializationId == e.SpecializationId)
                     .Select(s => s.ProgrammeId)
@@ -87,6 +98,7 @@ public sealed class ProvisionalTranscriptService(
         var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference: null);
         var rows = await tagResolver.ResolveTranscriptRowsAsync(enrollmentId, ct);
         var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractCertificateAssetIds(layout));
-        return renderer.RenderCertificate(layout, assets, tags, rows, watermark: Watermark);
+        var watermark = GradesSubmittedStatuses.Contains(enrollment.StatusId) ? null : Watermark;
+        return renderer.RenderCertificate(layout, assets, tags, rows, watermark: watermark);
     }
 }

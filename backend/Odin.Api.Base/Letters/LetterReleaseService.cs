@@ -74,7 +74,7 @@ public sealed class LetterReleaseService(
             .FirstAsync(e => e.StudentEnrollmentId == enrollmentId, ct);
         if (string.IsNullOrEmpty(enrollmentEntity.LetterReferenceCode))
             enrollmentEntity.LetterReferenceCode = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
-        var reference = $"IBSS-{LetterTypeCode(letterType)}-{enrollmentEntity.LetterReferenceCode}";
+        var reference = $"MGW-{LetterTypeCode(letterType)}-{enrollmentEntity.LetterReferenceCode}";
 
         // Gate release on the admin having explicitly published this template.
         // Seeded defaults sit in the DB as a starting canvas for the editor;
@@ -121,6 +121,29 @@ public sealed class LetterReleaseService(
         {
             var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference);
             var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractCertificateAssetIds(layout));
+            // Virtual student-photo asset: image fields pointing at the
+            // sentinel id get the student's uploaded Student Card Picture.
+            if (template.CertificateLayoutJson?.Contains(SystemLetterAssetIds.StudentPhoto.ToString()) == true)
+            {
+                var photoPath = await db.StudentDocuments
+                    .Where(d => d.StudentId == enrollment.StudentId
+                        && d.DocumentTypeId == SystemDocumentTypeIds.StudentCardPicture
+                        && d.DeletedAt == null)
+                    .OrderByDescending(d => d.UploadedAt)
+                    .Select(d => d.StoragePath)
+                    .FirstOrDefaultAsync(ct);
+                if (photoPath is not null)
+                {
+                    try
+                    {
+                        await using var ps = await storage.OpenReadAsync(photoPath, ct);
+                        using var pms = new MemoryStream();
+                        await ps.CopyToAsync(pms, ct);
+                        if (pms.Length > 0) assets[SystemLetterAssetIds.StudentPhoto] = pms.ToArray();
+                    }
+                    catch { /* no photo → the artwork placeholder stays visible */ }
+                }
+            }
             // Only fetch transcript rows if a layout actually contains a
             // transcriptTable field — saves a round-trip on offer/admission
             // letters that don't need the grade data.
@@ -162,6 +185,8 @@ public sealed class LetterReleaseService(
             LetterType.Transcript             => SystemDocumentTypeIds.Transcript,
             LetterType.Certificate            => SystemDocumentTypeIds.Certificate,
             LetterType.ProvisionalCertificate => SystemDocumentTypeIds.ProvisionalCertificate,
+            LetterType.PrintableTranscript    => SystemDocumentTypeIds.PrintableTranscript,
+            LetterType.StudentIdCard          => SystemDocumentTypeIds.StudentIdCard,
             _ => throw new ArgumentOutOfRangeException(nameof(letterType)),
         };
 
@@ -245,6 +270,8 @@ public sealed class LetterReleaseService(
         LetterType.Transcript             => "TR",
         LetterType.Certificate            => "CERT",
         LetterType.ProvisionalCertificate => "PCERT",
+        LetterType.PrintableTranscript    => "PTR",
+        LetterType.StudentIdCard          => "IDCARD",
         _ => "DOC",
     };
 

@@ -57,6 +57,10 @@ public sealed class LetterEmailService(
                     .Where(s => s.SpecializationId == e.SpecializationId)
                     .Select(s => s.ProgrammeId)
                     .FirstOrDefault(),
+                SchoolId = db.Specializations
+                    .Where(s => s.SpecializationId == e.SpecializationId)
+                    .Select(s => s.Programmes.SchoolId)
+                    .FirstOrDefault(),
                 StudentEmail = db.Students
                     .Where(s => s.StudentId == e.StudentId)
                     .Select(s => s.User.Email)
@@ -111,16 +115,17 @@ public sealed class LetterEmailService(
         var cc = MergeRecipients(template.CcRecipientsJson, adHocCc);
         var bcc = MergeRecipients(template.BccRecipientsJson, adHocBcc);
 
-        // From is resolved by the transport from the admin's mail settings
-        // (System Config → Email); leave it unset here so the portal stays the
-        // single source of truth.
+        // From is resolved by the transport from the mail settings (per-school
+        // when the programme's school has its own, else System Config → Email);
+        // leave it unset here so the portal stays the single source of truth.
         var message = new EmailMessage(
             To: enrollment.StudentEmail!,
             Subject: subject,
             HtmlBody: bodyHtml,
             Cc: cc,
             Bcc: bcc,
-            Attachments: new[] { new EmailAttachment(doc.FileName, "application/pdf", pdfBytes) });
+            Attachments: new[] { new EmailAttachment(doc.FileName, "application/pdf", pdfBytes) },
+            SchoolId: enrollment.SchoolId);
 
         try
         {

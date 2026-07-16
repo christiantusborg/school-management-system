@@ -96,8 +96,8 @@ internal static class DefaultLetterLayouts
 
             Body(LeftX, 245, ContentW, prefix: "Dear ", suffix: ",", tag: "[student full name]"),
             Body(LeftX, 270, ContentW,
-                "Congratulations. We are pleased to inform you that your application for International Business " +
-                "School of Scandinavia (IBSS) is approved. We look forward to having you with us. Our records " +
+                "Congratulations. We are pleased to inform you that your application for My Global World " +
+                "Education Group (MGW) is approved. We look forward to having you with us. Our records " +
                 "for your admission will carry the following information:"),
 
             // Programme details (Y stacked manually because the wrapped welcome paragraph above is ~3 lines).
@@ -156,7 +156,7 @@ internal static class DefaultLetterLayouts
             ImageField(SystemLetterAssetIds.IbssLogo, LeftX, 30, 200, 60),
 
             Body(LeftX, 110, ContentW,
-                "International Business School of Scandinavia (IBSS) would like to congratulate you to join the " +
+                "My Global World Education Group (MGW) would like to congratulate you to join the " +
                 "programme in your quest towards academic and career advancement.", bold: true),
             Body(LeftX, 160, ContentW, "We wish you every success!", italic: true),
 
@@ -170,8 +170,8 @@ internal static class DefaultLetterLayouts
             Body(LeftX, 425, ContentW,
                 prefix: "By paying the tuition fee of the program, I, ",
                 tag: "[student full name]",
-                suffix: ", accept the offer to study the programme above in International Business School of " +
-                        "Scandinavia (IBSS). I hereby acknowledge that I have read and understand the terms and " +
+                suffix: ", accept the offer to study the programme above in My Global World Education " +
+                        "Group (MGW). I hereby acknowledge that I have read and understand the terms and " +
                         "conditions of this offer letter and on the website (https://ibss.edu.eu/)."),
 
             Body(LeftX, 530, 200, "Signature: __________________________"),
@@ -208,7 +208,7 @@ internal static class DefaultLetterLayouts
             Body(LeftX, 245, ContentW, prefix: "Dear ", suffix: ",", tag: "[student full name]"),
 
             Body(LeftX, 270, ContentW,
-                "International Business School of Scandinavia (IBSS) would like to take this opportunity to " +
+                "My Global World Education Group (MGW) would like to take this opportunity to " +
                 "congratulate and welcome you to the programme in your quest towards academic and career " +
                 "advancement. It is our pleasure that you have been accepted into the programme."),
 
@@ -232,7 +232,7 @@ internal static class DefaultLetterLayouts
             Body(LeftX, 460, ContentW,
                 "We hereby confirm to register you as our active student for our programme as mentioned above."),
             Body(LeftX, 490, ContentW,
-                "Participation in this programme is governed by IBSS Terms & Conditions (see https://ibss.edu.eu/)."),
+                "Participation in this programme is governed by MGW Terms & Conditions (see https://ibss.edu.eu/)."),
 
             Body(LeftX, 545, ContentW, "Thank you,"),
             Body(LeftX, 565, ContentW, "Yours sincerely,"),
@@ -264,7 +264,7 @@ internal static class DefaultLetterLayouts
         yield return ImageField(SystemLetterAssetIds.IbssLogo, LeftX, 25, 110, 90);
         const int rx = LeftX + 130;
         const int rw = 365;
-        yield return Body(rx, 30,  rw, "International Business School Of Scandinavia (IBSS)", bold: true, fontSize: 12);
+        yield return Body(rx, 30,  rw, "My Global World Education Group (MGW)", bold: true, fontSize: 12);
         yield return Body(rx, 46,  rw, "Part of MY GLOBAL WORLD EDUCATION", fontSize: 10);
         yield return Body(rx, 64,  rw, "Trindsøvej 6, 1. Sal, 8000 Aarhus Centrum, Denmark", fontSize: 9);
         yield return Body(rx, 78,  rw, "+45 78 88 89 12    admission@mgworld.education",     fontSize: 9);

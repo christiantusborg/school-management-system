@@ -173,4 +173,12 @@ public sealed class CertificateField
 
     [JsonPropertyName("rowEnd")]
     public int RowEnd { get; set; }
+
+    /// <summary>
+    /// For transcript grade tables / totals: which columns to render, by key,
+    /// in the canonical order (code, module, ects, ectsGrade, ibssGrade,
+    /// ectsGradePoint, gradePoint). Null or empty = show all columns.
+    /// </summary>
+    [JsonPropertyName("columns")]
+    public List<string>? Columns { get; set; }
 }

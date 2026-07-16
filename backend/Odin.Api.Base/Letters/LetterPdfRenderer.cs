@@ -75,6 +75,26 @@ public sealed class LetterPdfRenderer
                         else
                             layers.PrimaryLayer().Background(Colors.White);
 
+                        // Auto Total/GPA: unless the layout has a manually-placed
+                        // transcriptTotals field, the Total + GPA rows are appended
+                        // directly under the last grade-range table that holds data
+                        // (the range containing the final grade row, else the
+                        // highest range). This keeps the total glued to the end of
+                        // the grades no matter how many ranges are populated.
+                        var pageFields = pageDef.Fields ?? new();
+                        var hasManualTotals = pageFields.Any(f =>
+                            string.Equals((f.Kind ?? "").Trim(), "transcriptTotals", StringComparison.OrdinalIgnoreCase));
+                        var schoolName = tagValues.TryGetValue("[school name]", out var snv) ? snv : null;
+                        string? autoTotalsFieldId = null;
+                        if (!hasManualTotals && allRows.Count > 0)
+                        {
+                            var ranges = pageFields
+                                .Where(f => string.Equals((f.Kind ?? "").Trim(), "transcriptTable", StringComparison.OrdinalIgnoreCase) && f.RowEnd > 0)
+                                .OrderBy(f => f.RowEnd).ToList();
+                            var containing = ranges.FirstOrDefault(f => Math.Max(1, f.RowStart) <= allRows.Count && allRows.Count <= f.RowEnd);
+                            autoTotalsFieldId = (containing ?? ranges.LastOrDefault())?.Id;
+                        }
+
                         foreach (var field in pageDef.Fields ?? new())
                         {
                             var kind = (field.Kind ?? "text").Trim().ToLowerInvariant();
@@ -82,27 +102,27 @@ public sealed class LetterPdfRenderer
                             {
                                 if (field.RowEnd > 0)
                                 {
-                                    // Ranged slice: rows [RowStart..RowEnd] (1-based), rows only.
-                                    // Total/GPA live in a separate transcriptTotals field.
+                                    // Ranged slice: rows [RowStart..RowEnd] (1-based).
                                     var from = Math.Max(1, field.RowStart);
                                     var to = Math.Max(from, field.RowEnd);
                                     var slice = allRows.Skip(from - 1).Take(to - from + 1).ToList();
-                                    RenderTranscriptTableSlice(layers, field, sx, sy, slice);
+                                    RenderTranscriptTableSlice(layers, field, sx, sy, slice,
+                                        field.Id == autoTotalsFieldId ? allRows : null, schoolName);
                                 }
                                 else
                                 {
-                                    RenderTranscriptTable(layers, field, sx, sy, allRows);
+                                    RenderTranscriptTable(layers, field, sx, sy, allRows, schoolName);
                                 }
                                 continue;
                             }
                             if (kind == "transcripttotals")
                             {
-                                RenderTranscriptTotals(layers, field, sx, sy, allRows);
+                                RenderTranscriptTotals(layers, field, sx, sy, allRows, schoolName);
                                 continue;
                             }
                             if (kind == "gradestandardtable")
                             {
-                                RenderGradeStandardTable(layers, field, sx, sy);
+                                RenderGradeStandardTable(layers, field, sx, sy, schoolName);
                                 continue;
                             }
                             if (kind == "image")
@@ -197,12 +217,14 @@ public sealed class LetterPdfRenderer
     private static void ApplyWatermark(PageDescriptor page, string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
+        // 30% alpha (70% transparent) so the transcript content stays readable
+        // underneath — solid Red.Lighten3 hid the rows it crossed.
         page.Foreground()
             .AlignCenter()
             .AlignMiddle()
             .Rotate(-35)
             .Text(text!)
-            .FontSize(70).Bold().FontColor(Colors.Red.Lighten3);
+            .FontSize(70).Bold().FontColor(Color.FromHex("#4DEF9A9A"));
     }
 
     /// <summary>
@@ -282,7 +304,8 @@ public sealed class LetterPdfRenderer
                 col.Item()
                    .PaddingLeft((float)tableField.X * sx)
                    .Width((tableField.Width <= 0 ? 500 : tableField.Width) * sx)
-                   .Element(c => BuildTranscriptTableContent(c, rows, tableFontSize));
+                   .Element(c => BuildTranscriptTableContent(c, tableField, rows, tableFontSize,
+                       tagValues.TryGetValue("[school name]", out var flowSchool) ? flowSchool : null));
 
                 if (afterFields.Count > 0)
                 {
@@ -380,28 +403,24 @@ public sealed class LetterPdfRenderer
     /// </summary>
     private static void BuildTranscriptTableContent(
         IContainer container,
+        CertificateField field,
         IReadOnlyList<TranscriptGradeRow> rows,
-        float fontSize)
+        float fontSize,
+        string? schoolName = null)
     {
+        var colDefs = SelectTranscriptCols(field, schoolName);
         container.Table(table =>
         {
             table.ColumnsDefinition(cols =>
             {
-                cols.RelativeColumn(2);  // Code
-                cols.RelativeColumn(4);  // Module
-                cols.RelativeColumn(2);  // ECTS credit hours
-                cols.RelativeColumn(2);  // ECTS Grade
-                cols.RelativeColumn(2);  // IBSS Grade
-                cols.RelativeColumn(2);  // ECTS Grade Point
-                cols.RelativeColumn(2);  // Grade Point
+                foreach (var cd in colDefs) cols.RelativeColumn(cd.Width);
             });
 
             table.Header(header =>
             {
-                void H(string text) => header.Cell().Border(0.5f).BorderColor(Colors.Black)
-                    .Padding(3).AlignCenter().AlignMiddle().Text(text).Bold().FontSize(fontSize);
-                H("Code"); H("Module"); H("ECTS\ncredit hours"); H("ECTS\nGrade");
-                H("IBSS\nGrade"); H("ECTS\nGrade Point"); H("Grade\nPoint");
+                foreach (var cd in colDefs)
+                    header.Cell().Border(0.5f).BorderColor(Colors.Black)
+                        .Padding(3).AlignCenter().AlignMiddle().Text(cd.Header).Bold().FontSize(fontSize);
             });
 
             void Cell(string text, bool left = false, bool bold = false)
@@ -419,64 +438,117 @@ public sealed class LetterPdfRenderer
                 var pts = (double)r.Ects * gp;
                 totalEcts += r.Ects;
                 totalGp += pts;
-                Cell(r.Code);
-                Cell(r.Name, left: true);
-                Cell(r.Ects.ToString("0.##", CultureInfo.InvariantCulture));
-                Cell(ects);
-                Cell(uk);
-                Cell(gp.ToString("0.0", CultureInfo.InvariantCulture));
-                Cell(pts.ToString("0.0", CultureInfo.InvariantCulture));
+                foreach (var cd in colDefs)
+                    Cell(cd.Compute(r, (ects, uk, gp, pts)), left: cd.AlignLeft);
             }
 
-            // Total row (once, after the last grade row).
-            table.Cell().ColumnSpan(2).Border(0.5f).BorderColor(Colors.Black).Padding(3).Text("Total").Bold().FontSize(fontSize);
-            Cell(totalEcts.ToString("0.##", CultureInfo.InvariantCulture), bold: true);
-            Cell("");
-            Cell("");
-            Cell("");
-            Cell(totalGp.ToString("0.0", CultureInfo.InvariantCulture), bold: true);
-
-            // GPA row.
             var gpa = totalEcts > 0 ? totalGp / (double)totalEcts : 0;
-            table.Cell().ColumnSpan(6).Border(0.5f).BorderColor(Colors.Black).Padding(3).AlignRight()
-                .Text("Grade Point Average").Bold().FontSize(fontSize);
-            Cell(gpa.ToString("0.00", CultureInfo.InvariantCulture), bold: true);
+            RenderTranscriptTotalsRows(table, colDefs, totalEcts, totalGp, gpa, fontSize);
         });
+    }
+
+    // A selectable transcript grade-table column: header text, relative width,
+    // left/centre alignment, and how to render a row's cell. `Compute` receives
+    // the row plus its derived (ectsGrade, ibssGrade, ectsGradePoint, gradePoint).
+    private sealed record TranscriptCol(
+        string Key, string Header, int Width, bool AlignLeft,
+        Func<TranscriptGradeRow, (string EctsGrade, string Ibss, double Gp, double Pts), string> Compute);
+
+    private static readonly TranscriptCol[] AllTranscriptCols =
+    {
+        new("code",           "Code",               2, false, (r, d) => r.Code),
+        new("module",         "Module",             4, true,  (r, d) => r.Name),
+        new("ects",           "ECTS\ncredit hours", 2, false, (r, d) => r.Ects.ToString("0.##", CultureInfo.InvariantCulture)),
+        new("ectsGrade",      "ECTS\nGrade",        2, false, (r, d) => d.EctsGrade),
+        // The school's own grade = the numeric score the grader entered. Header
+        // is rewritten per-render to "{School} Grade" (see SelectTranscriptCols).
+        new("ibssGrade",      "School\nGrade",      2, false, (r, d) => r.Score.ToString("0.##", CultureInfo.InvariantCulture)),
+        new("ectsGradePoint", "ECTS\nGrade Point",  2, false, (r, d) => d.Gp.ToString("0.0", CultureInfo.InvariantCulture)),
+        new("gradePoint",     "Grade\nPoint",       2, false, (r, d) => d.Pts.ToString("0.0", CultureInfo.InvariantCulture)),
+    };
+
+    // Resolve which columns a field renders (null/empty/unknown => all), with the
+    // school-grade column's header set to "{School} Grade" for this enrolment.
+    private static IReadOnlyList<TranscriptCol> SelectTranscriptCols(CertificateField field, string? schoolName = null)
+    {
+        var keys = field.Columns;
+        var baseCols = (keys is null || keys.Count == 0)
+            ? AllTranscriptCols.AsEnumerable()
+            : AllTranscriptCols.Where(c =>
+                keys.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim())
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase).Contains(c.Key));
+        var chosen = baseCols.ToList();
+        if (chosen.Count == 0) chosen = AllTranscriptCols.ToList();
+
+        // Fallback is the neutral "School" (never the "MGW" portal brand) so a
+        // programme with no awarding school still reads "School Grade" on the
+        // document, per the IBAS/IBSS-or-School-grade rule.
+        var school = string.IsNullOrWhiteSpace(schoolName) ? "School" : schoolName.Trim();
+        return chosen.Select(c => c.Key == "ibssGrade"
+            ? c with { Header = $"{school}\nGrade" }
+            : c).ToList();
+    }
+
+    // Renders the Total and Grade-Point-Average rows across the selected columns.
+    // The ECTS total lands under the "ects" column and the grade-point total /
+    // GPA under the grade-point column, so they stay aligned whatever the author
+    // chose. Uses per-column cells (no ColumnSpan) to survive arbitrary layouts.
+    private static void RenderTranscriptTotalsRows(
+        QuestPDF.Fluent.TableDescriptor table, IReadOnlyList<TranscriptCol> cols,
+        decimal totalEcts, double totalGp, double gpa, float fontSize)
+    {
+        var gpKey = cols.Any(c => c.Key == "gradePoint") ? "gradePoint"
+            : cols.Any(c => c.Key == "ectsGradePoint") ? "ectsGradePoint"
+            : cols[^1].Key;
+
+        void Cell(string text, bool left, bool bold)
+        {
+            var cell = table.Cell().Border(0.5f).BorderColor(Colors.Black).Padding(3).MinHeight(16);
+            var span = (left ? cell.AlignLeft() : cell.AlignCenter()).AlignMiddle().Text(text).FontSize(fontSize);
+            if (bold) span.Bold();
+        }
+
+        bool labelDone = false;
+        foreach (var c in cols)
+        {
+            if (!labelDone) { Cell("Total", left: true, bold: true); labelDone = true; }
+            else if (c.Key == "ects") Cell(totalEcts.ToString("0.##", CultureInfo.InvariantCulture), left: false, bold: true);
+            else if (c.Key == gpKey) Cell(totalGp.ToString("0.0", CultureInfo.InvariantCulture), left: false, bold: true);
+            else Cell("", left: false, bold: false);
+        }
+
+        labelDone = false;
+        foreach (var c in cols)
+        {
+            if (!labelDone) { Cell("Grade Point Average", left: true, bold: true); labelDone = true; }
+            else if (c.Key == gpKey) Cell(gpa.ToString("0.00", CultureInfo.InvariantCulture), left: false, bold: true);
+            else Cell("", left: false, bold: false);
+        }
     }
 
     private static void RenderTranscriptTable(
         QuestPDF.Fluent.LayersDescriptor layers,
         CertificateField field,
         float sx, float sy,
-        IReadOnlyList<TranscriptGradeRow> rows)
+        IReadOnlyList<TranscriptGradeRow> rows,
+        string? schoolName = null)
     {
         var x = (float)field.X * sx;
         var y = (float)field.Y * sy;
         var w = Math.Max(50f, (float)(field.Width <= 0 ? 800 : field.Width) * sx);
         var fontSize = Math.Max(6f, field.FontSize <= 0 ? 9f : field.FontSize * sy);
 
+        var colDefs = SelectTranscriptCols(field, schoolName);
         layers.Layer().PaddingTop(y).PaddingLeft(x).Width(w).Element(c =>
         {
             c.Table(table =>
             {
                 table.ColumnsDefinition(cols =>
                 {
-                    cols.RelativeColumn(2);  // Code
-                    cols.RelativeColumn(4);  // Module
-                    cols.RelativeColumn(2);  // ECTS credit hours
-                    cols.RelativeColumn(2);  // ECTS Grade
-                    cols.RelativeColumn(2);  // IBSS Grade
-                    cols.RelativeColumn(2);  // ECTS Grade Point
-                    cols.RelativeColumn(2);  // Grade Point
+                    foreach (var cd in colDefs) cols.RelativeColumn(cd.Width);
                 });
 
-                Header(table, "Code");
-                Header(table, "Module");
-                Header(table, "ECTS\ncredit hours");
-                Header(table, "ECTS\nGrade");
-                Header(table, "IBSS\nGrade");
-                Header(table, "ECTS\nGrade Point");
-                Header(table, "Grade\nPoint");
+                foreach (var cd in colDefs) Header(table, cd.Header);
 
                 decimal totalEcts = 0m;
                 double totalGp = 0;
@@ -486,35 +558,17 @@ public sealed class LetterPdfRenderer
                     var pts = (double)row.Ects * gp;
                     totalEcts += row.Ects;
                     totalGp += pts;
-                    Cell(table, row.Code,                     fontSize);
-                    Cell(table, row.Name,                     fontSize, alignLeft: true);
-                    Cell(table, row.Ects.ToString("0.##", CultureInfo.InvariantCulture), fontSize);
-                    Cell(table, ects,                         fontSize);
-                    Cell(table, uk,                           fontSize);
-                    Cell(table, gp.ToString("0.0", CultureInfo.InvariantCulture), fontSize);
-                    Cell(table, pts.ToString("0.0", CultureInfo.InvariantCulture), fontSize);
+                    foreach (var cd in colDefs)
+                        Cell(table, cd.Compute(row, (ects, uk, gp, pts)), fontSize, alignLeft: cd.AlignLeft);
                 }
 
                 // Pad with blank rows so the table looks like the reference (10 rows).
                 var minRows = 10;
                 for (int i = rows.Count; i < minRows; i++)
-                {
-                    for (int j = 0; j < 7; j++) Cell(table, "", fontSize);
-                }
+                    foreach (var cd in colDefs) Cell(table, "", fontSize);
 
-                // Total row
-                table.Cell().ColumnSpan(2).Border(0.5f).BorderColor(Colors.Black).Padding(3).Text("Total").Bold().FontSize(fontSize);
-                Cell(table, totalEcts.ToString("0.##", CultureInfo.InvariantCulture), fontSize, bold: true);
-                Cell(table, "", fontSize);
-                Cell(table, "", fontSize);
-                Cell(table, "", fontSize);
-                Cell(table, totalGp.ToString("0.0", CultureInfo.InvariantCulture), fontSize, bold: true);
-
-                // GPA row
                 var gpa = totalEcts > 0 ? totalGp / (double)totalEcts : 0;
-                table.Cell().ColumnSpan(6).Border(0.5f).BorderColor(Colors.Black).Padding(3).AlignRight()
-                    .Text("Grade Point Average").Bold().FontSize(fontSize);
-                Cell(table, gpa.ToString("0.00", CultureInfo.InvariantCulture), fontSize, bold: true);
+                RenderTranscriptTotalsRows(table, colDefs, totalEcts, totalGp, gpa, fontSize);
             });
         });
 
@@ -533,50 +587,61 @@ public sealed class LetterPdfRenderer
 
     /// <summary>
     /// Renders one fixed range of the grades table at the field's position
-    /// (e.g. rows 1-10, 11-20). Shows the column header and the given slice,
-    /// padded to 10 rows. Total/GPA are a separate transcriptTotals field.
+    /// (e.g. rows 1-10, 11-20). Shows the column header and the given slice. When
+    /// <paramref name="totalsOverAllRows"/> is non-null, the Total + GPA rows
+    /// (computed over ALL grades) are appended directly below the slice — used
+    /// to glue the total to the last populated range table.
     /// </summary>
     private static void RenderTranscriptTableSlice(
         QuestPDF.Fluent.LayersDescriptor layers,
         CertificateField field,
         float sx, float sy,
-        IReadOnlyList<TranscriptGradeRow> slice)
+        IReadOnlyList<TranscriptGradeRow> slice,
+        IReadOnlyList<TranscriptGradeRow>? totalsOverAllRows = null,
+        string? schoolName = null)
     {
         var x = (float)field.X * sx;
         var y = (float)field.Y * sy;
         var w = Math.Max(50f, (float)(field.Width <= 0 ? 800 : field.Width) * sx);
         var fontSize = Math.Max(6f, field.FontSize <= 0 ? 9f : field.FontSize * sy);
 
+        var colDefs = SelectTranscriptCols(field, schoolName);
         layers.Layer().PaddingTop(y).PaddingLeft(x).Width(w).Element(c =>
         {
             c.Table(table =>
             {
                 table.ColumnsDefinition(cols =>
                 {
-                    cols.RelativeColumn(2); cols.RelativeColumn(4); cols.RelativeColumn(2);
-                    cols.RelativeColumn(2); cols.RelativeColumn(2); cols.RelativeColumn(2); cols.RelativeColumn(2);
+                    foreach (var cd in colDefs) cols.RelativeColumn(cd.Width);
                 });
 
-                Header(table, "Code"); Header(table, "Module"); Header(table, "ECTS\ncredit hours");
-                Header(table, "ECTS\nGrade"); Header(table, "IBSS\nGrade"); Header(table, "ECTS\nGrade Point");
-                Header(table, "Grade\nPoint");
+                foreach (var cd in colDefs) Header(table, cd.Header);
 
                 foreach (var row in slice)
                 {
                     var (ects, uk, gp) = MapScore(row.Score);
                     var pts = (double)row.Ects * gp;
-                    Cell(table, row.Code, fontSize);
-                    Cell(table, row.Name, fontSize, alignLeft: true);
-                    Cell(table, row.Ects.ToString("0.##", CultureInfo.InvariantCulture), fontSize);
-                    Cell(table, ects, fontSize);
-                    Cell(table, uk, fontSize);
-                    Cell(table, gp.ToString("0.0", CultureInfo.InvariantCulture), fontSize);
-                    Cell(table, pts.ToString("0.0", CultureInfo.InvariantCulture), fontSize);
+                    foreach (var cd in colDefs)
+                        Cell(table, cd.Compute(row, (ects, uk, gp, pts)), fontSize, alignLeft: cd.AlignLeft);
                 }
 
-                // Pad each slice to 10 rows so every range table is the same height.
-                for (int i = slice.Count; i < 10; i++)
-                    for (int j = 0; j < 7; j++) Cell(table, "", fontSize);
+                // Only completed subjects are rendered — no empty padding rows.
+                // A range table with 5 graded subjects shows exactly 5 rows.
+
+                // Auto Total/GPA glued under the last populated range table.
+                if (totalsOverAllRows is not null)
+                {
+                    decimal totalEcts = 0m;
+                    double totalGp = 0;
+                    foreach (var r in totalsOverAllRows)
+                    {
+                        var (_, _, gp) = MapScore(r.Score);
+                        totalEcts += r.Ects;
+                        totalGp += (double)r.Ects * gp;
+                    }
+                    var gpa = totalEcts > 0 ? totalGp / (double)totalEcts : 0;
+                    RenderTranscriptTotalsRows(table, colDefs, totalEcts, totalGp, gpa, fontSize);
+                }
             });
         });
 
@@ -599,7 +664,8 @@ public sealed class LetterPdfRenderer
         QuestPDF.Fluent.LayersDescriptor layers,
         CertificateField field,
         float sx, float sy,
-        IReadOnlyList<TranscriptGradeRow> allRows)
+        IReadOnlyList<TranscriptGradeRow> allRows,
+        string? schoolName = null)
     {
         var x = (float)field.X * sx;
         var y = (float)field.Y * sy;
@@ -615,34 +681,20 @@ public sealed class LetterPdfRenderer
             totalGp += (double)row.Ects * gp;
         }
         var gpa = totalEcts > 0 ? totalGp / (double)totalEcts : 0;
+        var colDefs = SelectTranscriptCols(field, schoolName);
 
         layers.Layer().PaddingTop(y).PaddingLeft(x).Width(w).Element(c =>
         {
             c.Table(table =>
             {
-                // Mirror the grade table's 7-column grid so Total/GPA line up
-                // with the table above it.
+                // Mirror the grade table's column grid so Total/GPA line up with
+                // the table above it (pick the same columns on both fields).
                 table.ColumnsDefinition(cols =>
                 {
-                    cols.RelativeColumn(2); cols.RelativeColumn(4); cols.RelativeColumn(2);
-                    cols.RelativeColumn(2); cols.RelativeColumn(2); cols.RelativeColumn(2); cols.RelativeColumn(2);
+                    foreach (var cd in colDefs) cols.RelativeColumn(cd.Width);
                 });
 
-                void Cell(string text, bool bold = false)
-                {
-                    var span = table.Cell().Border(0.5f).BorderColor(Colors.Black).Padding(3).MinHeight(16)
-                        .AlignCenter().AlignMiddle().Text(text).FontSize(fontSize);
-                    if (bold) span.Bold();
-                }
-
-                table.Cell().ColumnSpan(2).Border(0.5f).BorderColor(Colors.Black).Padding(3).Text("Total").Bold().FontSize(fontSize);
-                Cell(totalEcts.ToString("0.##", CultureInfo.InvariantCulture), bold: true);
-                Cell(""); Cell(""); Cell("");
-                Cell(totalGp.ToString("0.0", CultureInfo.InvariantCulture), bold: true);
-
-                table.Cell().ColumnSpan(6).Border(0.5f).BorderColor(Colors.Black).Padding(3).AlignRight()
-                    .Text("Grade Point Average").Bold().FontSize(fontSize);
-                Cell(gpa.ToString("0.00", CultureInfo.InvariantCulture), bold: true);
+                RenderTranscriptTotalsRows(table, colDefs, totalEcts, totalGp, gpa, fontSize);
             });
         });
     }
@@ -877,7 +929,8 @@ public sealed class LetterPdfRenderer
     private static void RenderGradeStandardTable(
         QuestPDF.Fluent.LayersDescriptor layers,
         CertificateField field,
-        float sx, float sy)
+        float sx, float sy,
+        string? schoolName = null)
     {
         var x = (float)field.X * sx;
         var y = (float)field.Y * sy;
@@ -897,7 +950,10 @@ public sealed class LetterPdfRenderer
                     cols.RelativeColumn(1);
                     cols.RelativeColumn(4);
                 });
-                Header(table, "IBSS Grade");
+                // First column is the school's own grade scale; label it with the
+                // awarding school (IBAS/IBSS/…), or the neutral "School" fallback.
+                var gradeCol = string.IsNullOrWhiteSpace(schoolName) ? "School Grade" : $"{schoolName.Trim()} Grade";
+                Header(table, gradeCol);
                 Header(table, "UK Grade");
                 Header(table, "US Grade");
                 Header(table, "ECTS Grade");

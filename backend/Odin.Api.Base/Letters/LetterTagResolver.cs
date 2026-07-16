@@ -18,8 +18,18 @@ public sealed class LetterTagResolver(OdinDbContext db)
     public async Task<IReadOnlyList<TranscriptGradeRow>> ResolveTranscriptRowsAsync(
         Guid enrollmentId, CancellationToken ct)
     {
+        // Grades follow the enrolment's CURRENT specialization: when the
+        // Admission Office moves an enrolment to another programme, scores
+        // recorded for the previous specialization's subjects must not leak
+        // into the new programme's transcript/certificates.
+        var currentSpecId = await db.Enrollments
+            .Where(e => e.StudentEnrollmentId == enrollmentId)
+            .Select(e => e.SpecializationId)
+            .FirstOrDefaultAsync(ct);
+
         var rows = await db.SubjectGrades
-            .Where(g => g.StudentEnrollmentId == enrollmentId)
+            .Where(g => g.StudentEnrollmentId == enrollmentId
+                && db.Subjects.Any(s => s.SubjectId == g.SubjectId && s.SpecializationId == currentSpecId))
             .Select(g => new
             {
                 g.Score,
@@ -62,6 +72,8 @@ public sealed class LetterTagResolver(OdinDbContext db)
                 e.OfferLetterDate,
                 e.AdmissionLetterDate,
                 e.TranscriptDate,
+                e.GraduationDate,
+                e.ProjectTitle,
                 e.CommencementDate,
                 e.ModeOfStudyId,
                 e.ApprovedDurationMonths,
@@ -106,6 +118,7 @@ public sealed class LetterTagResolver(OdinDbContext db)
         // ── Student profile ──────────────────────────────────────────────
         string firstName = string.Empty;
         string surname = string.Empty;
+        string address = string.Empty;
         if (enrollment.Student?.UserId is { } userId)
         {
             var profile = await db.UserProfiles
@@ -114,6 +127,19 @@ public sealed class LetterTagResolver(OdinDbContext db)
                 .FirstOrDefaultAsync(ct);
             firstName = profile?.FirstName ?? string.Empty;
             surname = profile?.LastName ?? string.Empty;
+
+            // Address lives on UserAddresses (not the Student). Prefer the
+            // primary row; fall back to any row so a student who never flagged
+            // one still gets an address. Compose the non-blank parts so a
+            // partial address never renders stray commas.
+            var addr = await db.UserAddresses
+                .Where(a => a.UserId == userId)
+                .OrderByDescending(a => a.IsPrimary)
+                .Select(a => new { a.Street, a.City, a.State, a.ZipCode, a.Country })
+                .FirstOrDefaultAsync(ct);
+            if (addr is not null)
+                address = string.Join(", ", new[] { addr.Street, addr.City, addr.State, addr.ZipCode, addr.Country }
+                    .Where(p => !string.IsNullOrWhiteSpace(p)));
         }
         var fullName = string.Join(' ', new[] { firstName, surname }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
@@ -121,8 +147,9 @@ public sealed class LetterTagResolver(OdinDbContext db)
         result["[student firstname]"] = firstName;
         result["[student surname]"]   = surname;
         result["[student number]"]    = enrollment.Student?.StudentNumber ?? string.Empty;
-        result["[student address]"]   = string.Empty; // No address on Student today; fill in a follow-up.
+        result["[student address]"]   = address;
         result["[passport id]"]       = enrollment.Student?.PassportId ?? string.Empty;
+        result["[project title]"]     = enrollment.ProjectTitle ?? string.Empty;
         // [date] is the letter's issuance date. Offer/admission letters honour
         // an Admission-Office override (reference prefix tells which letter this
         // is: IBSS-OL-… = offer, IBSS-AL-… = admission); everything else uses
@@ -134,6 +161,8 @@ public sealed class LetterTagResolver(OdinDbContext db)
                 issuanceDate = od;
             else if (reference.Contains("-AL-", StringComparison.OrdinalIgnoreCase) && enrollment.AdmissionLetterDate is { } ad)
                 issuanceDate = ad;
+            else if (reference.Contains("-PTR-", StringComparison.OrdinalIgnoreCase) && enrollment.TranscriptDate is { } ptd)
+                issuanceDate = ptd;
             else if (reference.Contains("-TR-", StringComparison.OrdinalIgnoreCase) && enrollment.TranscriptDate is { } td)
                 issuanceDate = td;
         }
@@ -150,12 +179,23 @@ public sealed class LetterTagResolver(OdinDbContext db)
         result["[instruction language]"] = !string.IsNullOrWhiteSpace(enrollment.InstructionLanguageOverride)
             ? enrollment.InstructionLanguageOverride!
             : enrollment.Specialization?.InstructionLanguage ?? string.Empty;
+        // The study period is inclusive of its first day, so a 12-month course
+        // that commences 18 Jun 2026 runs through 17 Jun 2027 — the day before
+        // the anniversary. Subtract one day so the printed completion (and
+        // graduation) date is the last day of study, not the first day after.
         var calculatedCompletion = (enrollment.CommencementDate is { } start && durationMonths is { } months)
-            ? start.AddMonths(months)
+            ? start.AddMonths(months).AddDays(-1)
             : (DateTime?)null;
         result["[completion date]"] = calculatedCompletion?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
-        result["[graduation date]"] = calculatedCompletion?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
+        // Graduation defaults to the expected completion date; an Admission-Office
+        // override on the enrolment wins when set.
+        var graduation = enrollment.GraduationDate ?? calculatedCompletion;
+        result["[graduation date]"] = graduation?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
         result["[date of birth]"] = enrollment.Student?.DateOfBirth?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
+        result["[student phone]"] = enrollment.Student?.UserId is { } phoneUid
+            ? await db.UserPhones.Where(p => p.UserId == phoneUid && p.IsPrimary)
+                .Select(p => p.Number).FirstOrDefaultAsync(ct) ?? string.Empty
+            : string.Empty;
         var modeOfStudy = await db.ModesOfStudy
             .Where(m => m.ModeOfStudyId == enrollment.ModeOfStudyId)
             .Select(m => m.Name)
@@ -168,16 +208,20 @@ public sealed class LetterTagResolver(OdinDbContext db)
 
         if (enrollment.Specialization is not null)
         {
-            var programmeName = await db.Programmes
+            var prog = await db.Programmes
                 .Where(p => p.ProgrammeId == enrollment.Specialization.ProgrammeId)
-                .Select(p => p.Name)
+                .Select(p => new { p.Name, SchoolName = p.School != null ? p.School.Name : null })
                 .FirstOrDefaultAsync(ct);
-            result["[program name]"] = programmeName ?? string.Empty;
+            result["[program name]"] = prog?.Name ?? string.Empty;
+            result["[school name]"] = prog?.SchoolName ?? string.Empty;
         }
 
         // ── Grades ───────────────────────────────────────────────────────
+        // Same current-specialization filter as ResolveTranscriptRowsAsync.
         var grades = await db.SubjectGrades
-            .Where(g => g.StudentEnrollmentId == enrollmentId)
+            .Where(g => g.StudentEnrollmentId == enrollmentId
+                && db.Subjects.Any(s => s.SubjectId == g.SubjectId
+                    && s.SpecializationId == enrollment.SpecializationId))
             .Select(g => new
             {
                 g.Score,
@@ -202,6 +246,67 @@ public sealed class LetterTagResolver(OdinDbContext db)
 
         result["[transcript]"] = BuildTranscriptHtml(transcriptRows);
         result["[ects achieved]"] = transcriptRows.Sum(r => r.Ects).ToString("0.##", CultureInfo.InvariantCulture);
+
+        // ── Fees / payment plan (offer + admission letter fee section) ────
+        // "-" (not blank) when no payment plan exists yet, so a letter's
+        // "Tuition Fee:" line never trails into nothing.
+        result["[tuition fee]"] = "-";
+        result["[additional fees]"] = "-";
+        result["[total fees]"] = "-";
+        result["[number of payments]"] = "-";
+        result["[payment plan]"] = string.Empty;
+
+        var plan = await db.EnrollmentPaymentPlans
+            .Where(p => p.StudentEnrollmentId == enrollmentId && p.DeletedAt == null)
+            .Select(p => new
+            {
+                p.TotalTuitionFee,
+                p.Currency,
+                Installments = p.Installments.OrderBy(i => i.Sequence)
+                    .Select(i => new { i.Sequence, i.Amount, i.DueDate, i.PayByCardEnabled, i.PayByBankEnabled })
+                    .ToList(),
+                AdditionalInvoices = p.AdditionalInvoices.OrderBy(i => i.Sequence)
+                    .Select(i => new { i.Sequence, i.DueDate, i.PayByCardEnabled, i.PayByBankEnabled, i.LinesJson })
+                    .ToList(),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        if (plan is not null)
+        {
+            string Money(decimal v) => $"{plan.Currency} {v.ToString("N2", CultureInfo.InvariantCulture)}";
+            static string MethodOf(bool bank, bool card) => (bank, card) switch
+            {
+                (true, true)  => "Bank transfer / Credit card",
+                (true, false) => "Bank transfer",
+                (false, true) => "Credit card",
+                _             => "As advised",
+            };
+            var addInvoices = plan.AdditionalInvoices.Select(a => new
+            {
+                a.Sequence, a.DueDate, a.PayByBankEnabled, a.PayByCardEnabled,
+                Total = Payments.AdditionalInvoiceLines.Total(a.LinesJson),
+                Title = Payments.AdditionalInvoiceLines.Title(a.LinesJson, a.Sequence),
+            }).ToList();
+            var additionalTotal = addInvoices.Sum(a => a.Total);
+
+            result["[tuition fee]"] = Money(plan.TotalTuitionFee);
+            if (addInvoices.Count > 0)
+                result["[additional fees]"] = string.Join("\n", addInvoices.Select(a => $"{a.Title}: {Money(a.Total)}"));
+            result["[total fees]"] = Money(plan.TotalTuitionFee + additionalTotal);
+            result["[number of payments]"] = plan.Installments.Count.ToString(CultureInfo.InvariantCulture);
+            // One line per installment (then per additional invoice): method,
+            // amount, due date. Plain text so it renders inside a positioned
+            // letter text field.
+            result["[payment plan]"] = string.Join("\n", plan.Installments.Select(i =>
+            {
+                var due = i.DueDate?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? "TBC";
+                return $"Payment {i.Sequence}: {MethodOf(i.PayByBankEnabled, i.PayByCardEnabled)}, {Money(i.Amount)}, due {due}";
+            }).Concat(addInvoices.Select(a =>
+            {
+                var due = a.DueDate?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? "TBC";
+                return $"{a.Title}: {MethodOf(a.PayByBankEnabled, a.PayByCardEnabled)}, {Money(a.Total)}, due {due} (one-time payment)";
+            })));
+        }
 
         return result;
     }
@@ -237,7 +342,7 @@ public sealed class LetterTagResolver(OdinDbContext db)
             .Append("<th style='text-align:left;border-bottom:1px solid #999;padding:4px;'>Module</th>")
             .Append("<th style='text-align:right;border-bottom:1px solid #999;padding:4px;'>ECTS credit hours</th>")
             .Append("<th style='text-align:center;border-bottom:1px solid #999;padding:4px;'>ECTS Grade</th>")
-            .Append("<th style='text-align:center;border-bottom:1px solid #999;padding:4px;'>IBSS Grade</th>")
+            .Append("<th style='text-align:center;border-bottom:1px solid #999;padding:4px;'>School Grade</th>")
             .Append("<th style='text-align:right;border-bottom:1px solid #999;padding:4px;'>ECTS Grade Point</th>")
             .Append("<th style='text-align:right;border-bottom:1px solid #999;padding:4px;'>Grade Point</th>")
             .Append("</tr></thead><tbody>");

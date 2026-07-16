@@ -33,7 +33,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import apiClient from '../../api/client.js'
 import CertificateEditorModal from './CertificateEditorModal.vue'
 import LetterEmailEditorModal from './LetterEmailEditorModal.vue'
@@ -42,22 +42,28 @@ const props = defineProps({
   programmeId: { type: String, required: true },
   programmeName: { type: String, default: '' },
   partnerId: { type: String, default: '' },
+  // Programme's IssueDigitalStudentCard toggle: shows the card editor button.
+  showStudentCard: { type: Boolean, default: false },
 })
 const emit = defineEmits(['saved'])
 
-const TYPES = [
+const ALL_TYPES = [
   { code: 'OfferLetter',            label: 'Offer Letter' },
   { code: 'AdmissionLetter',        label: 'Admission Letter' },
-  { code: 'Transcript',             label: 'Transcript' },
+  { code: 'Transcript',             label: 'Digital Transcript' },
+  { code: 'PrintableTranscript',    label: 'Printable Transcript' },
   { code: 'Certificate',            label: 'Digital Certificate' },
   { code: 'ProvisionalCertificate', label: 'Printable Cert' },
+  { code: 'StudentIdCard',          label: 'Student ID Card', requiresCard: true },
 ]
+const TYPES = computed(() =>
+  ALL_TYPES.filter(t => !t.requiresCard || props.showStudentCard))
 
 const EMAILABLE = ['OfferLetter', 'AdmissionLetter']
 const modalOpen = ref(false)
 const emailModalOpen = ref(false)
 const activeType = ref('')
-const published = ref(Object.fromEntries(TYPES.map(t => [t.code, false])))
+const published = ref(Object.fromEntries(ALL_TYPES.map(t => [t.code, false])))
 
 function openEmail(type) {
   activeType.value = type
@@ -74,7 +80,7 @@ async function loadPublishStatus() {
     const r = await apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`, {
       params: { partnerId: props.partnerId },
     })
-    const next = Object.fromEntries(TYPES.map(t => [t.code, false]))
+    const next = Object.fromEntries(ALL_TYPES.map(t => [t.code, false]))
     for (const row of (r.data.items ?? [])) {
       if (row.letterType in next) next[row.letterType] = !!row.isPublished
     }

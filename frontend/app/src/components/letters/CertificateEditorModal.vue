@@ -34,7 +34,9 @@
         <div class="cert-toolbar">
           <button class="tb-btn" @click="addTextField">+ Text</button>
           <button class="tb-btn" @click="openImageFieldPicker">+ Image</button>
-          <span v-if="letterType === 'Transcript'" class="tb-range-wrap">
+          <button v-if="letterType === 'StudentIdCard'" class="tb-btn" @click="addStudentPhotoField"
+                  title="Placeholder filled with the student's uploaded Student Card Picture at generation time">+ Student photo</button>
+          <span v-if="letterType === 'Transcript' || letterType === 'PrintableTranscript'" class="tb-range-wrap">
             <button type="button" class="tb-btn" @click="rangeMenuOpen = !rangeMenuOpen">+ Grades Table ▾</button>
             <div v-if="rangeMenuOpen" class="tb-range-menu" @click.stop>
               <button type="button" v-for="r in GRADE_RANGES" :key="r[0]" class="tb-range-item"
@@ -67,6 +69,10 @@
                     <KGroup :config="groupConfig(f)" :draggable="true" @click="selectField(f)" @tap="selectField(f)" @dragend="onDragEnd($event, f)">
                       <KRect :config="hitRectConfig(f)" />
                       <KImage v-if="f.kind === 'image' && fieldImages[f.imageAssetId]" :config="imageConfig(f)" />
+                      <template v-else-if="f.kind === 'image' && f.imageAssetId === STUDENT_PHOTO_ASSET_ID">
+                        <KRect :config="placeholderRectConfig(f)" />
+                        <KText :config="placeholderLabelConfig(f)" />
+                      </template>
                       <template v-else-if="f.kind === 'transcriptTable' || f.kind === 'gradeStandardTable' || f.kind === 'transcriptTotals'">
                         <KRect :config="placeholderRectConfig(f)" />
                         <KText :config="placeholderLabelConfig(f)" />
@@ -115,19 +121,21 @@
               </div>
               <p class="cert-side-hint">Click a field on the canvas to edit it, or use + Text / + Image above.</p>
 
-              <h4 class="mt-row">Copy from another partner</h4>
-              <select v-model="copyFromPartnerId" class="copy-prog-select" @change="copyFromProgrammeId = ''">
-                <option v-for="p in copyPartners" :key="p.partnerId" :value="p.partnerId">{{ p.name }}</option>
-              </select>
-              <select v-model="copyFromProgrammeId" class="copy-prog-select" style="margin-top:.35rem;">
-                <option value="">— pick a programme —</option>
-                <option v-for="p in otherProgrammes" :key="p.programmeId" :value="p.programmeId">
-                  {{ p.code ? p.code + ' — ' : '' }}{{ p.name }} ({{ p.ownerLabel }})
-                </option>
-              </select>
-              <button type="button" class="tb-btn copy-prog-btn" :disabled="!copyFromProgrammeId || copying" @click="copyFromProgramme">
-                {{ copying ? 'Copying…' : `📋 Copy ${titleFor(letterType)} from this programme` }}
-              </button>
+              <template v-if="!partnerCertificateId">
+                <h4 class="mt-row">Copy from another partner</h4>
+                <select v-model="copyFromPartnerId" class="copy-prog-select" @change="copyFromProgrammeId = ''">
+                  <option v-for="p in copyPartners" :key="p.partnerId" :value="p.partnerId">{{ p.name }}</option>
+                </select>
+                <select v-model="copyFromProgrammeId" class="copy-prog-select" style="margin-top:.35rem;">
+                  <option value="">— pick a programme —</option>
+                  <option v-for="p in otherProgrammes" :key="p.programmeId" :value="p.programmeId">
+                    {{ p.code ? p.code + ' — ' : '' }}{{ p.name }} ({{ p.ownerLabel }})
+                  </option>
+                </select>
+                <button type="button" class="tb-btn copy-prog-btn" :disabled="!copyFromProgrammeId || copying" @click="copyFromProgramme">
+                  {{ copying ? 'Copying…' : `📋 Copy ${titleFor(letterType)} from this programme` }}
+                </button>
+              </template>
             </template>
             <template v-else>
               <h4>{{ selectedField.kind === 'image' ? 'Image field' : 'Text field' }}</h4>
@@ -147,6 +155,26 @@
                   <div><label>Height</label><input type="number" :value="Math.round(selectedField.height)" min="10" @input="onImageDimChange('height', $event.target.value)" /></div>
                 </div>
                 <div class="check"><label><input type="checkbox" v-model="selectedField.lockAspect" /> Keep image ratio</label></div>
+              </template>
+
+              <template v-else-if="isGradeTableField">
+                <label>Columns to show</label>
+                <div class="col-check-list">
+                  <label v-for="c in TRANSCRIPT_COLUMNS" :key="c.key" class="check">
+                    <input type="checkbox" :checked="columnOn(selectedField, c.key)"
+                           @change="toggleColumn(selectedField, c.key)" />
+                    {{ c.label }}
+                  </label>
+                </div>
+                <p class="col-hint">Tick the columns this table shows. For the Total / GPA section, pick the same columns so it lines up.</p>
+                <div class="row">
+                  <div><label>X</label><input type="number" v-model.number="selectedField.x" /></div>
+                  <div><label>Y</label><input type="number" v-model.number="selectedField.y" /></div>
+                </div>
+                <div class="row">
+                  <div><label>Font size</label><input type="number" v-model.number="selectedField.fontSize" min="6" /></div>
+                  <div><label>Width</label><input type="number" v-model.number="selectedField.width" min="50" /></div>
+                </div>
               </template>
 
               <template v-else>
@@ -258,6 +286,10 @@ const props = defineProps({
   programmeName: { type: String, default: '' },
   partnerId: { type: String, default: '' },
   letterType: { type: String, default: 'Certificate' },
+  // Partner cooperation certificate mode: when set, the editor loads/saves
+  // /v1/admin/partner-certificates/{id} instead of programme letter templates.
+  // programmeName should carry the partner name and letterType the title.
+  partnerCertificateId: { type: String, default: '' },
 })
 const emit = defineEmits(['close', 'saved'])
 
@@ -265,9 +297,11 @@ function titleFor(t) {
   switch (t) {
     case 'OfferLetter':            return 'Offer Letter'
     case 'AdmissionLetter':        return 'Admission Letter'
-    case 'Transcript':             return 'Transcript'
+    case 'Transcript':             return 'Digital Transcript'
+    case 'PrintableTranscript':    return 'Printable Transcript (Admission Office only)'
     case 'Certificate':            return 'Digital Certificate'
     case 'ProvisionalCertificate': return 'Printable Cert (no stamp/signature)'
+    case 'StudentIdCard':          return 'Student ID Card'
     default: return t || 'Letter'
   }
 }
@@ -319,6 +353,31 @@ const richOpen = ref(false)
 const copying = ref(false)
 const programmes = ref([])
 const GRADE_RANGES = [[1, 10], [11, 20], [21, 30], [31, 40], [41, 50]]
+
+// Selectable transcript grade-table columns, in canonical (render) order.
+const TRANSCRIPT_COLUMNS = [
+  { key: 'code', label: 'Code' },
+  { key: 'module', label: 'Module' },
+  { key: 'ects', label: 'ECTS credit hours' },
+  { key: 'ectsGrade', label: 'ECTS Grade' },
+  { key: 'ibssGrade', label: 'School Grade (score)' },
+  { key: 'ectsGradePoint', label: 'ECTS Grade Point' },
+  { key: 'gradePoint', label: 'Grade Point' },
+]
+const ALL_COLUMN_KEYS = TRANSCRIPT_COLUMNS.map(c => c.key)
+
+// No columns array (or empty) = show all columns.
+function columnOn(field, key) {
+  return !field?.columns?.length || field.columns.includes(key)
+}
+// Toggle a column on the field, materialising from "all" on first change and
+// keeping the canonical order; never lets the last column be removed.
+function toggleColumn(field, key) {
+  let cols = field.columns?.length ? [...field.columns] : [...ALL_COLUMN_KEYS]
+  cols = cols.includes(key) ? cols.filter(k => k !== key) : [...cols, key]
+  const ordered = ALL_COLUMN_KEYS.filter(k => cols.includes(k))
+  field.columns = ordered.length ? ordered : [...ALL_COLUMN_KEYS]
+}
 const rangeMenuOpen = ref(false)
 const copyFromProgrammeId = ref('')
 const copyFromPartnerId = ref('')
@@ -356,11 +415,15 @@ const otherProgrammes = computed(() => {
 const siblingType = computed(() => {
   if (props.letterType === 'Certificate')            return 'ProvisionalCertificate'
   if (props.letterType === 'ProvisionalCertificate') return 'Certificate'
+  if (props.letterType === 'Transcript')             return 'PrintableTranscript'
+  if (props.letterType === 'PrintableTranscript')    return 'Transcript'
   return null
 })
 const copySiblingLabel = computed(() => {
   if (siblingType.value === 'ProvisionalCertificate') return 'Copy from Provisional Cert.'
   if (siblingType.value === 'Certificate')            return 'Copy from Certificate'
+  if (siblingType.value === 'PrintableTranscript')    return 'Copy from Printable Transcript'
+  if (siblingType.value === 'Transcript')             return 'Copy from Digital Transcript'
   return null
 })
 
@@ -373,6 +436,8 @@ const scale = computed(() => baseScale.value * zoom.value)
 const bgImage = ref(null)
 const selectedFieldId = ref(null)
 const selectedField = computed(() => currentPage.value?.fields.find(f => f.id === selectedFieldId.value) || null)
+const isGradeTableField = computed(() =>
+  ['transcriptTable', 'transcriptTotals'].includes(selectedField.value?.kind))
 
 function fitStage() {
   const wrap = stageWrap.value
@@ -488,6 +553,22 @@ function addTotalsField() {
 }
 
 function openBgPicker() { pickerMode.value = 'bg'; pickerOpen.value = true }
+// Virtual asset id filled at render time with the student's uploaded photo.
+const STUDENT_PHOTO_ASSET_ID = '33333333-3333-3333-3333-1000000000aa'
+function addStudentPhotoField() {
+  const f = {
+    id: uid(),
+    kind: 'image',
+    tag: null,
+    text: '',
+    imageAssetId: STUDENT_PHOTO_ASSET_ID,
+    x: 40, y: 270, width: 250, height: 350,
+    fontSize: 24, color: '#000000', align: 'left', bold: false, italic: false,
+  }
+  currentPage.value.fields.push(f)
+  selectedField.value = f
+}
+
 function openImageFieldPicker() { pickerMode.value = 'fieldImage'; pickerOpen.value = true }
 
 async function onPick(asset) {
@@ -952,14 +1033,17 @@ async function deleteAsset(asset) {
 }
 
 async function load() {
-  if (!props.open || !props.programmeId || !props.partnerId) return
+  if (!props.open) return
+  if (!props.partnerCertificateId && (!props.programmeId || !props.partnerId)) return
   loading.value = true
   loadError.value = ''
   try {
     const [tplRes, tagRes, assetRes] = await Promise.all([
-      apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`, {
-        params: { partnerId: props.partnerId },
-      }),
+      props.partnerCertificateId
+        ? apiClient.get(`/v1/admin/partner-certificates/${props.partnerCertificateId}`)
+        : apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`, {
+            params: { partnerId: props.partnerId },
+          }),
       apiClient.get('/v1/admin/letter-tags'),
       apiClient.get('/v1/admin/letter-assets'),
     ])
@@ -971,8 +1055,10 @@ async function load() {
       catch { urlMap[a.letterAssetId] = '' }
     }))
     assetUrls.value = urlMap
-    const existing = (tplRes.data.items ?? []).find(t => t.letterType === props.letterType)
-    isPublished.value = !!existing?.isPublished
+    const existing = props.partnerCertificateId
+      ? tplRes.data
+      : (tplRes.data.items ?? []).find(t => t.letterType === props.letterType)
+    isPublished.value = props.partnerCertificateId ? true : !!existing?.isPublished
     let next
     try { next = JSON.parse(existing?.certificateLayoutJson ?? 'null') } catch { next = null }
     layout.width = next?.width ?? 2000
@@ -1057,10 +1143,10 @@ async function onPreview() {
   previewing.value = true
   saveError.value = ''
   try {
-    const res = await apiClient.post(
-      `/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}/preview`,
-      buildLayoutPayload(),
-      { responseType: 'blob' })
+    const previewUrl = props.partnerCertificateId
+      ? `/v1/admin/partner-certificates/${props.partnerCertificateId}/preview`
+      : `/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}/preview`
+    const res = await apiClient.post(previewUrl, buildLayoutPayload(), { responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
     window.open(url, '_blank')
     // Revoke after the new tab has had time to load it. Don't revoke
@@ -1084,8 +1170,12 @@ async function onSave() {
   saveError.value = ''
   try {
     const payload = buildLayoutPayload()
-    await apiClient.put(`/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}`, payload,
-      { params: { partnerId: props.partnerId } })
+    if (props.partnerCertificateId) {
+      await apiClient.put(`/v1/admin/partner-certificates/${props.partnerCertificateId}`, payload)
+    } else {
+      await apiClient.put(`/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}`, payload,
+        { params: { partnerId: props.partnerId } })
+    }
     emit('saved')
     emit('close')
   } catch (e) {
@@ -1099,7 +1189,7 @@ let resizeHandler = null
 watch(() => props.open, (open) => {
   if (open) {
     copyFromProgrammeId.value = ''
-    loadProgrammes()
+    if (!props.partnerCertificateId) loadProgrammes()
     load()
     resizeHandler = () => fitStage()
     window.addEventListener('resize', resizeHandler)
@@ -1182,6 +1272,9 @@ onBeforeUnmount(() => {
 .cert-side .row { display: flex; gap: .4rem; }
 .cert-side .row > div { flex: 1; }
 .cert-side .check label { display: flex; gap: .3rem; align-items: center; text-transform: none; font-weight: normal; font-size: .82rem; letter-spacing: 0; color: #1a2d4f; }
+.col-check-list { display: flex; flex-direction: column; gap: .25rem; margin: .3rem 0 .2rem; }
+.col-check-list label { display: flex; gap: .35rem; align-items: center; text-transform: none; font-weight: normal; font-size: .82rem; letter-spacing: 0; color: #1a2d4f; }
+.col-hint { font-size: .72rem; color: #6b7280; margin: 0 0 .5rem; }
 .cert-side-empty { color: #8a93a4; font-size: .85rem; padding: .5rem 0; }
 .cert-side-hint { color: #8a93a4; font-size: .78rem; padding: .5rem 0; margin: .5rem 0 0; }
 .mt-row { margin-top: .65rem; }
