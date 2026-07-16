@@ -9,7 +9,7 @@
       <thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         <tr v-for="u in users" :key="u.userId" class="data-row">
-          <td class="mono">{{ u.username }}<span v-if="u.isSelf" class="self-tag">you</span></td>
+          <td class="mono">{{ u.username }}<span v-if="u.isSelf" class="self-tag">you</span><span v-if="u.isTeacher" class="teacher-tag">Teacher</span></td>
           <td>{{ u.firstName ?? '—' }} {{ u.lastName ?? '' }}</td>
           <td>{{ u.email ?? '—' }}</td>
           <td>
@@ -39,6 +39,9 @@
       <div class="add-fields">
         <input v-model="newUser.username" class="inp" placeholder="Username" />
         <input v-model="newUser.email" class="inp" placeholder="Email (optional)" />
+        <label class="teacher-check" title="Teachers can see everything you see but only save grade drafts and comment on uploaded assignments — no other changes.">
+          <input type="checkbox" v-model="newUser.isTeacher" /> Teacher (read-only)
+        </label>
         <button class="btn-primary" :disabled="!canAdd || busy === 'add'" @click="add">
           {{ busy === 'add' ? 'Creating…' : '+ Add user' }}
         </button>
@@ -75,7 +78,7 @@ const users = ref([])
 const loadError = ref('')
 const busy = ref('')
 
-const newUser = reactive({ username: '', email: '' })
+const newUser = reactive({ username: '', email: '', isTeacher: false })
 const addError = ref('')
 const lastCreated = ref(null)
 const lastReset = ref(null)
@@ -100,10 +103,12 @@ async function add() {
     const res = await api.post('/v1/partner/my-users', {
       username: newUser.username.trim(),
       email: newUser.email.trim() || null,
+      isTeacher: newUser.isTeacher,
     })
     lastCreated.value = res.data
     newUser.username = ''
     newUser.email = ''
+    newUser.isTeacher = false
     await load()
   } catch (e) {
     addError.value = e.response?.data?.error ?? e.message ?? 'Failed'
@@ -172,4 +177,6 @@ onMounted(load)
 .created-banner strong { color: #065f46; }
 .pw { background: #fff; padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: .82rem; }
 .btn-tiny { background: #fff; border: 1px solid #d0d7e0; border-radius: 4px; padding: 2px 8px; font-size: .76rem; cursor: pointer; margin-left: .35rem; }
+.teacher-tag { background: #fff4e0; color: #9a6200; border: 1px solid #eccf9a; border-radius: 8px; font-size: .66rem; font-weight: 700; padding: 0 .4rem; margin-left: .35rem; }
+.teacher-check { display: flex; align-items: center; gap: .35rem; font-size: .82rem; font-weight: 600; color: #2c3e50; white-space: nowrap; }
 </style>

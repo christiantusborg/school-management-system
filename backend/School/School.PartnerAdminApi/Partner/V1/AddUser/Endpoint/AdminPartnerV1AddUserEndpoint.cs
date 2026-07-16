@@ -31,10 +31,18 @@ public sealed class AdminPartnerV1AddUserEndpoint : IEndpointMarker
             var (user, password) = await creator.CreateUserAsync(
                 request.Username.Trim(), email, "Partner", id, ct, customPassword);
 
+            if (request.IsTeacher == true)
+            {
+                var dbUser = await db.Users.FirstAsync(x => x.Id == user.Id, ct);
+                dbUser.IsTeacher = true;
+                await db.SaveChangesAsync(ct);
+            }
+
             return Results.Ok(new
             {
                 userId            = user.Id,
                 username          = user.UserName,
+                isTeacher         = request.IsTeacher == true,
                 temporaryPassword = password
             });
         }

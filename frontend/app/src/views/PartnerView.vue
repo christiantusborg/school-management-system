@@ -24,7 +24,7 @@
         My Programs
         <span v-if="pendingProgCount" class="tab-badge">{{ pendingProgCount }}</span>
       </button>
-      <button :class="['main-tab-btn', { active: mainTab === 'users' }]" @click="mainTab = 'users'">My Users</button>
+      <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'users' }]" @click="mainTab = 'users'">My Users</button>
       <button :class="['main-tab-btn', { active: mainTab === 'forms' }]" @click="mainTab = 'forms'">Forms</button>
       <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Certificates</button>
     </div>
@@ -65,7 +65,7 @@
     <div v-show="mainTab === 'students'" class="container">
       <div class="page-header" style="display:flex; align-items:center; justify-content:space-between;">
         <h1 class="page-title">My Students</h1>
-        <button class="btn-add-student" :disabled="!auth.user?.partnerSlug" @click="showAddStudent = true"
+        <button v-if="!auth.user?.isTeacher" class="btn-add-student" :disabled="!auth.user?.partnerSlug" @click="showAddStudent = true"
                 :title="auth.user?.partnerSlug ? '' : 'Partner slug not loaded'">
           + Add Student
         </button>

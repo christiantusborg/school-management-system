@@ -34,6 +34,7 @@ public sealed class PartnerV1MyUsersListEndpoint : IEndpointMarker
                 username  = u.UserName,
                 email     = u.Email,
                 isEnabled = u.IsEnabled,
+                isTeacher = u.IsTeacher,
                 isSelf    = u.Id == callerId,
                 createdAt = u.CreatedAt,
                 firstName = db.UserProfiles.Where(p => p.UserId == u.Id).Select(p => p.FirstName).FirstOrDefault(),

@@ -384,7 +384,7 @@
               <tr v-if="partnerUsers.length === 0"><td colspan="5" class="empty-row">No users yet.</td></tr>
               <template v-for="u in partnerUsers" :key="u.userId">
                 <tr class="data-row">
-                  <td class="mono">{{ u.username }}</td>
+                  <td class="mono">{{ u.username }}<span v-if="u.isTeacher" class="teacher-tag">Teacher</span></td>
                   <td>{{ [u.firstName, u.lastName].filter(Boolean).join(' ') || '—' }}</td>
                   <td>{{ u.email || '—' }}</td>
                   <td><span :class="u.isEnabled ? 'badge-enabled' : 'badge-disabled'">{{ u.isEnabled ? 'Active' : 'Disabled' }}</span></td>
@@ -404,6 +404,7 @@
                       <input v-model="editForm.username"  class="inp-add" placeholder="Username" />
                       <input v-model="editForm.firstName" class="inp-add" placeholder="First name" />
                       <input v-model="editForm.lastName"  class="inp-add" placeholder="Last name" />
+                      <label class="teacher-check"><input type="checkbox" v-model="editForm.isTeacher" /> Teacher (read-only)</label>
                       <button class="btn-primary-sm" :disabled="editSaving || !editForm.username.trim()" @click="saveEditUser">
                         {{ editSaving ? 'Saving…' : 'Save' }}
                       </button>
@@ -433,6 +434,9 @@
               <input v-model="newUserCustomPassword" class="inp-add" placeholder="Password (blank = auto)" />
               <button type="button" class="btn-gen" @click="newUserCustomPassword = genPassword()" title="Generate random">🎲</button>
             </div>
+            <label class="teacher-check" title="Teachers can see everything the partner sees but only save grade drafts and comment on uploaded assignments — no other changes.">
+              <input type="checkbox" v-model="newUserIsTeacher" /> Teacher (read-only)
+            </label>
             <button class="btn-primary-sm" :disabled="addingUser || !newUserUsername" @click="addUserToPartner">
               {{ addingUser ? 'Adding…' : '+ Add User' }}
             </button>
@@ -845,13 +849,14 @@ function genPassword() {
 
 const newUserUsername = ref('')
 const newUserEmail    = ref('')
+const newUserIsTeacher = ref(false)
 const newUserPassword = ref('')
 const addingUser      = ref(false)
 const addUserError    = ref('')
 
 // Edit / reset-password state
 const editingUserId  = ref(null)
-const editForm       = reactive({ username: '', firstName: '', lastName: '' })
+const editForm       = reactive({ username: '', firstName: '', lastName: '', isTeacher: false })
 const editSaving     = ref(false)
 const editError      = ref('')
 const resetUserId    = ref(null)
@@ -933,6 +938,7 @@ function startEditUser(u) {
   editForm.username  = u.username ?? ''
   editForm.firstName = u.firstName ?? ''
   editForm.lastName  = u.lastName ?? ''
+  editForm.isTeacher = !!u.isTeacher
   editError.value = ''
 }
 function cancelEditUser() {
@@ -948,6 +954,7 @@ async function saveEditUser() {
   if (newUsername && newUsername !== u.username) payload.username = newUsername
   if ((editForm.firstName ?? '') !== (u.firstName ?? '')) payload.firstName = editForm.firstName.trim()
   if ((editForm.lastName  ?? '') !== (u.lastName  ?? '')) payload.lastName  = editForm.lastName.trim()
+  if (editForm.isTeacher !== !!u.isTeacher) payload.isTeacher = editForm.isTeacher
   if (Object.keys(payload).length === 0) { editSaving.value = false; editingUserId.value = null; return }
   try {
     await apiClient.patch(`/v1/admin/school/partners/${managingPartner.value.partnerId}/users/${u.userId}`, payload)
@@ -994,10 +1001,12 @@ async function addUserToPartner() {
       username: newUserUsername.value.trim(),
       email: newUserEmail.value.trim() || undefined,
       password: newUserCustomPassword.value.trim() || undefined,
+      isTeacher: newUserIsTeacher.value || undefined,
     })
     newUserPassword.value = res.data.temporaryPassword
     newUserEmail.value = ''
     newUserCustomPassword.value = ''
+    newUserIsTeacher.value = false
     await openManagePartner(managingPartner.value)
     await loadPartners()
   } catch (e) {
@@ -1563,4 +1572,6 @@ function logout() { auth.logout(); router.push('/login') }
 .edit-row > td { background: #f8fafc; border-top: 1px dashed #dde6f0; padding: 0.65rem 0.75rem; }
 .edit-row-inner { display: flex; gap: 0.55rem; align-items: center; flex-wrap: wrap; }
 .reveal-row > td { background: #f8fafc; padding: 0.5rem 0.75rem; }
+.teacher-tag { background: #fff4e0; color: #9a6200; border: 1px solid #eccf9a; border-radius: 8px; font-size: .66rem; font-weight: 700; padding: 0 .4rem; margin-left: .35rem; }
+.teacher-check { display: flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 600; color: #2c3e50; white-space: nowrap; }
 </style>

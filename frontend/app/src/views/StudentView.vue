@@ -174,6 +174,19 @@
             </div>
           </div>
 
+          <!-- Uploaded Assignments: per-module work with a required title and
+               a comment chat with the teachers. -->
+          <div class="extra-docs">
+            <div class="docs-head" style="cursor:pointer" @click="asgOpen[enr.enrollmentId] = !asgOpen[enr.enrollmentId]">
+              {{ asgOpen[enr.enrollmentId] ? '▾' : '▸' }} Uploaded Assignments
+            </div>
+            <p v-if="asgOpen[enr.enrollmentId]" class="doc-hint" style="margin:.2rem 0 .5rem;">
+              Upload your module work below (give each document a title) and follow your teachers' comments.
+            </p>
+            <AssignmentsPanel v-if="asgOpen[enr.enrollmentId]"
+              :api-base="`/v1/student/me/enrollments/${enr.enrollmentId}/assignments`" />
+          </div>
+
           <EnrollmentActivityLog :api-path="`/v1/student/me/enrollments/${enr.enrollmentId}/activity`" />
         </div>
       </template>
@@ -203,6 +216,7 @@ import { useRouter } from 'vue-router'
 import EnrollmentActivityLog from '../components/letters/EnrollmentActivityLog.vue'
 import IntakeFillPanel from '../components/intake/IntakeFillPanel.vue'
 import AdditionalDocumentUploadDialog from '../components/letters/AdditionalDocumentUploadDialog.vue'
+import AssignmentsPanel from '../components/assignments/AssignmentsPanel.vue'
 import { auth } from '../store/auth.js'
 import api from '../api/client.js'
 import { statusBadge, isReviewing, parseRejectionNote } from '../utils/applicationStatus.js'
@@ -300,6 +314,8 @@ async function load() {
 }
 
 const additionalDialog = reactive({ open: false, enrollmentId: null })
+// Per-enrolment collapse state for the Uploaded Assignments section.
+const asgOpen = reactive({})
 function openAddAdditional(enrollmentId) {
   additionalDialog.enrollmentId = enrollmentId
   additionalDialog.open = true

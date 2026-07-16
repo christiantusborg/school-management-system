@@ -79,9 +79,38 @@ public sealed class RolePathGuardMiddleware
                     : $"This endpoint requires one of these roles: {string.Join(", ", roles)}.");
                 return;
             }
+
+            // Teacher partner users are read-only across the whole portal,
+            // with exactly two allowed writes: saving grade DRAFTS (never
+            // submitting) and commenting on uploaded assignments. Checked
+            // only on partner writes so reads stay lookup-free.
+            if (_writeMethods.Contains(context.Request.Method)
+                && user.IsInRole("Partner")
+                && !IsTeacherAllowedWrite(path)
+                && await IsTeacherAsync(context))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsync(
+                    "Teacher accounts are read-only (except grade drafts and assignment comments).");
+                return;
+            }
             break;
         }
 
         await _next(context);
+    }
+
+    private static bool IsTeacherAllowedWrite(string path) =>
+        path.EndsWith("/grades/draft", StringComparison.OrdinalIgnoreCase)
+        || (path.Contains("/assignments/", StringComparison.OrdinalIgnoreCase)
+            && path.EndsWith("/comments", StringComparison.OrdinalIgnoreCase));
+
+    private static async Task<bool> IsTeacherAsync(HttpContext context)
+    {
+        var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) return false;
+        var db = context.RequestServices.GetRequiredService<Odin.Api.Base.Data.OdinDbContext>();
+        return await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(
+            db.Users.Where(u => u.Id == userId && u.IsTeacher));
     }
 }

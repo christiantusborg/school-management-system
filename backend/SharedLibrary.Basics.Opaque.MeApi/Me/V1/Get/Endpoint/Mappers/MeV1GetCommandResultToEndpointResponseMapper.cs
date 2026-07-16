@@ -17,6 +17,7 @@ public sealed class MeV1GetCommandResultToEndpointResponseMapper(IHttpContextAcc
             IsEnabled = input.IsEnabled,
             CreatedAt = input.CreatedAt,
             PartnerSlug = input.PartnerSlug,
+            IsTeacher = input.IsTeacher,
             Links = []
         };
     }

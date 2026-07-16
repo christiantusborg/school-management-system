@@ -29,10 +29,18 @@ public sealed class PartnerV1MyUsersAddEndpoint : IEndpointMarker
             var (user, password) = await creator.CreateUserAsync(
                 request.Username.Trim(), email, "Partner", partnerId!.Value, ct);
 
+            if (request.IsTeacher == true)
+            {
+                var dbUser = await db.Users.FirstAsync(x => x.Id == user.Id, ct);
+                dbUser.IsTeacher = true;
+                await db.SaveChangesAsync(ct);
+            }
+
             return Results.Ok(new
             {
                 userId = user.Id,
                 username = user.UserName,
+                isTeacher = request.IsTeacher == true,
                 temporaryPassword = password,
             });
         }
@@ -49,4 +57,6 @@ public sealed class PartnerV1MyUsersAddRequest
 {
     public required string Username { get; init; }
     public string? Email { get; init; }
+    // Teacher users are read-only (grade drafts + assignment comments only).
+    public bool? IsTeacher { get; init; }
 }

@@ -52,6 +52,9 @@ public sealed class AdminPartnerV1UpdateUserEndpoint : IEndpointMarker
                 profile.LastName = string.IsNullOrWhiteSpace(request.LastName) ? null : request.LastName.Trim();
         }
 
+        if (request.IsTeacher is not null)
+            user.IsTeacher = request.IsTeacher.Value;
+
         await db.SaveChangesAsync(ct);
 
         var profileOut = await db.UserProfiles
@@ -65,6 +68,7 @@ public sealed class AdminPartnerV1UpdateUserEndpoint : IEndpointMarker
             username  = user.UserName,
             firstName = profileOut?.FirstName,
             lastName  = profileOut?.LastName,
+            isTeacher = user.IsTeacher,
         });
     }
 

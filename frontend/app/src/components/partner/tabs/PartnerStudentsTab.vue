@@ -50,7 +50,7 @@
                     :title="flowState(s, e).reason || flowState(s, e).label">
                 {{ flowState(s, e).label }}
               </span>
-              <button class="btn-review-app btn-review-app-sm"
+              <button v-if="!auth.user?.isTeacher" class="btn-review-app btn-review-app-sm"
                       :disabled="!canPartnerReview(e)"
                       :title="canPartnerReview(e) ? '' : 'Awaiting student — they must resubmit before this can be reviewed again.'"
                       @click.stop="canPartnerReview(e) && openReviewFromRow(s.studentId, e.studentEnrollmentId)">
@@ -60,7 +60,7 @@
                       class="btn-grade" @click.stop="openGrades(s, e)">
                 🎓 Grade
               </button>
-              <button v-if="flowState(s, e).kind === 'active' || flowState(s, e).kind === 'active-sub'"
+              <button v-if="!auth.user?.isTeacher && (flowState(s, e).kind === 'active' || flowState(s, e).kind === 'active-sub')"
                       class="btn-manage-sub" @click.stop="openManage(s, e)">
                 {{ flowState(s, e).kind === 'active-sub' ? 'Change' : 'Manage' }}
               </button>
@@ -70,7 +70,7 @@
             </div>
           </td>
           <td class="td-actions">
-            <button class="btn-link" @click.stop="openDetail(s.studentId)">Edit →</button>
+            <button v-if="!auth.user?.isTeacher" class="btn-link" @click.stop="openDetail(s.studentId)">Edit →</button>
           </td>
         </tr>
       </tbody>
@@ -241,7 +241,7 @@
               <button class="btn-save" :disabled="manageModal.savingDraft" @click="saveGradesDraft">
                 {{ manageModal.savingDraft ? 'Saving…' : 'Save grades' }}
               </button>
-              <button class="btn-confirm-manage"
+              <button v-if="!auth.user?.isTeacher" class="btn-confirm-manage"
                       :disabled="!canCommitGrades || manageModal.gradesSubmitting"
                       :title="gradeEctsRemaining > 0 ? `Need ${gradeEctsRemaining} more ECTS to reach the ${manageModal.requiredEcts} ECTS completion threshold.` : ''"
                       @click="commitGrades">
@@ -347,7 +347,7 @@
                 <div class="docs-group-head">
                   <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
                   <span class="docs-group-count">{{ enr.coreDocs.length + enr.additionalDocs.length }}</span>
-                  <button class="btn-mini-d" style="margin-left:auto"
+                  <button v-if="!auth.user?.isTeacher" class="btn-mini-d" style="margin-left:auto"
                           @click="openAdditionalDialog(enr.enrollmentId)">
                     + Add additional document
                   </button>
@@ -362,7 +362,7 @@
                       </div>
                     </div>
                     <button class="btn-mini-d" @click="downloadStudentDocPartner(d)">Open</button>
-                    <label class="btn-mini-d" v-if="!d.isVerified" style="margin-left:6px">
+                    <label class="btn-mini-d" v-if="!d.isVerified && !auth.user?.isTeacher" style="margin-left:6px">
                       Replace
                       <input type="file" :accept="ACCEPTED_DOC_ACCEPT_ATTR" hidden
                              @change="onPartnerReplace($event, enr.enrollmentId, d)" />
@@ -396,6 +396,15 @@
               :upload-endpoint="additionalDialog.uploadEndpoint"
               @close="additionalDialog.open = false"
               @uploaded="onAdditionalUploaded" />
+
+            <!-- Uploaded Assignments: module tree, downloads and comment chat.
+                 Teachers are read-only but may still comment. -->
+            <div v-if="detailModal.activeTab === 'assignments'" class="tab-pane">
+              <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
+              <AssignmentsPanel v-else
+                :api-base="`/v1/partner/my-students/${detailModal.studentId}/enrollments/${activeEnrollment.studentEnrollmentId}/assignments`"
+                :can-upload="!auth.user?.isTeacher" />
+            </div>
 
             <div v-if="detailModal.activeTab === 'letters'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
@@ -457,6 +466,8 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import Fuse from 'fuse.js'
 import api from '../../../api/client.js'
+import { auth } from '../../../store/auth.js'
+import AssignmentsPanel from '../../assignments/AssignmentsPanel.vue'
 import StudentReviewWizard from '../StudentReviewWizard.vue'
 import EnrollmentActivityLog from '../../letters/EnrollmentActivityLog.vue'
 import AdditionalDocumentUploadDialog from '../../letters/AdditionalDocumentUploadDialog.vue'
@@ -693,10 +704,11 @@ async function load() {
 // blue name + "Details" button now go here for read-only browsing; the
 // "Edit →" button still opens the editable drawer for deeper changes.
 const DETAIL_TABS = [
-  { id: 'details',   label: 'Details' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'letters',   label: 'Letters' },
-  { id: 'activity',  label: 'Activity log' },
+  { id: 'details',     label: 'Details' },
+  { id: 'documents',   label: 'Documents' },
+  { id: 'assignments', label: 'Uploaded Assignments' },
+  { id: 'letters',     label: 'Letters' },
+  { id: 'activity',    label: 'Activity log' },
 ]
 // Printable Cert (provisionalCertificate) is intentionally omitted: only the
 // Admission Office may download the printable certificate version.

@@ -38,6 +38,8 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<Programme> Programmes => Set<Programme>();
     public DbSet<School> Schools => Set<School>();
     public DbSet<PartnerCertificate> PartnerCertificates => Set<PartnerCertificate>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload> AssignmentUploads => Set<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentComment> AssignmentComments => Set<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentComment>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan> EnrollmentPaymentPlans => Set<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment> PaymentInstallments => Set<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice> AdditionalInvoices => Set<SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice>();

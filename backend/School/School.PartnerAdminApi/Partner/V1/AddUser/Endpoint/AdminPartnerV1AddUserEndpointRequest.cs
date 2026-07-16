@@ -6,4 +6,6 @@ public sealed class AdminPartnerV1AddUserEndpointRequest
     public string? Email { get; init; }
     // Optional custom password. Blank → server generates random.
     public string? Password { get; init; }
+    // Teacher users are read-only (grade drafts + assignment comments only).
+    public bool? IsTeacher { get; init; }
 }

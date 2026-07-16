@@ -5,4 +5,6 @@ public sealed class AdminPartnerV1UpdateUserEndpointRequest
     public string? Username  { get; init; }
     public string? FirstName { get; init; }
     public string? LastName  { get; init; }
+    // Teacher users are read-only (grade drafts + assignment comments only).
+    public bool? IsTeacher   { get; init; }
 }

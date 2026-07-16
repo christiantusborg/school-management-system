@@ -39,6 +39,7 @@ public sealed class MeV1GetCommandHandler(
             IsEnabled = user.IsEnabled,
             CreatedAt = user.CreatedAt,
             PartnerSlug = partnerSlug,
+            IsTeacher = user.IsTeacher,
         });
     }
 }

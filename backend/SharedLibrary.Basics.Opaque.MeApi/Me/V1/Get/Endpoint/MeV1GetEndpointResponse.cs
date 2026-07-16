@@ -9,4 +9,5 @@ public sealed class MeV1GetEndpointResponse : HateoasBaseResponse
     public required bool IsEnabled { get; init; }
     public required DateTime CreatedAt { get; init; }
     public string? PartnerSlug { get; init; }
+    public bool IsTeacher { get; init; }
 }
