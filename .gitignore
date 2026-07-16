@@ -59,3 +59,16 @@ desktop.ini
 
 # Local secrets sourced by deploy.sh
 backend/.env
+
+# ── Local working materials (never push) ──────────────────────────────────────
+# Editor backups + transcript test dumps
+.backups/
+.transcript-samples/
+# Design source material dropped in the repo root (zips, sample PDFs, images);
+# assets the app really uses live under frontend/app/public and SeedAssets.
+/*.png
+/*.jpg
+/*.jpeg
+/*.pdf
+/*.zip
+/School accreditated logo/
