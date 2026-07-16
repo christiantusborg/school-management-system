@@ -441,6 +441,81 @@
               </div>
             </div>
 
+            <!-- Payment (read-only): what's due / paid + invoice downloads -->
+            <div v-if="detailModal.activeTab === 'payment'" class="tab-pane">
+              <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
+              <template v-else>
+                <p v-if="partnerPay.error" class="err-banner">{{ partnerPay.error }}</p>
+                <p v-if="partnerPay.loading" class="muted">Loading…</p>
+                <template v-else-if="partnerPay.exists">
+                  <table class="pp-table">
+                    <thead><tr><th>#</th><th>Amount</th><th>Due date</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                      <tr v-for="i in partnerPay.installments" :key="'i' + i.sequence">
+                        <td>{{ i.sequence }}</td>
+                        <td>{{ partnerPay.currency }} {{ fmtMoneyP(i.amount) }}</td>
+                        <td>{{ formatDateD(i.dueDate) || '—' }}</td>
+                        <td>
+                          <span :class="['pp-pill', i.isPaid ? 'pp-paid' : 'pp-unpaid']">
+                            {{ i.isPaid ? `Paid${i.paidDate ? ' · ' + formatDateD(i.paidDate) : ''}` : 'Unpaid' }}
+                          </span>
+                        </td>
+                        <td><button class="btn-mini-d" :disabled="partnerPay.downloading" @click="downloadPartnerInvoice(i.sequence, null)">⤓ Invoice</button></td>
+                      </tr>
+                      <tr v-for="a in partnerPay.additionalInvoices" :key="'a' + a.sequence">
+                        <td>A{{ a.sequence }}</td>
+                        <td>{{ partnerPay.currency }} {{ fmtMoneyP(a.total) }} <span class="muted" style="font-size:.74rem;">{{ a.title }}</span></td>
+                        <td>{{ formatDateD(a.dueDate) || '—' }}</td>
+                        <td>
+                          <span :class="['pp-pill', a.isPaid ? 'pp-paid' : 'pp-unpaid']">
+                            {{ a.isPaid ? `Paid${a.paidDate ? ' · ' + formatDateD(a.paidDate) : ''}` : 'Unpaid' }}
+                          </span>
+                        </td>
+                        <td><button class="btn-mini-d" :disabled="partnerPay.downloading" @click="downloadPartnerInvoice(null, a.sequence)">⤓ Invoice</button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div class="pp-summary">
+                    <span>Total tuition: <strong>{{ partnerPay.currency }} {{ fmtMoneyP(partnerPay.totalTuitionFee) }}</strong></span>
+                    <span v-if="partnerPay.additionalTotal > 0">Additional invoices: <strong>{{ partnerPay.currency }} {{ fmtMoneyP(partnerPay.additionalTotal) }}</strong></span>
+                    <span>Total paid: <strong>{{ partnerPay.currency }} {{ fmtMoneyP(partnerPay.totalPaid) }}</strong></span>
+                    <span :class="partnerPay.balance > 0 ? 'pp-due' : 'pp-ok'">Balance due: <strong>{{ partnerPay.currency }} {{ fmtMoneyP(partnerPay.balance) }}</strong></span>
+                  </div>
+                  <button class="btn-mini-d" style="margin-top:.5rem" :disabled="partnerPay.downloading" @click="downloadPartnerInvoice(null, null)">
+                    {{ partnerPay.downloading ? 'Preparing…' : '⤓ Download full invoice' }}
+                  </button>
+                  <p class="muted" style="font-size:.74rem; margin-top:.4rem;">View only — payment amounts and paid status are managed by the Admission Office.</p>
+                </template>
+                <p v-else class="muted">No payment plan has been set up for this enrolment yet.</p>
+              </template>
+            </div>
+
+            <!-- Moodle (view-only): username + password behind a reveal toggle -->
+            <div v-if="detailModal.activeTab === 'moodle'" class="tab-pane">
+              <p v-if="partnerMoodle.error" class="err-banner">{{ partnerMoodle.error }}</p>
+              <p v-if="partnerMoodle.loading" class="muted">Loading…</p>
+              <template v-else>
+                <div class="detail-section">
+                  <h4>Moodle (LMS) login</h4>
+                  <dl>
+                    <dt>Status</dt><dd>{{ partnerMoodle.enabled ? 'Enabled' : 'Not enabled' }}</dd>
+                    <dt>Username</dt><dd class="mono">{{ partnerMoodle.username || '—' }}</dd>
+                    <dt>Password</dt>
+                    <dd class="mono">
+                      <template v-if="partnerMoodle.password">
+                        {{ partnerMoodle.reveal ? partnerMoodle.password : '••••••••••' }}
+                        <button class="btn-mini-d" style="margin-left:.5rem" @click="partnerMoodle.reveal = !partnerMoodle.reveal">
+                          {{ partnerMoodle.reveal ? '🙈 Hide' : '👁 Show' }}
+                        </button>
+                      </template>
+                      <template v-else>—</template>
+                    </dd>
+                  </dl>
+                  <p class="muted" style="font-size:.74rem;">View only — Moodle credentials are managed by the Admission Office.</p>
+                </div>
+              </template>
+            </div>
+
             <div v-if="detailModal.activeTab === 'activity'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
               <EnrollmentActivityLog v-else
@@ -708,6 +783,8 @@ const DETAIL_TABS = [
   { id: 'documents',   label: 'Documents' },
   { id: 'assignments', label: 'Uploaded Assignments' },
   { id: 'letters',     label: 'Letters' },
+  { id: 'payment',     label: 'Payment' },
+  { id: 'moodle',      label: 'Moodle' },
   { id: 'activity',    label: 'Activity log' },
 ]
 // Printable Cert (provisionalCertificate) is intentionally omitted: only the
@@ -725,6 +802,84 @@ const visibleLetterTypes = computed(() => LETTER_TYPES.filter(t =>
   !t.onlyWhenIssued || !!activeEnrollment.value?.letters?.[t.key]))
 const detailModal = ref(null)
 const detailEnrollments = computed(() => detailModal.value?.data?.enrollments ?? [])
+
+// ── Payment tab (read-only view of the Admission-Office plan) ────────────────
+const partnerPay = reactive({
+  exists: false, loading: false, error: '', downloading: false,
+  totalTuitionFee: 0, currency: 'USD', installments: [], additionalInvoices: [],
+  additionalTotal: 0, totalPaid: 0, balance: 0,
+})
+function fmtMoneyP(v) { return (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+
+async function loadPartnerPayment() {
+  const m = detailModal.value
+  const enr = activeEnrollment.value
+  if (!m || !enr) return
+  partnerPay.loading = true; partnerPay.error = ''
+  try {
+    const res = await api.get(`/v1/partner/my-students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/payment`)
+    const d = res.data
+    partnerPay.exists = !!d.exists
+    partnerPay.totalTuitionFee = d.totalTuitionFee ?? 0
+    partnerPay.currency = d.currency ?? 'USD'
+    partnerPay.installments = d.installments ?? []
+    partnerPay.additionalInvoices = d.additionalInvoices ?? []
+    partnerPay.additionalTotal = d.additionalTotal ?? 0
+    partnerPay.totalPaid = d.totalPaid ?? 0
+    partnerPay.balance = d.balance ?? 0
+  } catch (e) {
+    partnerPay.error = e.response?.data?.error ?? e.message ?? 'Failed to load payment plan'
+  } finally {
+    partnerPay.loading = false
+  }
+}
+
+async function downloadPartnerInvoice(seq, additionalSeq) {
+  const m = detailModal.value
+  const enr = activeEnrollment.value
+  if (!m || !enr || partnerPay.downloading) return
+  partnerPay.downloading = true; partnerPay.error = ''
+  try {
+    const q = seq ? `?installment=${seq}` : additionalSeq ? `?additional=${additionalSeq}` : ''
+    const res = await api.get(
+      `/v1/partner/my-students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/payment/invoice${q}`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url; a.download = seq ? `invoice-installment-${seq}.pdf` : additionalSeq ? `invoice-additional-${additionalSeq}.pdf` : 'invoice.pdf'
+    a.target = '_blank'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (e) {
+    partnerPay.error = e.response?.status === 404 ? 'No invoice available yet.' : 'Download failed'
+  } finally {
+    partnerPay.downloading = false
+  }
+}
+
+// ── Moodle tab (view-only, password behind a reveal toggle) ──────────────────
+const partnerMoodle = reactive({ loading: false, error: '', enabled: false, username: '', password: '', reveal: false })
+
+async function loadPartnerMoodle() {
+  const m = detailModal.value
+  if (!m) return
+  partnerMoodle.loading = true; partnerMoodle.error = ''; partnerMoodle.reveal = false
+  try {
+    const res = await api.get(`/v1/partner/my-students/${m.studentId}/moodle`)
+    partnerMoodle.enabled = !!res.data.moodleEnabled
+    partnerMoodle.username = res.data.moodleUsername ?? ''
+    partnerMoodle.password = res.data.moodlePassword ?? ''
+  } catch (e) {
+    partnerMoodle.error = e.response?.data?.error ?? e.message ?? 'Failed to load Moodle login'
+  } finally {
+    partnerMoodle.loading = false
+  }
+}
+
+watch(() => [detailModal.value?.activeTab, detailModal.value?.activeEnrollmentId], ([tab]) => {
+  if (tab === 'payment') loadPartnerPayment()
+  if (tab === 'moodle') loadPartnerMoodle()
+})
 const activeEnrollment = computed(() =>
   detailEnrollments.value.find(e => e.studentEnrollmentId === detailModal.value?.activeEnrollmentId)
   ?? detailEnrollments.value[0]
@@ -1678,6 +1833,15 @@ function confirmSubStatus() {
 .btn-mini-d { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }
 .btn-mini-d:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }
 .btn-mini-d:hover:not(:disabled) { background: #143b6c; }
+.pp-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.pp-table th { text-align: left; padding: .4rem .6rem; color: #6b7888; font-size: .72rem; text-transform: uppercase; border-bottom: 1.5px solid #e8edf4; }
+.pp-table td { padding: .45rem .6rem; border-bottom: 1px solid #eef1f5; }
+.pp-pill { font-size: .72rem; font-weight: 700; padding: .1rem .5rem; border-radius: 10px; }
+.pp-paid { background: #d1fae5; color: #065f46; }
+.pp-unpaid { background: #fde7e5; color: #a8241e; }
+.pp-summary { display: flex; gap: 1.25rem; flex-wrap: wrap; font-size: .85rem; padding: .5rem 0 0; }
+.pp-due strong { color: #a8241e; }
+.pp-ok strong { color: #065f46; }
 </style>
 
 <style scoped>
