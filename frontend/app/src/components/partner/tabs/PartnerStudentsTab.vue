@@ -400,25 +400,35 @@
             <div v-if="detailModal.activeTab === 'letters'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
               <div v-else class="letters-list">
-                <div v-for="t in LETTER_TYPES" :key="t.key" class="letter-row" :class="{ disabled: !activeEnrollment.letters?.[t.key] }">
-                  <span class="letter-icon">{{ t.icon }}</span>
-                  <div class="letter-info">
-                    <div class="letter-name">{{ t.label }}</div>
-                    <div class="letter-sub">
-                      <template v-if="activeEnrollment.letters?.[t.key]">
-                        {{ activeEnrollment.letters[t.key].fileName }} · released {{ formatDateD(activeEnrollment.letters[t.key].uploadedAt) }}
-                      </template>
-                      <template v-else>Not yet released</template>
+                <template v-for="t in visibleLetterTypes" :key="t.key">
+                  <div class="letter-row" :class="{ disabled: !activeEnrollment.letters?.[t.key] }">
+                    <span class="letter-icon">{{ t.icon }}</span>
+                    <div class="letter-info">
+                      <div class="letter-name">{{ t.label }}</div>
+                      <div class="letter-sub">
+                        <template v-if="activeEnrollment.letters?.[t.key]">
+                          {{ activeEnrollment.letters[t.key].fileName }} · released {{ formatDateD(activeEnrollment.letters[t.key].uploadedAt) }}
+                        </template>
+                        <template v-else>Not yet released</template>
+                      </div>
                     </div>
+                    <button class="btn-mini-d" :disabled="!activeEnrollment.letters?.[t.key]"
+                            @click="downloadLetterPartner(activeEnrollment.letters?.[t.key])">Download</button>
                   </div>
-                  <button class="btn-mini-d" :disabled="!activeEnrollment.letters?.[t.key]"
-                          @click="downloadLetterPartner(activeEnrollment.letters?.[t.key])">Download</button>
-                  <button v-if="t.key === 'transcript' && !activeEnrollment.letters?.[t.key]" class="btn-mini-d"
-                          style="margin-left:6px" :disabled="downloadingLetterProvisional"
-                          @click="downloadLetterProvisionalPartner()">
-                    {{ downloadingLetterProvisional ? '…' : '⤓ Provisional' }}
-                  </button>
-                </div>
+                  <!-- Provisional transcript: rendered live from saved grades,
+                       listed with the other letters — same as the admin portal. -->
+                  <div v-if="t.key === 'transcript'" class="letter-row">
+                    <span class="letter-icon">📑</span>
+                    <div class="letter-info">
+                      <div class="letter-name">Provisional Transcript</div>
+                      <div class="letter-sub">Rendered live from the grades saved so far · watermarked until grades are submitted</div>
+                    </div>
+                    <button class="btn-mini-d" :disabled="downloadingLetterProvisional"
+                            @click="downloadLetterProvisionalPartner()">
+                      {{ downloadingLetterProvisional ? 'Preparing…' : 'Download' }}
+                    </button>
+                  </div>
+                </template>
               </div>
             </div>
 
@@ -695,7 +705,12 @@ const LETTER_TYPES = [
   { key: 'admissionLetter',        label: 'Admission Letter',    icon: '📋' },
   { key: 'transcript',             label: 'Digital Transcript',  icon: '📑' },
   { key: 'certificate',            label: 'Digital Certificate', icon: '🎓' },
+  // Only programmes with the digital-card toggle issue one; the row is
+  // hidden (rather than "Not yet released") when no card exists.
+  { key: 'studentIdCard',          label: 'Student ID Card',     icon: '🪪', onlyWhenIssued: true },
 ]
+const visibleLetterTypes = computed(() => LETTER_TYPES.filter(t =>
+  !t.onlyWhenIssued || !!activeEnrollment.value?.letters?.[t.key]))
 const detailModal = ref(null)
 const detailEnrollments = computed(() => detailModal.value?.data?.enrollments ?? [])
 const activeEnrollment = computed(() =>
@@ -1373,10 +1388,13 @@ async function saveGradesDraft() {
   }
 }
 
-// Download the watermarked provisional transcript built from saved grades.
+// Download the provisional transcript. Auto-saves the on-screen grades
+// first so the PDF always matches the editor — same flow as the admin side.
 async function downloadProvisional() {
   const m = manageModal.value
   if (!m || m.downloadingProvisional) return
+  await saveGradesDraft()
+  if (m.gradesError) return
   m.downloadingProvisional = true; m.gradesError = ''
   try {
     const res = await api.get(

@@ -235,6 +235,9 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
                 transcript             = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.Transcript),
                 certificate            = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.Certificate),
                 provisionalCertificate = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.ProvisionalCertificate),
+                // Partners may download an issued digital student ID card
+                // (same access as the student's other released letters).
+                studentIdCard          = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.StudentIdCard),
             },
         }).ToList();
 
