@@ -132,13 +132,57 @@ public sealed class QuestionnaireTemplatesV1CrudEndpoint : IEndpointMarker
         if (string.IsNullOrWhiteSpace(body.DefinitionJson)) return Fail("definition_required");
         if (!IsValidJson(body.DefinitionJson)) return Fail("definition_not_valid_json");
 
+        // Immutability rule: once a version has SUBMITTED answers it can never
+        // change. If the definition is about to change and the current hash is
+        // referenced by any submitted response, freeze the current definition
+        // as a version snapshot and bump the template to the next version.
+        var newHash = Hash(body.DefinitionJson);
+        var frozen = false;
+        if (newHash != t.DefinitionHash)
+        {
+            var answered = await db.IntakeResponses.AnyAsync(r =>
+                r.DeletedAt == null
+                && r.LifecycleState == IntakeResponseLifecycleState.Submitted
+                && r.QuestionnaireVersionHash == t.DefinitionHash
+                && r.IntakeInstance.QuestionnaireTemplateId == t.QuestionnaireTemplateId, ct);
+            if (answered)
+            {
+                var alreadyFrozen = await db.QuestionnaireTemplateVersions.AnyAsync(v =>
+                    v.QuestionnaireTemplateId == t.QuestionnaireTemplateId
+                    && v.DefinitionHash == t.DefinitionHash, ct);
+                if (!alreadyFrozen)
+                {
+                    db.QuestionnaireTemplateVersions.Add(new QuestionnaireTemplateVersion
+                    {
+                        QuestionnaireTemplateId = t.QuestionnaireTemplateId,
+                        Version = t.Version,
+                        DefinitionJson = t.DefinitionJson,
+                        DefinitionHash = t.DefinitionHash,
+                        FrozenAt = DateTime.UtcNow,
+                    });
+                }
+                // "1.0.0" → "2.0.0"; non-numeric versions get a numeric suffix.
+                var major = int.TryParse(t.Version.Split('.')[0], out var m) ? m : 1;
+                t.Version = $"{major + 1}.0.0";
+                frozen = true;
+            }
+        }
+
         t.Name = body.Name.Trim();
-        if (!string.IsNullOrWhiteSpace(body.Version)) t.Version = body.Version.Trim();
+        if (!frozen && !string.IsNullOrWhiteSpace(body.Version)) t.Version = body.Version.Trim();
         t.DefinitionJson = body.DefinitionJson;
-        t.DefinitionHash = Hash(body.DefinitionJson);
+        t.DefinitionHash = newHash;
         t.ModifiedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return Ok(ToListItem(t));
+        return Ok(new
+        {
+            questionnaireTemplateId = t.QuestionnaireTemplateId,
+            name = t.Name,
+            version = t.Version,
+            definitionHash = t.DefinitionHash,
+            modifiedAt = t.ModifiedAt,
+            versionFrozen = frozen,
+        });
     }
 
     private static async Task<IResult> SoftDeleteAsync(

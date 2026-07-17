@@ -62,6 +62,57 @@ public sealed class IntakeFillV1Endpoint : IEndpointMarker
 
     // ── Shared handlers ───────────────────────────────────────────────────
 
+    /// <summary>
+    /// Does a Targeted instance apply to this respondent? Programme /
+    /// specialization / module targets resolve against the student's CURRENT
+    /// enrolments, so a student enrolled after the assignment was created is
+    /// picked up automatically.
+    /// </summary>
+    public static async Task<HashSet<Guid>> VisibleTargetedInstanceIdsAsync(
+        OdinDbContext db, IReadOnlyCollection<Guid> targetedInstanceIds,
+        Guid? studentId, Guid? partnerId, CancellationToken ct)
+    {
+        if (targetedInstanceIds.Count == 0) return [];
+        var rows = await db.IntakeAssignments
+            .Where(a => targetedInstanceIds.Contains(a.IntakeInstanceId))
+            .ToListAsync(ct);
+        if (rows.Count == 0) return [];
+
+        HashSet<Guid> progIds = [], specIds = [];
+        Guid? studentsPartnerId = null;
+        if (studentId is { } sid)
+        {
+            var enr = await db.Enrollments
+                .Where(e => e.StudentId == sid && e.DeletedAt == null)
+                .Select(e => new { e.SpecializationId, e.Specialization.ProgrammeId, e.PartnerId })
+                .ToListAsync(ct);
+            specIds = enr.Select(e => e.SpecializationId).ToHashSet();
+            progIds = enr.Select(e => e.ProgrammeId).ToHashSet();
+            studentsPartnerId = enr.Select(e => (Guid?)e.PartnerId).FirstOrDefault()
+                ?? await db.Students.Where(s => s.StudentId == sid).Select(s => (Guid?)s.PartnerId).FirstOrDefaultAsync(ct);
+        }
+        // Module targets match when the module's specialization is one the
+        // student is enrolled in.
+        var subjectIds = rows.Where(r => r.SubjectId != null).Select(r => r.SubjectId!.Value).Distinct().ToList();
+        var subjectSpec = subjectIds.Count == 0
+            ? new Dictionary<Guid, Guid>()
+            : await db.Subjects.Where(s => subjectIds.Contains(s.SubjectId))
+                .ToDictionaryAsync(s => s.SubjectId, s => s.SpecializationId, ct);
+
+        var visible = new HashSet<Guid>();
+        foreach (var a in rows)
+        {
+            var match =
+                (a.StudentId is { } ts && ts == studentId)
+                || (a.PartnerId is { } tp && (tp == partnerId || tp == studentsPartnerId))
+                || (a.ProgrammeId is { } tpr && progIds.Contains(tpr))
+                || (a.SpecializationId is { } tsp && specIds.Contains(tsp))
+                || (a.SubjectId is { } tsu && subjectSpec.TryGetValue(tsu, out var subSpec) && specIds.Contains(subSpec));
+            if (match) visible.Add(a.IntakeInstanceId);
+        }
+        return visible;
+    }
+
     private static async Task<IResult> ListForAsync(
         string audience, Guid? studentId, Guid? partnerId, OdinDbContext db, CancellationToken ct)
     {
@@ -73,6 +124,7 @@ public sealed class IntakeFillV1Endpoint : IEndpointMarker
             {
                 intakeInstanceId = i.IntakeInstanceId,
                 name = i.Name,
+                assignmentMode = i.AssignmentMode,
                 definitionJson = i.QuestionnaireTemplate!.DefinitionJson,
                 response = db.IntakeResponses
                     .Where(r => r.IntakeInstanceId == i.IntakeInstanceId && r.DeletedAt == null
@@ -86,7 +138,18 @@ public sealed class IntakeFillV1Endpoint : IEndpointMarker
                     .FirstOrDefault(),
             })
             .ToListAsync(ct);
-        return Ok(new { items });
+
+        // Targeted instances: keep only those whose assignments match this
+        // respondent (specific user, partner, programme, spec or module).
+        var targetedIds = items
+            .Where(i => i.assignmentMode == IntakeInstance.ModeTargeted)
+            .Select(i => i.intakeInstanceId).ToList();
+        var visibleTargeted = await VisibleTargetedInstanceIdsAsync(db, targetedIds, studentId, partnerId, ct);
+        var filtered = items
+            .Where(i => i.assignmentMode != IntakeInstance.ModeTargeted || visibleTargeted.Contains(i.intakeInstanceId))
+            .Select(i => new { i.intakeInstanceId, i.name, i.definitionJson, i.response });
+
+        return Ok(new { items = filtered });
     }
 
     private static async Task<IResult> SaveForAsync(

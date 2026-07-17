@@ -34,6 +34,10 @@
           </td>
           <td>{{ i.submittedCount }} / {{ i.responseCount }}</td>
           <td>
+            <v-chip size="x-small" :color="i.assignmentMode === 'Targeted' ? 'primary' : undefined" class="mr-1">
+              {{ i.assignmentMode === 'Targeted' ? `Targeted (${i.targetCount})` : 'Everyone' }}
+            </v-chip>
+            <v-btn size="small" variant="text" @click="openTargets(i)">Targets</v-btn>
             <v-btn size="small" variant="text" @click="openResponses(i)">Responses</v-btn>
             <v-btn size="small" variant="text" @click="openEdit(i)">Edit</v-btn>
             <v-btn size="small" variant="text" color="error" @click="remove(i)">Delete</v-btn>
@@ -93,6 +97,64 @@
       </v-card>
     </v-dialog>
 
+    <!-- Targeting: who should fill this questionnaire -->
+    <v-dialog v-model="showTargets" max-width="640">
+      <v-card>
+        <v-card-title>Targets — {{ targetsFor?.name }}</v-card-title>
+        <v-card-text>
+          <v-select v-model="targetMode" :items="[
+              { value: 'Audience', title: 'Everyone in the audience' },
+              { value: 'Targeted', title: 'Only specific targets below' }]"
+            label="Assignment mode" class="mb-2" />
+          <template v-if="targetMode === 'Targeted'">
+            <v-chip v-for="(t, idx) in targetList" :key="idx" class="mr-1 mb-1" closable
+                    @click:close="targetList.splice(idx, 1)">
+              {{ t.kindLabel }}: {{ t.label }}
+            </v-chip>
+            <p v-if="!targetList.length" class="text-medium-emphasis text-body-2">
+              No targets yet — nobody will see this questionnaire until you add some.
+            </p>
+            <v-divider class="my-3" />
+            <div class="d-flex flex-wrap ga-2 align-center">
+              <v-select v-model="addKind" :items="[
+                  { value: 'student', title: 'Student' },
+                  { value: 'partner', title: 'Partner (all their students)' },
+                  { value: 'programme', title: 'Programme' },
+                  { value: 'specialization', title: 'Specialization' },
+                  { value: 'subject', title: 'Module' }]"
+                label="Target type" style="min-width:210px" density="compact" hide-details
+                @update:model-value="addProgrammeId = null; addSpecId = null; addValue = null" />
+              <v-autocomplete v-if="addKind === 'student'" v-model="addValue" :items="pickStudents"
+                item-title="label" item-value="id" label="Student" density="compact" hide-details style="min-width:260px" />
+              <v-select v-else-if="addKind === 'partner'" v-model="addValue" :items="pickPartners"
+                item-title="label" item-value="id" label="Partner" density="compact" hide-details style="min-width:240px" />
+              <template v-else>
+                <v-select v-model="addProgrammeId" :items="pickProgrammes" item-title="label" item-value="id"
+                  label="Programme" density="compact" hide-details style="min-width:220px"
+                  @update:model-value="loadSpecs" />
+                <v-select v-if="addKind !== 'programme'" v-model="addSpecId" :items="pickSpecs"
+                  item-title="label" item-value="id" label="Specialization" density="compact" hide-details style="min-width:200px"
+                  @update:model-value="loadSubjects" />
+                <v-select v-if="addKind === 'subject'" v-model="addValue" :items="pickSubjects"
+                  item-title="label" item-value="id" label="Module" density="compact" hide-details style="min-width:200px" />
+              </template>
+              <v-btn size="small" color="primary" :disabled="!canAddTarget" @click="addTarget">+ Add</v-btn>
+            </div>
+            <p class="text-caption text-medium-emphasis mt-2">
+              Programme / specialization / module targets follow enrolments automatically —
+              students who enrol later are included without re-assigning.
+            </p>
+          </template>
+          <p v-if="targetsError" class="text-error text-body-2 mt-2">{{ targetsError }}</p>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showTargets = false">Cancel</v-btn>
+          <v-btn color="primary" :loading="targetsSaving" @click="saveTargets">Save</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Single response answers -->
     <v-dialog v-model="showAnswers" max-width="640">
       <v-card>
@@ -118,7 +180,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client.js'
 
 const AUDIENCES = [
@@ -244,6 +306,128 @@ async function openAnswers(r) {
     showAnswers.value = true
   } catch (e) {
     error.value = e.response?.data?.error ?? 'Failed to load response'
+  }
+}
+
+// ── Targeting ────────────────────────────────────────────────────────────
+const showTargets = ref(false)
+const targetsFor = ref(null)
+const targetMode = ref('Audience')
+const targetList = ref([])
+const targetsError = ref('')
+const targetsSaving = ref(false)
+const addKind = ref('student')
+const addValue = ref(null)
+const addProgrammeId = ref(null)
+const addSpecId = ref(null)
+const pickStudents = ref([])
+const pickPartners = ref([])
+const pickProgrammes = ref([])
+const pickSpecs = ref([])
+const pickSubjects = ref([])
+
+const KIND_LABELS = { student: 'Student', partner: 'Partner', programme: 'Programme', specialization: 'Specialization', subject: 'Module' }
+const canAddTarget = computed(() => {
+  if (addKind.value === 'programme') return !!addProgrammeId.value
+  return !!addValue.value
+})
+
+async function loadPickers() {
+  try {
+    if (!pickStudents.value.length) {
+      const res = await api.get('/v1/admin/students')
+      pickStudents.value = (res.data.items ?? []).map(s => ({
+        id: s.studentId,
+        label: `${[s.firstName, s.lastName].filter(Boolean).join(' ') || s.username} (${s.studentNumber})`,
+      }))
+    }
+    if (!pickPartners.value.length) {
+      const res = await api.get('/v1/admin/school/partners')
+      pickPartners.value = (res.data.items ?? res.data ?? []).map(p => ({ id: p.partnerId, label: p.name }))
+    }
+    if (!pickProgrammes.value.length) {
+      const [core, custom] = await Promise.all([
+        api.get('/v1/school/programmes?ownership=core').catch(() => ({ data: { items: [] } })),
+        api.get('/v1/school/programmes?ownership=partner').catch(() => ({ data: { items: [] } })),
+      ])
+      const all = [...(core.data.items ?? []), ...(custom.data.items ?? [])]
+      const seen = new Set()
+      pickProgrammes.value = all.filter(p => !seen.has(p.programmeId) && seen.add(p.programmeId))
+        .map(p => ({ id: p.programmeId, label: p.name }))
+    }
+  } catch { /* pickers stay partial */ }
+}
+async function loadSpecs() {
+  addSpecId.value = null; addValue.value = null; pickSpecs.value = []; pickSubjects.value = []
+  if (!addProgrammeId.value) return
+  try {
+    const res = await api.get(`/v1/school/specializations?programmeId=${addProgrammeId.value}`)
+    pickSpecs.value = (res.data.items ?? []).map(x => ({ id: x.specializationId, label: x.name }))
+  } catch { /* empty */ }
+}
+async function loadSubjects() {
+  addValue.value = null; pickSubjects.value = []
+  if (!addSpecId.value) return
+  if (addKind.value === 'specialization') { addValue.value = addSpecId.value; return }
+  try {
+    const res = await api.get(`/v1/school/subjects?specializationId=${addSpecId.value}`)
+    pickSubjects.value = (res.data.items ?? []).map(x => ({ id: x.subjectId, label: `${x.code ?? ''} ${x.name}`.trim() }))
+  } catch { /* empty */ }
+}
+
+function addTarget() {
+  let id = addValue.value, label = ''
+  if (addKind.value === 'programme') { id = addProgrammeId.value; label = pickProgrammes.value.find(x => x.id === id)?.label }
+  else if (addKind.value === 'student') label = pickStudents.value.find(x => x.id === id)?.label
+  else if (addKind.value === 'partner') label = pickPartners.value.find(x => x.id === id)?.label
+  else if (addKind.value === 'specialization') label = pickSpecs.value.find(x => x.id === id)?.label
+  else if (addKind.value === 'subject') label = pickSubjects.value.find(x => x.id === id)?.label
+  if (!id) return
+  if (targetList.value.some(t => t.kind === addKind.value && t.targetId === id)) return
+  targetList.value.push({ kind: addKind.value, kindLabel: KIND_LABELS[addKind.value], targetId: id, label: label ?? id })
+  addValue.value = null
+}
+
+async function openTargets(i) {
+  targetsFor.value = i
+  targetsError.value = ''
+  showTargets.value = true
+  targetList.value = []
+  targetMode.value = i.assignmentMode ?? 'Audience'
+  loadPickers()
+  try {
+    const res = await api.get(`/v1/intake/intake-instances/${i.intakeInstanceId}/assignments`)
+    const d = res.data?.data
+    targetMode.value = d?.assignmentMode ?? 'Audience'
+    targetList.value = (d?.items ?? []).map(t => ({
+      kind: t.kind, kindLabel: KIND_LABELS[t.kind] ?? t.kind, targetId: t.targetId, label: t.label,
+    }))
+  } catch (e) {
+    targetsError.value = e.response?.data?.error ?? 'Failed to load targets'
+  }
+}
+
+async function saveTargets() {
+  if (!targetsFor.value || targetsSaving.value) return
+  targetsSaving.value = true
+  targetsError.value = ''
+  try {
+    await api.put(`/v1/intake/intake-instances/${targetsFor.value.intakeInstanceId}/assignments`, {
+      assignmentMode: targetMode.value,
+      targets: targetList.value.map(t => ({
+        studentId: t.kind === 'student' ? t.targetId : null,
+        partnerId: t.kind === 'partner' ? t.targetId : null,
+        programmeId: t.kind === 'programme' ? t.targetId : null,
+        specializationId: t.kind === 'specialization' ? t.targetId : null,
+        subjectId: t.kind === 'subject' ? t.targetId : null,
+      })),
+    })
+    showTargets.value = false
+    await load()
+  } catch (e) {
+    targetsError.value = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    targetsSaving.value = false
   }
 }
 

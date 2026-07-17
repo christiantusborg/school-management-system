@@ -18,9 +18,19 @@ public class IntakeInstance : IDeletedAtEntity
     public const string AudiencePartner = "Partner";
     public const string AudienceSignupWizard = "SignupWizard";
 
+    public const string ModeAudience = "Audience";
+    public const string ModeTargeted = "Targeted";
+
     public Guid IntakeInstanceId { get; set; } = Guid.NewGuid();
     public string? Name { get; set; }
     public string Audience { get; set; } = AudienceStudent;
+
+    /// <summary>"Audience" = everyone in the audience sees it (default).
+    /// "Targeted" = only respondents matching an <see cref="IntakeAssignment"/>
+    /// row (specific student/partner, or programme/specialization/module —
+    /// the latter resolve dynamically so newly-enrolled students are covered).</summary>
+    public string AssignmentMode { get; set; } = ModeAudience;
+
     public bool IsActive { get; set; } = true;
     public Guid? QuestionnaireTemplateId { get; set; }
     public string? InlineDefinitionJson { get; set; }

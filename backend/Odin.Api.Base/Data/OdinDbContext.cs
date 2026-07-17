@@ -63,6 +63,10 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
         => Set<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeInstance>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeResponse> IntakeResponses
         => Set<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeResponse>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.QuestionnaireTemplateVersion> QuestionnaireTemplateVersions
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.QuestionnaireTemplateVersion>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeAssignment> IntakeAssignments
+        => Set<SharedLibrary.Basics.Opaque.Domains.Intake.IntakeAssignment>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.FieldLibraryEntry> FieldLibraryEntries
         => Set<SharedLibrary.Basics.Opaque.Domains.Intake.FieldLibraryEntry>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Intake.TextTemplate> IntakeTextTemplates

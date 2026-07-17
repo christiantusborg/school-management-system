@@ -22,6 +22,7 @@
       <button :class="['tab-btn', { active: tab === 'rules' }]" @click="tab = 'rules'">Rules</button>
       <button :class="['tab-btn', { active: tab === 'documents' }]" @click="tab = 'documents'">Documents</button>
       <button :class="['tab-btn', { active: tab === 'publicforms' }]" @click="tab = 'publicforms'">Public forms</button>
+      <button :class="['tab-btn', { active: tab === 'stats' }]" @click="tab = 'stats'">Statistics</button>
     </div>
 
     <!-- The ported QuVian builder is Vuetify-based; v-app scopes Vuetify's
@@ -35,6 +36,7 @@
           <GenerationRulesAdmin v-else-if="tab === 'rules'" />
           <DocumentTemplatesView v-else-if="tab === 'documents'" />
           <PublicFormsAdmin v-else-if="tab === 'publicforms'" />
+          <QuestionnaireStatsAdmin v-else-if="tab === 'stats'" />
           <IntakeInstancesAdmin v-else />
         </div>
       </v-main>
@@ -53,6 +55,7 @@ import TextTemplatesView from './admin/TextTemplatesView.vue'
 import GenerationRulesAdmin from '../components/intake/GenerationRulesAdmin.vue'
 import DocumentTemplatesView from './admin/DocumentTemplatesView.vue'
 import PublicFormsAdmin from '../components/intake/PublicFormsAdmin.vue'
+import QuestionnaireStatsAdmin from '../components/intake/QuestionnaireStatsAdmin.vue'
 
 const router = useRouter()
 const tab = ref('builder')

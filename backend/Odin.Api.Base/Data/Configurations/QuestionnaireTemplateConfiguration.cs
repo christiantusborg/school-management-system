@@ -18,3 +18,33 @@ public class QuestionnaireTemplateConfiguration : IEntityTypeConfiguration<Quest
         builder.HasIndex(e => e.Name);
     }
 }
+
+public class QuestionnaireTemplateVersionConfiguration : IEntityTypeConfiguration<QuestionnaireTemplateVersion>
+{
+    public void Configure(EntityTypeBuilder<QuestionnaireTemplateVersion> builder)
+    {
+        builder.HasKey(e => e.QuestionnaireTemplateVersionId);
+        builder.Property(e => e.Version).HasMaxLength(32).IsRequired();
+        builder.Property(e => e.DefinitionJson).HasColumnType("text").IsRequired();
+        builder.Property(e => e.DefinitionHash).HasMaxLength(64).IsRequired();
+        // One snapshot per (template, definition hash) — freezing is idempotent.
+        builder.HasIndex(e => new { e.QuestionnaireTemplateId, e.DefinitionHash }).IsUnique();
+        builder.HasOne(e => e.Template)
+            .WithMany()
+            .HasForeignKey(e => e.QuestionnaireTemplateId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class IntakeAssignmentConfiguration : IEntityTypeConfiguration<IntakeAssignment>
+{
+    public void Configure(EntityTypeBuilder<IntakeAssignment> builder)
+    {
+        builder.HasKey(e => e.IntakeAssignmentId);
+        builder.HasIndex(e => e.IntakeInstanceId);
+        builder.HasOne(e => e.Instance)
+            .WithMany()
+            .HasForeignKey(e => e.IntakeInstanceId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}

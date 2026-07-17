@@ -22,6 +22,8 @@ public sealed class IntakeInstancesV1CrudEndpoint : IEndpointMarker
         app.MapPost("/v1/intake/intake-instances/{intakeInstanceId:guid}/restore", RestoreAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/intake/intake-instances/{intakeInstanceId:guid}/responses", ListResponsesAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/intake/intake-responses/{intakeResponseId:guid}", GetResponseAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/intake/intake-instances/{intakeInstanceId:guid}/assignments", GetAssignmentsAsync).RequireAuthorization("AdminOnly");
+        app.MapPut("/v1/intake/intake-instances/{intakeInstanceId:guid}/assignments", SaveAssignmentsAsync).RequireAuthorization("AdminOnly");
         return app;
     }
 
@@ -34,6 +36,21 @@ public sealed class IntakeInstancesV1CrudEndpoint : IEndpointMarker
         public string? Audience { get; init; }
         public bool IsActive { get; init; } = true;
         public Guid? QuestionnaireTemplateId { get; init; }
+    }
+
+    public sealed class AssignmentTarget
+    {
+        public Guid? StudentId { get; init; }
+        public Guid? PartnerId { get; init; }
+        public Guid? ProgrammeId { get; init; }
+        public Guid? SpecializationId { get; init; }
+        public Guid? SubjectId { get; init; }
+    }
+
+    public sealed class AssignmentsRequest
+    {
+        public string? AssignmentMode { get; init; }
+        public List<AssignmentTarget>? Targets { get; init; }
     }
 
     private static IResult Ok(object data) => Results.Ok(new { success = true, data });
@@ -52,6 +69,8 @@ public sealed class IntakeInstancesV1CrudEndpoint : IEndpointMarker
                 intakeInstanceId = i.IntakeInstanceId,
                 name = i.Name,
                 audience = i.Audience,
+                assignmentMode = i.AssignmentMode,
+                targetCount = db.IntakeAssignments.Count(a => a.IntakeInstanceId == i.IntakeInstanceId),
                 isActive = i.IsActive,
                 questionnaireTemplateId = i.QuestionnaireTemplateId,
                 templateName = i.QuestionnaireTemplate != null ? i.QuestionnaireTemplate.Name : null,
@@ -130,6 +149,94 @@ public sealed class IntakeInstancesV1CrudEndpoint : IEndpointMarker
         entity.ModifiedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Ok(new { restored = true });
+    }
+
+    private static async Task<IResult> GetAssignmentsAsync(
+        Guid intakeInstanceId, OdinDbContext db, CancellationToken ct)
+    {
+        var instance = await db.IntakeInstances
+            .FirstOrDefaultAsync(i => i.IntakeInstanceId == intakeInstanceId && i.DeletedAt == null, ct);
+        if (instance is null) return Fail("not_found", StatusCodes.Status404NotFound);
+
+        var rows = await db.IntakeAssignments
+            .Where(a => a.IntakeInstanceId == intakeInstanceId)
+            .OrderBy(a => a.CreatedAt)
+            .ToListAsync(ct);
+
+        var items = new List<object>();
+        foreach (var a in rows)
+        {
+            string kind; Guid target; string label;
+            if (a.StudentId is { } sid)
+            {
+                kind = "student"; target = sid;
+                var st = await db.Students.Where(s => s.StudentId == sid)
+                    .Select(s => new { s.StudentNumber, s.UserId }).FirstOrDefaultAsync(ct);
+                var prof = st is null ? null : await db.UserProfiles.Where(p => p.UserId == st.UserId)
+                    .Select(p => new { p.FirstName, p.LastName }).FirstOrDefaultAsync(ct);
+                label = st is null ? "(deleted student)"
+                    : $"{prof?.FirstName} {prof?.LastName}".Trim() is { Length: > 0 } nm ? $"{nm} ({st.StudentNumber})" : st.StudentNumber ?? "student";
+            }
+            else if (a.PartnerId is { } pid)
+            {
+                kind = "partner"; target = pid;
+                label = await db.Partners.Where(p => p.PartnerId == pid).Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "(deleted partner)";
+            }
+            else if (a.ProgrammeId is { } prid)
+            {
+                kind = "programme"; target = prid;
+                label = await db.Programmes.Where(p => p.ProgrammeId == prid).Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "(deleted programme)";
+            }
+            else if (a.SpecializationId is { } spid)
+            {
+                kind = "specialization"; target = spid;
+                label = await db.Specializations.Where(p => p.SpecializationId == spid).Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "(deleted specialization)";
+            }
+            else if (a.SubjectId is { } suid)
+            {
+                kind = "subject"; target = suid;
+                label = await db.Subjects.Where(p => p.SubjectId == suid).Select(p => p.Code + " " + p.Name).FirstOrDefaultAsync(ct) ?? "(deleted module)";
+            }
+            else continue;
+            items.Add(new { intakeAssignmentId = a.IntakeAssignmentId, kind, targetId = target, label });
+        }
+
+        return Ok(new { assignmentMode = instance.AssignmentMode, items });
+    }
+
+    private static async Task<IResult> SaveAssignmentsAsync(
+        Guid intakeInstanceId, [FromBody] AssignmentsRequest body, OdinDbContext db, CancellationToken ct)
+    {
+        var instance = await db.IntakeInstances
+            .FirstOrDefaultAsync(i => i.IntakeInstanceId == intakeInstanceId && i.DeletedAt == null, ct);
+        if (instance is null) return Fail("not_found", StatusCodes.Status404NotFound);
+
+        var mode = body.AssignmentMode == IntakeInstance.ModeTargeted
+            ? IntakeInstance.ModeTargeted : IntakeInstance.ModeAudience;
+        instance.AssignmentMode = mode;
+        instance.ModifiedAt = DateTime.UtcNow;
+
+        var existing = await db.IntakeAssignments
+            .Where(a => a.IntakeInstanceId == intakeInstanceId).ToListAsync(ct);
+        db.IntakeAssignments.RemoveRange(existing);
+
+        foreach (var tgt in body.Targets ?? [])
+        {
+            var setCount = new[] { tgt.StudentId, tgt.PartnerId, tgt.ProgrammeId, tgt.SpecializationId, tgt.SubjectId }
+                .Count(v => v is not null);
+            if (setCount != 1) return Fail("each_target_needs_exactly_one_id");
+            db.IntakeAssignments.Add(new IntakeAssignment
+            {
+                IntakeInstanceId = intakeInstanceId,
+                StudentId = tgt.StudentId,
+                PartnerId = tgt.PartnerId,
+                ProgrammeId = tgt.ProgrammeId,
+                SpecializationId = tgt.SpecializationId,
+                SubjectId = tgt.SubjectId,
+            });
+        }
+        await db.SaveChangesAsync(ct);
+        return Ok(new { saved = true, assignmentMode = mode });
     }
 
     private static async Task<IResult> ListResponsesAsync(
