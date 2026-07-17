@@ -73,7 +73,7 @@
         </div>
         <div class="pc-dialog-foot">
           <button class="btn-sm" @click="dialogOpen = false">Cancel</button>
-          <button class="btn-primary-sm" :disabled="saving || !dlgTypeId || uploadingField" @click="saveDialog">
+          <button type="button" class="btn-primary-sm" :disabled="saving || !dlgTypeId || !!uploadingField" @click="saveDialog">
             {{ saving ? 'Saving…' : 'Save' }}
           </button>
         </div>
