@@ -39,6 +39,12 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<School> Schools => Set<School>();
     public DbSet<PartnerDocumentType> PartnerDocumentTypes => Set<PartnerDocumentType>();
     public DbSet<PartnerDocument> PartnerDocuments => Set<PartnerDocument>();
+    public DbSet<PartnerDatasheetDefinition> PartnerDatasheetDefinitions => Set<PartnerDatasheetDefinition>();
+    public DbSet<PartnerDatasheetSection> PartnerDatasheetSections => Set<PartnerDatasheetSection>();
+    public DbSet<PartnerDatasheetField> PartnerDatasheetFields => Set<PartnerDatasheetField>();
+    public DbSet<PartnerDatasheet> PartnerDatasheets => Set<PartnerDatasheet>();
+    public DbSet<PartnerDatasheetRow> PartnerDatasheetRows => Set<PartnerDatasheetRow>();
+    public DbSet<PartnerDatasheetValue> PartnerDatasheetValues => Set<PartnerDatasheetValue>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload> AssignmentUploads => Set<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentComment> AssignmentComments => Set<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentComment>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan> EnrollmentPaymentPlans => Set<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan>();

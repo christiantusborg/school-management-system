@@ -29,6 +29,7 @@
       <template v-for="t in entities" :key="t.key">
         <EmailSettingsPanel v-if="t.key === 'email'" v-show="activeTab === t.key" />
         <PartnerDocumentTypesTab v-else-if="t.key === 'partnerDocs'" v-show="activeTab === t.key" />
+        <PartnerDatasheetDefinitionsTab v-else-if="t.key === 'partnerSheets'" v-show="activeTab === t.key" />
         <SchoolsManager v-else-if="t.key === 'schools'" v-show="activeTab === t.key" />
         <CurrenciesManager v-else-if="t.key === 'currencies'" v-show="activeTab === t.key" />
         <SimpleListManager
@@ -57,6 +58,7 @@ import SchoolsManager from '../components/admin/SchoolsManager.vue'
 import CurrenciesManager from '../components/admin/CurrenciesManager.vue'
 import SimpleListManager from '../components/admin/SimpleListManager.vue'
 import PartnerDocumentTypesTab from '../components/admin/PartnerDocumentTypesTab.vue'
+import PartnerDatasheetDefinitionsTab from '../components/admin/PartnerDatasheetDefinitionsTab.vue'
 
 const router = useRouter()
 
@@ -71,6 +73,7 @@ const entities = [
   { key: 'modesOfStudy',    label: 'Modes of Study',   config: { title: 'Modes of Study',   endpoint: '/v1/school/system-config/modes-of-study' } },
   { key: 'pathways',        label: 'Pathways',         config: { title: 'Pathways',         endpoint: '/v1/school/system-config/pathways' } },
   { key: 'partnerDocs',     label: 'Partnership Documents' },
+  { key: 'partnerSheets',   label: 'Partner Datasheets' },
   { key: 'email',           label: 'Email' },
   { key: 'schools',         label: 'Schools' },
   { key: 'currencies',      label: 'Currencies' },

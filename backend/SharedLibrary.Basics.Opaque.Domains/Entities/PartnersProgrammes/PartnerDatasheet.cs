@@ -1,0 +1,106 @@
+using QuVian.SharedLibrary.Basics.Repositories.Interfaces;
+
+namespace SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
+
+/// <summary>
+/// A reusable datasheet TEMPLATE (ported from core's PageDefinition concept):
+/// extra structured data the Admission Office can keep on partners. Unlike
+/// core, the structure is fully relational — sections and fields are rows,
+/// and the filled-in data lands in row/value tables, never in JSON blobs.
+/// </summary>
+public class PartnerDatasheetDefinition : IDeletedAtEntity
+{
+    public Guid PartnerDatasheetDefinitionId { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+    public DateTime? DeletedAt { get; set; }
+}
+
+/// <summary>
+/// One section of a definition: either a "fields" section (single set of
+/// label/value pairs) or a "grid" section (a table whose columns are this
+/// section's fields and whose lines are PartnerDatasheetRows).
+/// </summary>
+public class PartnerDatasheetSection : IDeletedAtEntity
+{
+    public const string KindFields = "fields";
+    public const string KindGrid = "grid";
+
+    public Guid PartnerDatasheetSectionId { get; set; } = Guid.NewGuid();
+    public Guid PartnerDatasheetDefinitionId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Kind { get; set; } = KindFields;
+    public int SortOrder { get; set; }
+    public DateTime? DeletedAt { get; set; }
+}
+
+/// <summary>
+/// One field of a section — a single field in a "fields" section or a column
+/// in a "grid" section. Soft-deleting a field HIDES it everywhere but keeps
+/// every stored value; re-adding (restoring) it brings the data back.
+/// </summary>
+public class PartnerDatasheetField : IDeletedAtEntity
+{
+    public const string TypeText = "text";
+    public const string TypeNumber = "number";
+    public const string TypeDate = "date";
+    public const string TypeFile = "file";
+    public const string TypeSelect = "select";
+    public const string TypeBool = "bool";
+
+    public Guid PartnerDatasheetFieldId { get; set; } = Guid.NewGuid();
+    public Guid PartnerDatasheetSectionId { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public string Type { get; set; } = TypeText;
+    /// <summary>Dropdown options for "select" fields, one per line.</summary>
+    public string? OptionsText { get; set; }
+    public bool IsRequired { get; set; }
+    public int SortOrder { get; set; }
+    public DateTime? DeletedAt { get; set; }
+}
+
+/// <summary>
+/// One attached sheet on one partner. The same definition may be attached
+/// any number of times, each with its own title ("Meeting 12 Jun 2026").
+/// </summary>
+public class PartnerDatasheet : IDeletedAtEntity
+{
+    public Guid PartnerDatasheetId { get; set; } = Guid.NewGuid();
+    public Guid PartnerId { get; set; }
+    public Guid PartnerDatasheetDefinitionId { get; set; }
+    public string? Title { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+    public DateTime? DeletedAt { get; set; }
+}
+
+/// <summary>
+/// One data row of a sheet: "fields" sections have exactly one row per sheet,
+/// "grid" sections one row per table line. Deleting a grid line is a plain
+/// row delete — no blob rewriting.
+/// </summary>
+public class PartnerDatasheetRow : IDeletedAtEntity
+{
+    public Guid PartnerDatasheetRowId { get; set; } = Guid.NewGuid();
+    public Guid PartnerDatasheetId { get; set; }
+    public Guid PartnerDatasheetSectionId { get; set; }
+    public int SortOrder { get; set; }
+    public DateTime? DeletedAt { get; set; }
+}
+
+/// <summary>
+/// One cell: the value of one field on one row. Text stored raw, dates as
+/// ISO yyyy-MM-dd, numbers invariant, yes/no as "true"/"false"; file uploads
+/// keep the storage path in Value and the original name in FileName.
+/// </summary>
+public class PartnerDatasheetValue
+{
+    public Guid PartnerDatasheetValueId { get; set; } = Guid.NewGuid();
+    public Guid PartnerDatasheetRowId { get; set; }
+    public Guid PartnerDatasheetFieldId { get; set; }
+    public string Value { get; set; } = string.Empty;
+    public string? FileName { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}

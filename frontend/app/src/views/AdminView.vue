@@ -464,6 +464,10 @@
           <PartnerCertificatesTab v-if="manageTab === 'certs'" :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
         </div>
 
+        <div v-show="manageTab === 'datasheets'" class="manage-section">
+          <PartnerDatasheetsTab v-if="manageTab === 'datasheets'" :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
+        </div>
+
         <div v-show="manageTab === 'students'" class="manage-section">
           <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" @add-student="openAddStudentForManagedPartner" />
         </div>
@@ -650,6 +654,7 @@ import PartnerProfileTab from '../components/partner/tabs/PartnerProfileTab.vue'
 import PartnerCoreProgrammesTab from '../components/partner/tabs/PartnerCoreProgrammesTab.vue'
 import PartnerCustomProgrammesTab from '../components/partner/tabs/PartnerCustomProgrammesTab.vue'
 import PartnerCertificatesTab from '../components/admin/PartnerCertificatesTab.vue'
+import PartnerDatasheetsTab from '../components/admin/PartnerDatasheetsTab.vue'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
 import AdminStudentsTab from '../components/admin/AdminStudentsTab.vue'
 import AdminUsersTab from '../components/admin/AdminUsersTab.vue'
@@ -818,6 +823,7 @@ const MANAGE_TABS = [
   { k: 'custom',   label: 'Custom Programmes' },
   { k: 'students', label: 'Students' },
   { k: 'certs',    label: 'Partnership Documents' },
+  { k: 'datasheets', label: 'Datasheets' },
 ]
 const manageTab = ref('users')
 
