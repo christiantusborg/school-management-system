@@ -279,6 +279,14 @@
                 <span class="col-code scode">{{ s.code || '—' }}</span>
                 <span class="col-name">{{ s.name }}<span v-if="s.isThesis" class="thesis-tag">Thesis</span></span>
                 <span class="col-ects ects-val">{{ s.ects }}</span>
+                <label class="ms-def" title="Default module START: commencement + N days for every student (blank = starts at commencement). Overridable per student.">
+                  start +<input type="number" min="0" max="3650" class="inp-msdef" :value="s.defaultStartOffsetDays"
+                         @change="saveSubjectOffset(s, 'defaultStartOffsetDays', $event.target.value)" />d
+                </label>
+                <label class="ms-def" title="Default module END: commencement + N days for every student (blank = no end date / TBC). Overridable per student.">
+                  end +<input type="number" min="0" max="3650" class="inp-msdef" :value="s.defaultEndOffsetDays"
+                       @change="saveSubjectOffset(s, 'defaultEndOffsetDays', $event.target.value)" />d
+                </label>
                 <label class="thesis-chk" title="Mark as thesis / dissertation module">
                   <input type="checkbox" :checked="s.isThesis" @change="toggleThesis(s, $event.target.checked)" /> Thesis
                 </label>
@@ -966,6 +974,18 @@ async function addSubject(specializationId) {
 }
 
 // Toggle a subject's thesis flag (marks it as the thesis/dissertation module).
+// Default module start/end offsets (commencement + N days). Blank clears
+// the default (-1 sentinel on the wire).
+async function saveSubjectOffset(subj, field, raw) {
+  const v = raw === '' || raw === null ? -1 : Math.max(0, Number(raw))
+  try {
+    await api.put(`/v1/school/subjects/${subj.subjectId}`, { [field]: v })
+    subj[field] = v === -1 ? null : v
+  } catch (e) {
+    alert(e.response?.data?.error ?? 'Failed to save module date default')
+  }
+}
+
 async function toggleThesis(subj, val) {
   try {
     await api.put(`/v1/school/subjects/${subj.subjectId}`, { isThesis: val })
@@ -1229,4 +1249,6 @@ async function permanentDeleteProgramme(prog) {
 .pathway-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; }
 .pathway-row input[type=checkbox] { width: 14px; height: 14px; accent-color: #003366; }
 .empty-note { color: #aaa; font-style: italic; font-size: 0.83rem; margin: 0; }
+.ms-def { display: inline-flex; align-items: center; gap: 2px; font-size: .72rem; color: #6b7888; white-space: nowrap; }
+.inp-msdef { width: 54px; padding: .15rem .3rem; border: 1px solid #cfd7e3; border-radius: 4px; font-size: .78rem; }
 </style>

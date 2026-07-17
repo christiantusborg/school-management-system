@@ -4,11 +4,15 @@ using Odin.Api.Base.Data;
 namespace Odin.Api.Base.Documents;
 
 /// <summary>
-/// Resolves the per-module start dates of an enrolment: every module of the
-/// enrolment's CURRENT specialization with its override (explicit date or
-/// commencement + N days) and the resolved date. Default (no override row)
-/// is the enrolment's commencement date. Shared by the admin (read/write),
-/// partner (read) and student (read) endpoints.
+/// Resolves per-module start AND end dates for an enrolment. Resolution
+/// order for each date:
+///   1. the student's override (explicit date or commencement + N days)
+///   2. the module's programme-level default offset (Subject.DefaultStart/
+///      EndOffsetDays — applies automatically to everyone, including
+///      students who sign up later)
+///   3. start: the enrolment's commencement date; end: none (TBC).
+/// Shared by the admin (read/write), partner (read) and student (read)
+/// endpoints.
 /// </summary>
 public static class ModuleStartService
 {
@@ -23,7 +27,7 @@ public static class ModuleStartService
         var subjects = await db.Subjects
             .Where(s => s.SpecializationId == enr.SpecializationId && s.DeletedAt == null)
             .OrderBy(s => s.Code)
-            .Select(s => new { s.SubjectId, s.Code, s.Name })
+            .Select(s => new { s.SubjectId, s.Code, s.Name, s.DefaultStartOffsetDays, s.DefaultEndOffsetDays })
             .ToListAsync(ct);
 
         var overrides = await db.EnrollmentModuleStarts
@@ -37,21 +41,39 @@ public static class ModuleStartService
             modules = subjects.Select(s =>
             {
                 overrides.TryGetValue(s.SubjectId, out var o);
-                DateTime? resolved = o is null
-                    ? commencement
-                    : o.UseOffset
-                        ? commencement?.AddDays(o.OffsetDays ?? 0)
-                        : o.StartDate;
+                var hasStartOverride = o is not null
+                    && ((o.UseOffset && o.OffsetDays != null) || (!o.UseOffset && o.StartDate != null));
+                var hasEndOverride = o is not null
+                    && ((o.EndUseOffset && o.EndOffsetDays != null) || (!o.EndUseOffset && o.EndDate != null));
+
+                DateTime? resolvedStart = hasStartOverride
+                    ? (o!.UseOffset ? commencement?.AddDays(o.OffsetDays!.Value) : o.StartDate)
+                    : s.DefaultStartOffsetDays is { } dso
+                        ? commencement?.AddDays(dso)
+                        : commencement;
+                DateTime? resolvedEnd = hasEndOverride
+                    ? (o!.EndUseOffset ? commencement?.AddDays(o.EndOffsetDays!.Value) : o.EndDate)
+                    : s.DefaultEndOffsetDays is { } deo
+                        ? commencement?.AddDays(deo)
+                        : null;
+
                 return new
                 {
                     subjectId = s.SubjectId,
                     code = s.Code,
                     name = s.Name,
-                    hasOverride = o is not null,
+                    defaultStartOffsetDays = s.DefaultStartOffsetDays,
+                    defaultEndOffsetDays = s.DefaultEndOffsetDays,
+                    hasOverride = hasStartOverride,
                     useOffset = o?.UseOffset ?? false,
-                    startDate = o?.StartDate,
-                    offsetDays = o?.OffsetDays,
-                    resolvedDate = resolved,
+                    startDate = hasStartOverride ? o!.StartDate : null,
+                    offsetDays = hasStartOverride ? o!.OffsetDays : null,
+                    resolvedDate = resolvedStart,
+                    hasEndOverride,
+                    endUseOffset = o?.EndUseOffset ?? false,
+                    endDate = hasEndOverride ? o!.EndDate : null,
+                    endOffsetDays = hasEndOverride ? o!.EndOffsetDays : null,
+                    resolvedEndDate = resolvedEnd,
                 };
             }),
         };

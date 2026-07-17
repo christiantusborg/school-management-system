@@ -595,38 +595,67 @@
                   </dl>
                 </div>
 
-                <!-- Module start dates: default = commencement; per module the
-                     Admission Office can override with an explicit date or
-                     commencement + N days (toggle between the two modes). -->
+                <!-- Module start & end dates: defaults come from the programme
+                     config (commencement + N days per module) or commencement
+                     itself; per student the Admission Office can override each
+                     with an explicit date or commencement + N days. -->
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                  <h4>Module start dates</h4>
+                  <h4>Module start &amp; end dates</h4>
                   <p v-if="moduleStarts.error" class="err-banner">{{ moduleStarts.error }}</p>
                   <p v-if="moduleStarts.loading" class="muted">Loading…</p>
                   <template v-else-if="moduleStarts.rows.length">
                     <div v-for="row in moduleStarts.rows" :key="row.subjectId" class="ms-row">
-                      <span class="ms-code">{{ row.code }}</span>
-                      <span class="ms-name">{{ row.name }}</span>
-                      <button class="btn-mini btn-mini-ghost" :title="row.useOffset ? 'Switch to a fixed date' : 'Switch to commencement + N days'"
-                              @click="toggleMsMode(row)">
-                        {{ row.useOffset ? '＋ days' : '📅 Date' }}
-                      </button>
-                      <template v-if="row.useOffset">
-                        <span class="muted" style="font-size:.78rem;">commencement +</span>
-                        <input type="number" min="0" max="3650" v-model.number="row.offsetDays" class="ms-inp" style="width:80px" /> days
-                        <span class="ms-resolved">→ {{ msOffsetDate(row) || '—' }}</span>
-                      </template>
-                      <template v-else>
-                        <input type="date" v-model="row.startDate" class="ms-inp" />
-                      </template>
-                      <button v-if="row.hasOverride || row.startDate || row.offsetDays != null" class="btn-mini btn-mini-ghost"
-                              title="Back to the default (commencement date)" @click="resetMsRow(row)">↺ Default</button>
-                      <span v-else class="muted" style="font-size:.74rem;">default (commencement)</span>
+                      <div class="ms-head">
+                        <span class="ms-code">{{ row.code }}</span>
+                        <span class="ms-name">{{ row.name }}</span>
+                      </div>
+                      <div class="ms-line">
+                        <span class="ms-kind">Start</span>
+                        <button class="btn-mini btn-mini-ghost" :title="row.useOffset ? 'Switch to a fixed date' : 'Switch to commencement + N days'"
+                                @click="toggleMsMode(row)">
+                          {{ row.useOffset ? '＋ days' : '📅 Date' }}
+                        </button>
+                        <template v-if="row.useOffset">
+                          <span class="muted" style="font-size:.78rem;">commencement +</span>
+                          <input type="number" min="0" max="3650" v-model.number="row.offsetDays" class="ms-inp" style="width:80px" /> days
+                          <span class="ms-resolved">→ {{ msOffsetDate(row.offsetDays) || '—' }}</span>
+                        </template>
+                        <template v-else>
+                          <input type="date" v-model="row.startDate" class="ms-inp" />
+                        </template>
+                        <button v-if="row.hasOverride || row.startDate || row.offsetDays != null" class="btn-mini btn-mini-ghost"
+                                title="Back to the default" @click="resetMsRow(row)">↺ Default</button>
+                        <span v-else class="muted" style="font-size:.74rem;">
+                          default: {{ row.defaultStartOffsetDays != null ? `commencement +${row.defaultStartOffsetDays}d → ${msOffsetDate(row.defaultStartOffsetDays)}` : 'commencement' }}
+                        </span>
+                      </div>
+                      <div class="ms-line">
+                        <span class="ms-kind">End</span>
+                        <button class="btn-mini btn-mini-ghost" :title="row.endUseOffset ? 'Switch to a fixed date' : 'Switch to commencement + N days'"
+                                @click="toggleMsEndMode(row)">
+                          {{ row.endUseOffset ? '＋ days' : '📅 Date' }}
+                        </button>
+                        <template v-if="row.endUseOffset">
+                          <span class="muted" style="font-size:.78rem;">commencement +</span>
+                          <input type="number" min="0" max="3650" v-model.number="row.endOffsetDays" class="ms-inp" style="width:80px" /> days
+                          <span class="ms-resolved">→ {{ msOffsetDate(row.endOffsetDays) || '—' }}</span>
+                        </template>
+                        <template v-else>
+                          <input type="date" v-model="row.endDate" class="ms-inp" />
+                        </template>
+                        <button v-if="row.hasEndOverride || row.endDate || row.endOffsetDays != null" class="btn-mini btn-mini-ghost"
+                                title="Back to the default" @click="resetMsEndRow(row)">↺ Default</button>
+                        <span v-else class="muted" style="font-size:.74rem;">
+                          default: {{ row.defaultEndOffsetDays != null ? `commencement +${row.defaultEndOffsetDays}d → ${msOffsetDate(row.defaultEndOffsetDays)}` : 'TBC' }}
+                        </span>
+                      </div>
                     </div>
                     <div style="margin-top:.5rem; display:flex; align-items:center; gap:.6rem;">
                       <button class="btn-row-details btn-row-details-sm" :disabled="moduleStarts.saving" @click="saveModuleStarts">
-                        {{ moduleStarts.saving ? 'Saving…' : 'Save module start dates' }}
+                        {{ moduleStarts.saving ? 'Saving…' : 'Save module dates' }}
                       </button>
                       <span v-if="moduleStarts.ok" class="ok-banner" style="display:inline-block;">Saved</span>
+                      <span class="muted" style="font-size:.72rem;">Programme-wide defaults are set per module on the Academic page.</span>
                     </div>
                   </template>
                   <p v-else class="muted">No modules on this specialization.</p>
@@ -1542,11 +1571,11 @@ function fmtMsDate(d) {
   if (!d) return ''
   try { return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) } catch { return d }
 }
-function msOffsetDate(row) {
+function msOffsetDate(days) {
   const base = moduleStarts.commencementDate
-  if (!base || row.offsetDays == null || row.offsetDays === '') return ''
+  if (!base || days == null || days === '') return ''
   const d = new Date(base)
-  d.setDate(d.getDate() + Number(row.offsetDays))
+  d.setDate(d.getDate() + Number(days))
   return fmtMsDate(d.toISOString())
 }
 function toggleMsMode(row) {
@@ -1560,6 +1589,34 @@ function resetMsRow(row) {
   row.offsetDays = null
   row.hasOverride = false
 }
+function toggleMsEndMode(row) {
+  row.endUseOffset = !row.endUseOffset
+  if (row.endUseOffset && (row.endOffsetDays == null || row.endOffsetDays === '')) row.endOffsetDays = 30
+  if (!row.endUseOffset && !row.endDate) row.endDate = (row.resolvedEndDate ?? '').slice(0, 10)
+}
+function resetMsEndRow(row) {
+  row.endUseOffset = false
+  row.endDate = ''
+  row.endOffsetDays = null
+  row.hasEndOverride = false
+}
+function mapMsRow(x) {
+  return {
+    subjectId: x.subjectId, code: x.code, name: x.name,
+    defaultStartOffsetDays: x.defaultStartOffsetDays,
+    defaultEndOffsetDays: x.defaultEndOffsetDays,
+    hasOverride: !!x.hasOverride,
+    useOffset: !!x.useOffset,
+    startDate: !x.useOffset && x.hasOverride ? (x.startDate ?? '').slice(0, 10) : '',
+    offsetDays: x.useOffset ? x.offsetDays : null,
+    resolvedDate: x.resolvedDate,
+    hasEndOverride: !!x.hasEndOverride,
+    endUseOffset: !!x.endUseOffset,
+    endDate: !x.endUseOffset && x.hasEndOverride ? (x.endDate ?? '').slice(0, 10) : '',
+    endOffsetDays: x.endUseOffset ? x.endOffsetDays : null,
+    resolvedEndDate: x.resolvedEndDate,
+  }
+}
 
 async function loadModuleStarts() {
   const m = detailModal.value
@@ -1569,14 +1626,7 @@ async function loadModuleStarts() {
   try {
     const res = await api.get(`/v1/admin/students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/module-starts`)
     moduleStarts.commencementDate = res.data.commencementDate
-    moduleStarts.rows = (res.data.modules ?? []).map(x => ({
-      subjectId: x.subjectId, code: x.code, name: x.name,
-      hasOverride: !!x.hasOverride,
-      useOffset: !!x.useOffset,
-      startDate: !x.useOffset && x.hasOverride ? (x.startDate ?? '').slice(0, 10) : '',
-      offsetDays: x.useOffset ? x.offsetDays : null,
-      resolvedDate: x.resolvedDate,
-    }))
+    moduleStarts.rows = (res.data.modules ?? []).map(mapMsRow)
   } catch (e) {
     moduleStarts.error = e.response?.data?.error ?? e.message ?? 'Failed to load module start dates'
   } finally {
@@ -1597,17 +1647,14 @@ async function saveModuleStarts() {
         startDate: !r.useOffset && r.startDate ? r.startDate : null,
         offsetDays: r.useOffset && r.offsetDays != null && r.offsetDays !== '' ? Number(r.offsetDays) : null,
         clearOverride: !r.useOffset ? !r.startDate : (r.offsetDays == null || r.offsetDays === ''),
+        endUseOffset: !!r.endUseOffset,
+        endDate: !r.endUseOffset && r.endDate ? r.endDate : null,
+        endOffsetDays: r.endUseOffset && r.endOffsetDays != null && r.endOffsetDays !== '' ? Number(r.endOffsetDays) : null,
+        clearEndOverride: !r.endUseOffset ? !r.endDate : (r.endOffsetDays == null || r.endOffsetDays === ''),
       })),
     })
     moduleStarts.commencementDate = res.data.commencementDate
-    moduleStarts.rows = (res.data.modules ?? []).map(x => ({
-      subjectId: x.subjectId, code: x.code, name: x.name,
-      hasOverride: !!x.hasOverride,
-      useOffset: !!x.useOffset,
-      startDate: !x.useOffset && x.hasOverride ? (x.startDate ?? '').slice(0, 10) : '',
-      offsetDays: x.useOffset ? x.offsetDays : null,
-      resolvedDate: x.resolvedDate,
-    }))
+    moduleStarts.rows = (res.data.modules ?? []).map(mapMsRow)
     moduleStarts.ok = 'Saved'
     setTimeout(() => { moduleStarts.ok = '' }, 2500)
   } catch (e) {
@@ -3486,7 +3533,10 @@ async function runExport() {
 .pay-method-input { display: block; width: 100%; margin-top: .25rem; padding: .3rem .5rem; font-size: .78rem; border: 1px solid #ccd5e0; border-radius: 6px; font-family: inherit; }
 .pay-invoice-link { color: #1a4d8c; font-weight: 600; cursor: pointer; font-size: .85rem; text-decoration: underline; }
 .pay-invoice-link.disabled { color: #9aa5b5; cursor: default; text-decoration: none; }
-.ms-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .3rem 0; border-bottom: 1px solid #f0f3f7; font-size: .85rem; }
+.ms-row { padding: .4rem 0; border-bottom: 1px solid #f0f3f7; font-size: .85rem; }
+.ms-head { display: flex; gap: .5rem; align-items: baseline; margin-bottom: .2rem; }
+.ms-line { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .1rem 0 .1rem 1rem; }
+.ms-kind { width: 40px; font-weight: 700; color: #6b7888; font-size: .74rem; text-transform: uppercase; }
 .ms-code { font-family: monospace; font-weight: 700; color: #003366; min-width: 110px; }
 .ms-name { flex: 1 1 220px; }
 .ms-inp { padding: .25rem .45rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; }

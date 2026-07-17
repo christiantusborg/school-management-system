@@ -19,4 +19,11 @@ public class EnrollmentModuleStart
     public bool UseOffset { get; set; }
     public DateTime? StartDate { get; set; }
     public int? OffsetDays { get; set; }
+
+    /// <summary>End-date override, same dual mode as start. A start override
+    /// may exist without an end override and vice versa; the row is deleted
+    /// only when neither remains.</summary>
+    public bool EndUseOffset { get; set; }
+    public DateTime? EndDate { get; set; }
+    public int? EndOffsetDays { get; set; }
 }

@@ -186,7 +186,7 @@
                   <div class="doc-info" style="display:flex; gap:.6rem; align-items:baseline;">
                     <span style="font-family:monospace; font-weight:700;">{{ r.code }}</span>
                     <span style="flex:1">{{ r.name }}</span>
-                    <strong>{{ r.resolvedDate ? new Date(r.resolvedDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'TBC' }}</strong>
+                    <strong>{{ r.resolvedDate ? new Date(r.resolvedDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'TBC' }}<template v-if="r.resolvedEndDate"> → {{ new Date(r.resolvedEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }}</template></strong>
                   </div>
                 </li>
               </ul>

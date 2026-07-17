@@ -346,7 +346,7 @@
                     <template v-for="r in partnerModuleStarts.rows" :key="r.subjectId">
                       <dt style="font-family:monospace">{{ r.code }}</dt>
                       <dd>{{ r.name }} — <strong>{{ formatDateD(r.resolvedDate) || 'TBC' }}</strong>
-                        <span v-if="!r.hasOverride" class="muted" style="font-size:.72rem;"> (commencement)</span></dd>
+                        <template v-if="r.resolvedEndDate"> → <strong>{{ formatDateD(r.resolvedEndDate) }}</strong></template></dd>
                     </template>
                   </dl>
                   <p v-else class="muted">No modules.</p>

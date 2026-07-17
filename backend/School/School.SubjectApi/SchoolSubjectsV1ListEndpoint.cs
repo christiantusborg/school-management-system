@@ -34,6 +34,8 @@ public sealed class SchoolSubjectsV1ListEndpoint : IEndpointMarker
                 description = s.Description,
                 ects = s.Ects,
                 isThesis = s.IsThesis,
+                defaultStartOffsetDays = s.DefaultStartOffsetDays,
+                defaultEndOffsetDays = s.DefaultEndOffsetDays,
                 deletedAt = s.DeletedAt,
             })
             .ToListAsync(cancellationToken);

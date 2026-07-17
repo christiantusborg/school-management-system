@@ -28,8 +28,14 @@ public sealed class AdminV1StudentsModuleStartsEndpoint : IEndpointMarker
         public bool UseOffset { get; init; }
         public DateTime? StartDate { get; init; }
         public int? OffsetDays { get; init; }
-        /// <summary>true resets the module back to the default (commencement).</summary>
+        /// <summary>true resets the start back to the default.</summary>
         public bool ClearOverride { get; init; }
+
+        public bool EndUseOffset { get; init; }
+        public DateTime? EndDate { get; init; }
+        public int? EndOffsetDays { get; init; }
+        /// <summary>true resets the end back to the default.</summary>
+        public bool ClearEndOverride { get; init; }
     }
 
     public sealed class SaveRequest
@@ -73,15 +79,21 @@ public sealed class AdminV1StudentsModuleStartsEndpoint : IEndpointMarker
             if (!validSubjects.Contains(item.SubjectId))
                 return Results.BadRequest(new { error = "A module doesn't belong to this enrolment." });
 
-            if (item.ClearOverride || (!item.UseOffset && item.StartDate is null) || (item.UseOffset && item.OffsetDays is null))
+            var wantsStart = !item.ClearOverride
+                && ((item.UseOffset && item.OffsetDays is not null) || (!item.UseOffset && item.StartDate is not null));
+            var wantsEnd = !item.ClearEndOverride
+                && ((item.EndUseOffset && item.EndOffsetDays is not null) || (!item.EndUseOffset && item.EndDate is not null));
+            if ((item.UseOffset && item.OffsetDays is < 0 or > 3650)
+                || (item.EndUseOffset && item.EndOffsetDays is < 0 or > 3650))
+                return Results.BadRequest(new { error = "Offset days must be between 0 and 3650." });
+
+            if (!wantsStart && !wantsEnd)
             {
-                // Back to default: drop the override row if present.
+                // Both back to default: drop the override row if present.
                 if (byId.TryGetValue(item.SubjectId, out var drop))
                     db.EnrollmentModuleStarts.Remove(drop);
                 continue;
             }
-            if (item.UseOffset && item.OffsetDays is < 0 or > 3650)
-                return Results.BadRequest(new { error = "Offset days must be between 0 and 3650." });
 
             if (!byId.TryGetValue(item.SubjectId, out var row))
             {
@@ -92,10 +104,14 @@ public sealed class AdminV1StudentsModuleStartsEndpoint : IEndpointMarker
                 };
                 db.EnrollmentModuleStarts.Add(row);
             }
-            row.UseOffset = item.UseOffset;
-            row.StartDate = item.UseOffset ? null
-                : item.StartDate is { } d ? DateTime.SpecifyKind(d.Date, DateTimeKind.Unspecified) : null;
-            row.OffsetDays = item.UseOffset ? item.OffsetDays : null;
+            row.UseOffset = wantsStart && item.UseOffset;
+            row.StartDate = wantsStart && !item.UseOffset && item.StartDate is { } d
+                ? DateTime.SpecifyKind(d.Date, DateTimeKind.Unspecified) : null;
+            row.OffsetDays = wantsStart && item.UseOffset ? item.OffsetDays : null;
+            row.EndUseOffset = wantsEnd && item.EndUseOffset;
+            row.EndDate = wantsEnd && !item.EndUseOffset && item.EndDate is { } ed
+                ? DateTime.SpecifyKind(ed.Date, DateTimeKind.Unspecified) : null;
+            row.EndOffsetDays = wantsEnd && item.EndUseOffset ? item.EndOffsetDays : null;
         }
 
         await db.SaveChangesAsync(ct);
