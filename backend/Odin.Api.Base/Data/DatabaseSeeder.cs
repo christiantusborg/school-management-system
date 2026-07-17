@@ -164,6 +164,7 @@ public static class DatabaseSeeder
         await SeedPositionFunctionsAsync(context, logger);
         await SeedEmploymentIndustriesAsync(context, logger);
         await DecryptLegacyIntakeAnswersAsync(context, logger);
+        await SeedDefaultQuestionnairesAsync(context, logger);
         await SeedPathwaysAsync(context, logger, eduLevelByName);
         await SeedIbssCoreProgrammesAsync(context, logger);
         await SeedDemoPartnersAsync(context, logger);
@@ -1861,6 +1862,42 @@ public static class DatabaseSeeder
         var kemNonce          = Convert.FromBase64String(json.RootElement.GetProperty("kemNonce").GetString()!);
 
         return (oprfSeed, clientPublicKey, kemPublicKey, kemEncPrivKey, kemNonce);
+    }
+
+    /// <summary>
+    /// Seeds the ready-made student evaluation questionnaires (school,
+    /// education, teacher, Moodle, overall satisfaction) plus the Career &amp;
+    /// Recruitment Data questionnaire. Insert-by-name only: an admin's edits
+    /// or deletions in the builder are never overwritten or resurrected —
+    /// a soft-deleted template with the same name blocks re-seeding on purpose.
+    /// </summary>
+    private static async Task SeedDefaultQuestionnairesAsync(OdinDbContext context, ILogger logger)
+    {
+        var existingNames = (await context.QuestionnaireTemplates
+                .IgnoreQueryFilters()
+                .Select(t => t.Name)
+                .ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var added = 0;
+        foreach (var (name, json) in DefaultQuestionnaires.All())
+        {
+            if (existingNames.Contains(name)) continue;
+            context.QuestionnaireTemplates.Add(new SharedLibrary.Basics.Opaque.Domains.Intake.QuestionnaireTemplate
+            {
+                Name = name,
+                Version = "1.0.0",
+                DefinitionJson = json,
+                DefinitionHash = Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json))),
+            });
+            added++;
+        }
+        if (added > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Default questionnaires: +{Count} seeded", added);
+        }
     }
 
     /// <summary>
