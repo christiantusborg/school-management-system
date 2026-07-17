@@ -401,9 +401,10 @@
                  Teachers are read-only but may still comment. -->
             <div v-if="detailModal.activeTab === 'assignments'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
+              <!-- Teachers may upload assignments too (code switch:
+                   TeacherCanUploadAssignments in RolePathGuardMiddleware). -->
               <AssignmentsPanel v-else
-                :api-base="`/v1/partner/my-students/${detailModal.studentId}/enrollments/${activeEnrollment.studentEnrollmentId}/assignments`"
-                :can-upload="false" />
+                :api-base="`/v1/partner/my-students/${detailModal.studentId}/enrollments/${activeEnrollment.studentEnrollmentId}/assignments`" />
             </div>
 
             <div v-if="detailModal.activeTab === 'letters'" class="tab-pane">

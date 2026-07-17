@@ -100,10 +100,17 @@ public sealed class RolePathGuardMiddleware
         await _next(context);
     }
 
+    /// <summary>Code-level switch: teachers may upload assignments like any
+    /// other partner user. Flip to false to make teachers comment-only on
+    /// assignments again — no redeploy of anything else needed.</summary>
+    private const bool TeacherCanUploadAssignments = true;
+
     private static bool IsTeacherAllowedWrite(string path) =>
         path.EndsWith("/grades/draft", StringComparison.OrdinalIgnoreCase)
         || (path.Contains("/assignments/", StringComparison.OrdinalIgnoreCase)
-            && path.EndsWith("/comments", StringComparison.OrdinalIgnoreCase));
+            && path.EndsWith("/comments", StringComparison.OrdinalIgnoreCase))
+        || (TeacherCanUploadAssignments
+            && path.EndsWith("/assignments", StringComparison.OrdinalIgnoreCase));
 
     private static async Task<bool> IsTeacherAsync(HttpContext context)
     {

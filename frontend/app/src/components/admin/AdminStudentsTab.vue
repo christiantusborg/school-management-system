@@ -905,8 +905,7 @@
                   <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
                 </div>
                 <AssignmentsPanel
-                  :api-base="`/v1/admin/students/${detailModal.studentId}/enrollments/${enr.studentEnrollmentId}/assignments`"
-                  :can-upload="false" />
+                  :api-base="`/v1/admin/students/${detailModal.studentId}/enrollments/${enr.studentEnrollmentId}/assignments`" />
               </div>
               <p v-if="!(detailModal.data?.enrollments ?? []).length" class="muted">No enrolments for this student yet.</p>
             </div>
@@ -1612,6 +1611,9 @@ async function savePayment() {
     payment.exists = !!res.data.exists
     payment.ok = 'Saved'
     setTimeout(() => { payment.ok = '' }, 2500)
+    // Refresh the students list in the background so the "Payment overdue"
+    // chip/badge reflects the new due dates / paid flags without a page reload.
+    load()
   } catch (err) {
     payment.error = err.response?.data?.error ?? err.message ?? 'Save failed'
   } finally {
