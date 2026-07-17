@@ -20,6 +20,7 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
         app.MapGet("/v1/admin/partners/{partnerId:guid}/datasheets", ListAsync).RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/partners/{partnerId:guid}/datasheets", CreateAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/partner-datasheets/{sheetId:guid}", GetAsync).RequireAuthorization("AdminOnly");
+        app.MapPatch("/v1/admin/partner-datasheets/{sheetId:guid}", PatchAsync).RequireAuthorization("AdminOnly");
         app.MapPut("/v1/admin/partner-datasheets/{sheetId:guid}", SaveAsync).RequireAuthorization("AdminOnly");
         app.MapDelete("/v1/admin/partner-datasheets/{sheetId:guid}", DeleteAsync).RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/partner-datasheet-files", UploadFileAsync)
@@ -32,6 +33,18 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
     {
         public Guid? DefinitionId { get; init; }
         public string? Title { get; init; }
+        /// <summary>"standalone" (default) or "group". Ignored when ParentId
+        /// is set — that always creates an "item" inside the group.</summary>
+        public string? Kind { get; init; }
+        public Guid? ParentId { get; init; }
+        /// <summary>Groups only: partners may add items below this group.</summary>
+        public bool PartnerCanAddItems { get; init; }
+    }
+
+    public sealed class PatchBody
+    {
+        public string? Title { get; init; }
+        public bool? PartnerCanAddItems { get; init; }
     }
 
     public sealed class CellDto
@@ -68,6 +81,9 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
                 definitionName = db.PartnerDatasheetDefinitions
                     .Where(d => d.PartnerDatasheetDefinitionId == s.PartnerDatasheetDefinitionId)
                     .Select(d => d.Name).FirstOrDefault(),
+                kind = s.Kind,
+                parentId = s.ParentPartnerDatasheetId,
+                partnerCanAddItems = s.PartnerCanAddItems,
                 title = s.Title,
                 updatedAt = s.UpdatedAt ?? s.CreatedAt,
             })
@@ -87,19 +103,57 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
     {
         var partnerExists = await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct);
         if (!partnerExists) return Results.NotFound();
-        var defExists = await db.PartnerDatasheetDefinitions.AnyAsync(d =>
-            d.PartnerDatasheetDefinitionId == body.DefinitionId && d.DeletedAt == null, ct);
-        if (!defExists) return Results.BadRequest(new { error = "Unknown datasheet definition." });
+
+        // Items live inside a group and inherit its definition.
+        Guid definitionId;
+        var kind = PartnerDatasheet.KindStandalone;
+        Guid? parentId = null;
+        if (body.ParentId is { } pid)
+        {
+            var group = await db.PartnerDatasheets.FirstOrDefaultAsync(s =>
+                s.PartnerDatasheetId == pid && s.PartnerId == partnerId
+                && s.Kind == PartnerDatasheet.KindGroup && s.DeletedAt == null, ct);
+            if (group is null) return Results.BadRequest(new { error = "Unknown group." });
+            definitionId = group.PartnerDatasheetDefinitionId;
+            kind = PartnerDatasheet.KindItem;
+            parentId = pid;
+        }
+        else
+        {
+            var defExists = await db.PartnerDatasheetDefinitions.AnyAsync(d =>
+                d.PartnerDatasheetDefinitionId == body.DefinitionId && d.DeletedAt == null, ct);
+            if (!defExists) return Results.BadRequest(new { error = "Unknown datasheet definition." });
+            definitionId = body.DefinitionId!.Value;
+            if (string.Equals(body.Kind, PartnerDatasheet.KindGroup, StringComparison.OrdinalIgnoreCase))
+                kind = PartnerDatasheet.KindGroup;
+        }
 
         var sheet = new PartnerDatasheet
         {
             PartnerId = partnerId,
-            PartnerDatasheetDefinitionId = body.DefinitionId!.Value,
+            PartnerDatasheetDefinitionId = definitionId,
+            Kind = kind,
+            ParentPartnerDatasheetId = parentId,
+            PartnerCanAddItems = kind == PartnerDatasheet.KindGroup && body.PartnerCanAddItems,
             Title = string.IsNullOrWhiteSpace(body.Title) ? null : body.Title.Trim(),
         };
         db.PartnerDatasheets.Add(sheet);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { partnerDatasheetId = sheet.PartnerDatasheetId });
+    }
+
+    private static async Task<IResult> PatchAsync(
+        Guid sheetId, [FromBody] PatchBody body, OdinDbContext db, CancellationToken ct)
+    {
+        var sheet = await db.PartnerDatasheets
+            .FirstOrDefaultAsync(s => s.PartnerDatasheetId == sheetId && s.DeletedAt == null, ct);
+        if (sheet is null) return Results.NotFound();
+        if (body.Title is not null) sheet.Title = string.IsNullOrWhiteSpace(body.Title) ? null : body.Title.Trim();
+        if (body.PartnerCanAddItems is { } canAdd && sheet.Kind == PartnerDatasheet.KindGroup)
+            sheet.PartnerCanAddItems = canAdd;
+        sheet.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { partnerDatasheetId = sheetId, partnerCanAddItems = sheet.PartnerCanAddItems });
     }
 
     /// <summary>Full sheet: live structure + rows + cell values.</summary>
@@ -271,6 +325,14 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
             .FirstOrDefaultAsync(s => s.PartnerDatasheetId == sheetId && s.DeletedAt == null, ct);
         if (sheet is null) return Results.NotFound();
         sheet.DeletedAt = DateTime.UtcNow;
+        // Removing a group removes its items with it.
+        if (sheet.Kind == PartnerDatasheet.KindGroup)
+        {
+            var items = await db.PartnerDatasheets
+                .Where(s => s.ParentPartnerDatasheetId == sheetId && s.DeletedAt == null)
+                .ToListAsync(ct);
+            foreach (var item in items) item.DeletedAt = DateTime.UtcNow;
+        }
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { deleted = true });
     }

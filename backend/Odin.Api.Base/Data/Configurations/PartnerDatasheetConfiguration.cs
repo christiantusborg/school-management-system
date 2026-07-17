@@ -42,6 +42,8 @@ public class PartnerDatasheetConfiguration : IEntityTypeConfiguration<PartnerDat
     {
         builder.HasKey(e => e.PartnerDatasheetId);
         builder.Property(e => e.Title).HasMaxLength(300);
+        builder.Property(e => e.Kind).HasMaxLength(20).IsRequired();
+        builder.HasIndex(e => e.ParentPartnerDatasheetId);
         builder.HasIndex(e => e.PartnerId);
         builder.HasIndex(e => e.PartnerDatasheetDefinitionId);
     }

@@ -7,21 +7,30 @@
           System Config → Partner Datasheets; the same template can be attached any number of times
           (each sheet with its own title).</p>
       </div>
-      <button type="button" class="btn-primary-sm" @click="addOpen = true">+ Add datasheet</button>
+      <button type="button" class="btn-primary-sm" @click="openAddDialog">+ Add datasheet</button>
     </div>
 
     <div v-if="error" class="err-banner">{{ error }}</div>
     <div v-if="loading" class="loading-row">Loading…</div>
 
     <table v-else-if="items.length" class="data-table" style="margin-bottom:.75rem">
-      <thead><tr><th>Datasheet</th><th>Title</th><th>Updated</th><th style="width:150px">Actions</th></tr></thead>
+      <thead><tr><th>Datasheet</th><th>Title</th><th>Updated</th><th style="width:200px">Actions</th></tr></thead>
       <tbody>
-        <tr v-for="s in items" :key="s.partnerDatasheetId" class="data-row">
-          <td class="pd-name">{{ s.definitionName }}</td>
+        <tr v-for="s in displayRows" :key="s.partnerDatasheetId" class="data-row">
+          <td class="pd-name">
+            <span v-if="s.kind === 'item'" class="pd-indent">└</span>
+            <span v-if="s.kind === 'group'">📁 </span>{{ s.definitionName }}
+            <span v-if="s.kind === 'group'" class="pd-count">({{ childrenOf(s.partnerDatasheetId).length }})</span>
+          </td>
           <td>{{ s.title || '—' }}</td>
           <td>{{ fmtDate(s.updatedAt) }}</td>
           <td class="actions-cell">
-            <button type="button" class="btn-sm" @click="openSheet(s)">✎ Open</button>
+            <button v-if="s.kind !== 'group'" type="button" class="btn-sm" @click="openSheet(s)">✎ Open</button>
+            <button v-if="s.kind === 'group'" type="button" class="btn-sm" @click="openDialogForItem(s)">+ Item</button>
+            <button v-if="s.kind === 'group'" type="button" class="btn-sm" :title="s.partnerCanAddItems ? 'Partner may add items — click to lock' : 'Partner cannot add items — click to allow'"
+                    @click="togglePartnerAdd(s)">
+              {{ s.partnerCanAddItems ? '🔓 partner' : '🔒 partner' }}
+            </button>
             <button type="button" class="btn-sm btn-danger" @click="removeSheet(s)">✕</button>
           </td>
         </tr>
@@ -35,18 +44,32 @@
         <div class="pd-dialog-head"><h3>Add datasheet</h3>
           <button type="button" class="pd-x" @click="addOpen = false">✕</button></div>
         <div class="pd-dialog-body">
-          <label class="pd-lbl">Datasheet template</label>
-          <select v-model="addDefId" class="pd-inp">
-            <option value="">— pick a template —</option>
-            <option v-for="d in definitions" :key="d.partnerDatasheetDefinitionId" :value="d.partnerDatasheetDefinitionId">{{ d.name }}</option>
-          </select>
+          <template v-if="!addParent">
+            <label class="pd-lbl">Datasheet template</label>
+            <select v-model="addDefId" class="pd-inp">
+              <option value="">— pick a template —</option>
+              <option v-for="d in definitions" :key="d.partnerDatasheetDefinitionId" :value="d.partnerDatasheetDefinitionId">{{ d.name }}</option>
+            </select>
+            <label class="pd-lbl" style="margin-top:.6rem">Create as</label>
+            <select v-model="addKind" class="pd-inp">
+              <option value="standalone">Single sheet</option>
+              <option value="group">Group — a folder holding many sheets of this template (e.g. one per teacher)</option>
+            </select>
+            <label v-if="addKind === 'group'" class="pd-check" style="margin-top:.5rem">
+              <input type="checkbox" v-model="addPartnerCanAdd" />
+              Partner may add items to this group from the partner portal
+            </label>
+          </template>
+          <div v-else class="pd-sub" style="margin-bottom:.4rem">
+            New <strong>{{ addParent.definitionName }}</strong> item in the group “{{ addParent.title || addParent.definitionName }}”.
+          </div>
           <label class="pd-lbl" style="margin-top:.6rem">Title (optional)</label>
           <input v-model="addTitle" class="pd-inp" placeholder="e.g. Visit 17 Jul 2026" />
           <div v-if="addError" class="err-banner" style="margin-top:.5rem">{{ addError }}</div>
         </div>
         <div class="pd-dialog-foot">
           <button type="button" class="btn-sm" @click="addOpen = false">Cancel</button>
-          <button type="button" class="btn-primary-sm" :disabled="adding || !addDefId" @click="addSheet">
+          <button type="button" class="btn-primary-sm" :disabled="adding || (!addDefId && !addParent)" @click="addSheet">
             {{ adding ? 'Adding…' : 'Add' }}
           </button>
         </div>
@@ -153,7 +176,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import api from '../../api/client.js'
 
 const props = defineProps({
@@ -169,8 +192,42 @@ const error = ref('')
 const addOpen = ref(false)
 const addDefId = ref('')
 const addTitle = ref('')
+const addKind = ref('standalone')
+const addPartnerCanAdd = ref(false)
+const addParent = ref(null)
 const adding = ref(false)
 const addError = ref('')
+
+// Tree order: top-level sheets/groups, each group's items right below it.
+const displayRows = computed(() => {
+  const out = []
+  for (const s of items.value.filter(x => !x.parentId)) {
+    out.push(s)
+    if (s.kind === 'group') out.push(...childrenOf(s.partnerDatasheetId))
+  }
+  return out
+})
+function childrenOf(id) {
+  return items.value.filter(x => x.parentId === id)
+}
+function openDialogForItem(group) {
+  addParent.value = group
+  addDefId.value = ''
+  addTitle.value = ''
+  addError.value = ''
+  addOpen.value = true
+}
+async function togglePartnerAdd(group) {
+  error.value = ''
+  try {
+    await api.patch(`/v1/admin/partner-datasheets/${group.partnerDatasheetId}`, {
+      partnerCanAddItems: !group.partnerCanAddItems,
+    })
+    await load()
+  } catch (e) {
+    error.value = e.response?.data?.error ?? e.message ?? 'Update failed'
+  }
+}
 
 const sheetOpen = ref(false)
 const sheet = ref({ partnerDatasheetId: '', title: '', definitionName: '', sections: [], rows: [] })
@@ -197,21 +254,36 @@ async function load() {
   }
 }
 
+function openAddDialog() {
+  addParent.value = null
+  addDefId.value = ''
+  addTitle.value = ''
+  addKind.value = 'standalone'
+  addPartnerCanAdd.value = false
+  addError.value = ''
+  addOpen.value = true
+}
+
 async function addSheet() {
-  if (adding.value || !addDefId.value) return
+  if (adding.value || (!addDefId.value && !addParent.value)) return
   adding.value = true
   addError.value = ''
   try {
     const res = await api.post(`/v1/admin/partners/${props.partnerId}/datasheets`, {
-      definitionId: addDefId.value,
+      definitionId: addParent.value ? null : addDefId.value,
       title: addTitle.value.trim() || null,
+      kind: addParent.value ? null : addKind.value,
+      parentId: addParent.value?.partnerDatasheetId ?? null,
+      partnerCanAddItems: addKind.value === 'group' ? addPartnerCanAdd.value : false,
     })
+    const wasGroup = !addParent.value && addKind.value === 'group'
     addOpen.value = false
-    addDefId.value = ''
     addTitle.value = ''
     await load()
-    const created = items.value.find(s => s.partnerDatasheetId === res.data.partnerDatasheetId)
-    if (created) await openSheet(created)
+    if (!wasGroup) {
+      const created = items.value.find(s => s.partnerDatasheetId === res.data.partnerDatasheetId)
+      if (created) await openSheet(created)
+    }
   } catch (e) {
     addError.value = e.response?.data?.error ?? e.message ?? 'Failed to add datasheet'
   } finally {
@@ -376,4 +448,6 @@ watch(() => props.partnerId, load, { immediate: true })
 .pd-grid { margin-bottom: .45rem; }
 .pd-grid td { padding: .3rem .35rem; }
 .pd-system { padding: .4rem .55rem; background: #f2f5f9; border: 1px dashed #cfd7e3; border-radius: 5px; font-size: .82rem; color: #44536a; }
+.pd-indent { color: #9aa5b1; margin-right: .35rem; margin-left: .8rem; }
+.pd-count { color: #6b7888; font-weight: 400; font-size: .78rem; }
 </style>

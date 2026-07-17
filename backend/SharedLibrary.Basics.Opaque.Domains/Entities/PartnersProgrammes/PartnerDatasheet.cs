@@ -85,9 +85,25 @@ public class PartnerDatasheetField : IDeletedAtEntity
 /// </summary>
 public class PartnerDatasheet : IDeletedAtEntity
 {
+    /// <summary>A normal single sheet.</summary>
+    public const string KindStandalone = "standalone";
+    /// <summary>A repeatable container (core's Group): holds many Item
+    /// sheets of one definition, has no data rows of its own.</summary>
+    public const string KindGroup = "group";
+    /// <summary>One entry inside a Group, e.g. one teacher.</summary>
+    public const string KindItem = "item";
+
     public Guid PartnerDatasheetId { get; set; } = Guid.NewGuid();
     public Guid PartnerId { get; set; }
     public Guid PartnerDatasheetDefinitionId { get; set; }
+    public string Kind { get; set; } = KindStandalone;
+    /// <summary>Set on Items: the Group this item belongs to. Loose
+    /// reference (no FK) to avoid a self-referencing cascade.</summary>
+    public Guid? ParentPartnerDatasheetId { get; set; }
+    /// <summary>On Groups: whether partner users may add items below this
+    /// group from the partner portal (the definition must also be
+    /// partner-editable). Admin-controlled per group.</summary>
+    public bool PartnerCanAddItems { get; set; }
     public string? Title { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

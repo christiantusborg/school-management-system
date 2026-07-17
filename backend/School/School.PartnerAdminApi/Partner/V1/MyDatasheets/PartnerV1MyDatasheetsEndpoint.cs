@@ -59,6 +59,9 @@ public sealed class PartnerV1MyDatasheetsEndpoint : IEndpointMarker
                 definitionName = db.PartnerDatasheetDefinitions
                     .Where(d => d.PartnerDatasheetDefinitionId == s.PartnerDatasheetDefinitionId)
                     .Select(d => d.Name).FirstOrDefault(),
+                kind = s.Kind,
+                parentId = s.ParentPartnerDatasheetId,
+                partnerCanAddItems = s.PartnerCanAddItems,
                 title = s.Title,
                 updatedAt = s.UpdatedAt ?? s.CreatedAt,
             })
@@ -74,15 +77,42 @@ public sealed class PartnerV1MyDatasheetsEndpoint : IEndpointMarker
         var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
         if (fail is not null) return fail;
 
+        // Items inherit the definition from their group; either way the
+        // definition must be partner-editable.
+        Guid definitionId;
+        var kind = PartnerDatasheet.KindStandalone;
+        Guid? parentId = null;
+        if (body.ParentId is { } pid)
+        {
+            var group = await db.PartnerDatasheets.FirstOrDefaultAsync(s =>
+                s.PartnerDatasheetId == pid && s.PartnerId == partnerId
+                && s.Kind == PartnerDatasheet.KindGroup && s.DeletedAt == null, ct);
+            if (group is null) return Results.BadRequest(new { error = "Unknown group." });
+            if (!group.PartnerCanAddItems)
+                return Results.BadRequest(new { error = "The Admission Office has not opened this group for partner additions." });
+            definitionId = group.PartnerDatasheetDefinitionId;
+            kind = PartnerDatasheet.KindItem;
+            parentId = pid;
+        }
+        else
+        {
+            definitionId = body.DefinitionId ?? Guid.Empty;
+            if (string.Equals(body.Kind, PartnerDatasheet.KindGroup, StringComparison.OrdinalIgnoreCase))
+                kind = PartnerDatasheet.KindGroup;
+        }
         var editable = await db.PartnerDatasheetDefinitions.AnyAsync(d =>
-            d.PartnerDatasheetDefinitionId == body.DefinitionId && d.DeletedAt == null
+            d.PartnerDatasheetDefinitionId == definitionId && d.DeletedAt == null
             && d.PartnerAccess == PartnerDatasheetDefinition.AccessEdit, ct);
         if (!editable) return Results.BadRequest(new { error = "This datasheet cannot be created from the partner portal." });
 
         var sheet = new PartnerDatasheet
         {
             PartnerId = partnerId!.Value,
-            PartnerDatasheetDefinitionId = body.DefinitionId!.Value,
+            PartnerDatasheetDefinitionId = definitionId,
+            Kind = kind,
+            ParentPartnerDatasheetId = parentId,
+            // A group the partner created themselves stays open for them.
+            PartnerCanAddItems = kind == PartnerDatasheet.KindGroup,
             Title = string.IsNullOrWhiteSpace(body.Title) ? null : body.Title.Trim(),
         };
         db.PartnerDatasheets.Add(sheet);

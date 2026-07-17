@@ -11,8 +11,12 @@
           <option value="">— pick a datasheet —</option>
           <option v-for="d in editableDefs" :key="d.partnerDatasheetDefinitionId" :value="d.partnerDatasheetDefinitionId">{{ d.name }}</option>
         </select>
+        <select v-model="addKind" class="pp-inp" style="min-width:140px">
+          <option value="standalone">Single sheet</option>
+          <option value="group">Group (folder)</option>
+        </select>
         <input v-model="addTitle" class="pp-inp" placeholder="Title, e.g. teacher's name" style="min-width:200px" />
-        <button type="button" class="pp-btn-primary" :disabled="adding || !addDefId" @click="addSheet">
+        <button type="button" class="pp-btn-primary" :disabled="adding || !addDefId" @click="addSheet(null)">
           {{ adding ? 'Adding…' : '+ Add' }}
         </button>
       </div>
@@ -24,11 +28,18 @@
     <table v-else-if="items.length" class="partner-tbl pp-tbl">
       <thead><tr><th>Datasheet</th><th>Title</th><th>Updated</th><th style="width:110px"></th></tr></thead>
       <tbody>
-        <tr v-for="s in items" :key="s.partnerDatasheetId">
-          <td>{{ s.definitionName }}</td>
+        <tr v-for="s in displayRows" :key="s.partnerDatasheetId">
+          <td>
+            <span v-if="s.kind === 'item'" class="pp-indent">└</span>
+            <span v-if="s.kind === 'group'">📁 </span>{{ s.definitionName }}
+            <span v-if="s.kind === 'group'" class="pp-count">({{ childrenOf(s.partnerDatasheetId).length }})</span>
+          </td>
           <td>{{ s.title || '—' }}</td>
           <td>{{ fmtDate(s.updatedAt) }}</td>
-          <td><button type="button" class="pp-btn" @click="openSheet(s)">✎ Open</button></td>
+          <td>
+            <button v-if="s.kind !== 'group'" type="button" class="pp-btn" @click="openSheet(s)">✎ Open</button>
+            <button v-else-if="!readOnly && s.partnerCanAddItems" type="button" class="pp-btn" @click="promptAddItem(s)">+ Add item</button>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -141,7 +152,26 @@ const error = ref('')
 
 const addDefId = ref('')
 const addTitle = ref('')
+const addKind = ref('standalone')
 const adding = ref(false)
+
+// Tree order: top-level sheets/groups, each group's items right below it.
+const displayRows = computed(() => {
+  const out = []
+  for (const s of items.value.filter(x => !x.parentId)) {
+    out.push(s)
+    if (s.kind === 'group') out.push(...childrenOf(s.partnerDatasheetId))
+  }
+  return out
+})
+function childrenOf(id) {
+  return items.value.filter(x => x.parentId === id)
+}
+function promptAddItem(group) {
+  const title = prompt(`Title for the new ${group.definitionName} entry (e.g. the teacher's name):`)
+  if (title === null) return
+  addSheet(group, title)
+}
 
 const sheetOpen = ref(false)
 const sheet = ref({ partnerDatasheetId: '', title: '', definitionName: '', partnerAccess: 'view', sections: [], rows: [] })
@@ -177,20 +207,26 @@ async function load() {
   }
 }
 
-async function addSheet() {
-  if (adding.value || !addDefId.value) return
+async function addSheet(parent, itemTitle) {
+  if (adding.value || (!parent && !addDefId.value)) return
   adding.value = true
   error.value = ''
   try {
     const res = await apiClient.post('/v1/partner/my/datasheets', {
-      definitionId: addDefId.value,
-      title: addTitle.value.trim() || null,
+      definitionId: parent ? null : addDefId.value,
+      title: (parent ? (itemTitle ?? '') : addTitle.value).trim() || null,
+      kind: parent ? null : addKind.value,
+      parentId: parent?.partnerDatasheetId ?? null,
     })
+    const wasGroup = !parent && addKind.value === 'group'
     addDefId.value = ''
     addTitle.value = ''
+    addKind.value = 'standalone'
     await load()
-    const created = items.value.find(s => s.partnerDatasheetId === res.data.partnerDatasheetId)
-    if (created) await openSheet(created)
+    if (!wasGroup) {
+      const created = items.value.find(s => s.partnerDatasheetId === res.data.partnerDatasheetId)
+      if (created) await openSheet(created)
+    }
   } catch (e) {
     error.value = e.response?.data?.error ?? e.message ?? 'Failed to add datasheet'
   } finally {
@@ -337,4 +373,6 @@ onMounted(load)
 .pp-grid { margin-bottom: .45rem; box-shadow: none; }
 .pp-grid td { padding: .3rem .35rem; }
 .pp-locked { padding: .4rem .55rem; background: #f2f5f9; border: 1px dashed #cfd7e3; border-radius: 5px; font-size: .82rem; color: #44536a; min-height: 1.9rem; }
+.pp-indent { color: #9aa5b1; margin-right: .35rem; margin-left: .8rem; }
+.pp-count { color: #6b7888; font-weight: 400; font-size: .78rem; }
 </style>
