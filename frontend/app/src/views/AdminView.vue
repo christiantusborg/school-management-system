@@ -817,7 +817,7 @@ const MANAGE_TABS = [
   { k: 'core',     label: 'Core Programmes' },
   { k: 'custom',   label: 'Custom Programmes' },
   { k: 'students', label: 'Students' },
-  { k: 'certs',    label: 'Certificates' },
+  { k: 'certs',    label: 'Partnership Documents' },
 ]
 const manageTab = ref('users')
 

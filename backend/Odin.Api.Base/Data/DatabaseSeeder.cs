@@ -1902,30 +1902,41 @@ public static class DatabaseSeeder
     }
 
     /// <summary>
-    /// Two starter partner-document types (System Config → Partner Documents):
-    /// the partnership certificate and the recruitment authorization letter.
+    /// Ready-made partnership document types (System Config → Partnership
+    /// Documents): certificates, awards, MoU/MoA, agreements and letters.
     /// Insert-by-name only — admin edits to fields, name or design are never
     /// overwritten, and removed types are not resurrected past their names.
     /// </summary>
     private static async Task SeedPartnerDocumentTypesAsync(OdinDbContext context, ILogger logger)
     {
-        var existingNames = (await context.PartnerDocumentTypes
-                .IgnoreQueryFilters()
-                .Select(t => t.Name)
-                .ToListAsync())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // One-time rename of the first-generation seed names onto the agreed
+        // document list — keeps any design/field edits made under the old name.
+        var renames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Certificate of Partnership"] = "Partnership Certificate",
+            ["Partnership Authorization Letter"] = "Authorization Letter",
+        };
+        var allTypes = await context.PartnerDocumentTypes.IgnoreQueryFilters().ToListAsync();
+        var renamed = 0;
+        foreach (var (oldName, newName) in renames)
+        {
+            var row = allTypes.FirstOrDefault(t =>
+                string.Equals(t.Name, oldName, StringComparison.OrdinalIgnoreCase) && t.DeletedAt == null);
+            if (row is null) continue;
+            if (allTypes.Any(t => string.Equals(t.Name, newName, StringComparison.OrdinalIgnoreCase))) continue;
+            row.Name = newName;
+            row.UpdatedAt = DateTime.UtcNow;
+            renamed++;
+        }
 
-        // Both starters place a "[school name]" tag, backed by a free-text
+        var existingNames = allTypes.Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Every starter places a "[school name]" tag, backed by a free-text
         // field so the Admission Office types the issuing school per document.
         var schoolField = new Letters.PartnerDocField("school-name", "School name", Letters.PartnerDocumentService.TextField, null);
-        var seeds = new (string Name, string Layout)[]
-        {
-            ("Certificate of Partnership", Letters.PartnerDocumentService.DefaultLayoutJson()),
-            ("Partnership Authorization Letter", Letters.PartnerDocumentService.AuthorizationLetterLayoutJson()),
-        };
 
         var added = 0;
-        foreach (var (name, layout) in seeds)
+        foreach (var (name, layout) in Letters.PartnerDocumentService.StarterTypes())
         {
             if (existingNames.Contains(name)) continue;
             context.PartnerDocumentTypes.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDocumentType
@@ -1936,10 +1947,10 @@ public static class DatabaseSeeder
             });
             added++;
         }
-        if (added > 0)
+        if (added > 0 || renamed > 0)
         {
             await context.SaveChangesAsync();
-            logger.LogInformation("[Seeder] Partner document types: +{Count} seeded", added);
+            logger.LogInformation("[Seeder] Partnership document types: +{Added} seeded, {Renamed} renamed", added, renamed);
         }
     }
 

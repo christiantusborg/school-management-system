@@ -2,9 +2,9 @@
   <div>
     <div class="pc-head">
       <div>
-        <div class="manage-section-title">Partner documents</div>
-        <p class="pc-sub">Certificates, authorization letters and other documents issued to this partner.
-          Document types and their designs are managed in System Config → Partner Documents;
+        <div class="manage-section-title">Partnership documents</div>
+        <p class="pc-sub">Certificates, agreements, authorization letters and other documents issued to this partner.
+          Document types and their designs are managed in System Config → Partnership Documents;
           here you add a document and fill out its fields. Download always renders the latest design.</p>
       </div>
       <button class="btn-primary-sm" @click="openDialog(null)">+ Add document</button>

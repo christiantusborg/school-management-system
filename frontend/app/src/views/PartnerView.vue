@@ -26,7 +26,7 @@
       </button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'users' }]" @click="mainTab = 'users'">My Users</button>
       <button :class="['main-tab-btn', { active: mainTab === 'forms' }]" @click="mainTab = 'forms'">Forms</button>
-      <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Certificates</button>
+      <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Partnership Documents</button>
     </div>
 
     <!-- ══ MY CORE PROGRAMMES TAB ══════════════════════════════════════════════ -->
@@ -565,8 +565,8 @@
 
     <!-- Partner cooperation certificates (issued by the Admission Office) -->
     <div v-show="mainTab === 'certs'" class="container">
-      <div class="page-head"><h1>Certificates</h1></div>
-      <p class="cert-tab-sub">Certificates, authorization letters and other documents issued to your institution by MGW.</p>
+      <div class="page-head"><h1>Partnership Documents</h1></div>
+      <p class="cert-tab-sub">Certificates, agreements, authorization letters and other partnership documents issued to your institution by MGW.</p>
       <div v-if="certsError" class="err-banner">{{ certsError }}</div>
       <div v-if="certsLoading" class="loading-row">Loading…</div>
       <table v-else-if="certs.length" class="partner-tbl">

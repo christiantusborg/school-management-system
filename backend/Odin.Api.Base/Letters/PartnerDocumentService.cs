@@ -303,12 +303,13 @@ public sealed class PartnerDocumentService(
     }
 
     /// <summary>
-    /// Starter design for a "Certificate of Partnership" type: CERTIFICATE OF
-    /// PARTNERSHIP heading, "proudly presented to", the partner name, an
-    /// honour line, date issued, Valid Until (contract end) and a signature
-    /// block. Landscape A4. All editable in the certificate editor.
+    /// Starter design for the certificate-style types (landscape A4): big
+    /// heading, "presented to" line, the partner name, an honour line, date
+    /// issued, Valid Until (contract end) and a signature block. All editable
+    /// in the certificate editor.
     /// </summary>
-    public static string DefaultLayoutJson()
+    public static string CertificateStyleLayoutJson(
+        string heading, string subtitle, string presentedLine, string honourLine)
     {
         var layout = new CertificateLayout
         {
@@ -323,11 +324,11 @@ public sealed class PartnerDocumentService(
                     Fields =
                     [
                         new CertificateField { Kind = "text", Tag = "[school name]", X = 0, Y = 90, FontSize = 34, Color = "#b08d2f", Align = "center", Bold = true, Width = 2000 },
-                        new CertificateField { Kind = "text", Text = "CERTIFICATE", X = 0, Y = 220, FontSize = 140, Color = "#2e4b3f", Align = "center", Bold = true, Width = 2000 },
-                        new CertificateField { Kind = "text", Text = "OF PARTNERSHIP", X = 0, Y = 400, FontSize = 54, Color = "#2e4b3f", Align = "center", Width = 2000 },
-                        new CertificateField { Kind = "text", Text = "This certificate is proudly presented to:", X = 0, Y = 540, FontSize = 38, Color = "#222222", Align = "center", Width = 2000 },
+                        new CertificateField { Kind = "text", Text = heading, X = 0, Y = 220, FontSize = 140, Color = "#2e4b3f", Align = "center", Bold = true, Width = 2000 },
+                        new CertificateField { Kind = "text", Text = subtitle, X = 0, Y = 400, FontSize = 54, Color = "#2e4b3f", Align = "center", Width = 2000 },
+                        new CertificateField { Kind = "text", Text = presentedLine, X = 0, Y = 540, FontSize = 38, Color = "#222222", Align = "center", Width = 2000 },
                         new CertificateField { Kind = "text", Tag = "[partner name]", X = 0, Y = 640, FontSize = 84, Color = "#2e4b3f", Align = "center", Italic = true, Width = 2000 },
-                        new CertificateField { Kind = "text", Text = "We honor and celebrate the strength of our collaboration and look forward to achieving greater heights in education, research and community engagement.", X = 300, Y = 810, FontSize = 30, Color = "#333333", Align = "center", Width = 1400 },
+                        new CertificateField { Kind = "text", Text = honourLine, X = 300, Y = 810, FontSize = 30, Color = "#333333", Align = "center", Width = 1400 },
                         new CertificateField { Kind = "text", Tag = "[date]", Prefix = "Date Issued: ", X = 160, Y = 1120, FontSize = 28, Color = "#222222", Align = "left" },
                         new CertificateField { Kind = "text", Tag = "[valid until]", Prefix = "Valid Until: ", X = 160, Y = 1180, FontSize = 28, Color = "#222222", Align = "left" },
                         new CertificateField { Kind = "text", Text = "____________________________", X = 1250, Y = 1090, FontSize = 30, Color = "#222222", Align = "center", Width = 600 },
@@ -339,4 +340,115 @@ public sealed class PartnerDocumentService(
         };
         return JsonSerializer.Serialize(layout, CertificateLayout.JsonOpts);
     }
+
+    /// <summary>Fallback certificate design when a type has no saved layout.</summary>
+    public static string DefaultLayoutJson() => CertificateStyleLayoutJson(
+        "CERTIFICATE", "OF PARTNERSHIP",
+        "This certificate is proudly presented to:",
+        "We honor and celebrate the strength of our collaboration and look forward to achieving greater heights in education, research and community engagement.");
+
+    /// <summary>
+    /// Starter design for the letter/agreement-style types (portrait A4):
+    /// school header, date, document title, flowing paragraphs (with inline
+    /// [tag] substitution) and one or two signature blocks. Paragraph heights
+    /// are estimated — everything is repositionable in the editor.
+    /// </summary>
+    public static string LetterStyleLayoutJson(string title, string[] paragraphs, bool twoSignatures)
+    {
+        const int leftX = 140;
+        const int contentW = 1134; // 1414 - 2 × 140
+        var fields = new List<CertificateField>
+        {
+            new() { Kind = "text", Tag = "[school name]", X = 0, Y = 110, FontSize = 40, Color = "#1a2d4f", Align = "center", Bold = true, Width = 1414 },
+            new() { Kind = "text", Tag = "[date]", X = 0, Y = 200, FontSize = 24, Color = "#333333", Align = "center", Width = 1414 },
+            new() { Kind = "text", Text = title, X = 0, Y = 320, FontSize = 34, Color = "#111111", Align = "center", Bold = true, Width = 1414 },
+        };
+        var y = 440;
+        foreach (var p in paragraphs)
+        {
+            fields.Add(new CertificateField { Kind = "text", Text = p, X = leftX, Y = y, FontSize = 26, Color = "#222222", Align = "left", Width = contentW });
+            // ~85 chars per rendered line at this size; 42px per line + gap.
+            y += 42 * Math.Max(1, (int)Math.Ceiling(p.Length / 85.0)) + 45;
+        }
+        var sigY = Math.Max(y + 120, 1560);
+        if (twoSignatures)
+        {
+            fields.Add(new CertificateField { Kind = "text", Text = "____________________________", X = leftX, Y = sigY, FontSize = 28, Color = "#222222", Align = "left" });
+            fields.Add(new CertificateField { Kind = "text", Tag = "[school name]", Prefix = "For ", X = leftX, Y = sigY + 60, FontSize = 24, Color = "#222222", Align = "left", Bold = true });
+            fields.Add(new CertificateField { Kind = "text", Text = "____________________________", X = 780, Y = sigY, FontSize = 28, Color = "#222222", Align = "left" });
+            fields.Add(new CertificateField { Kind = "text", Tag = "[partner name]", Prefix = "For ", X = 780, Y = sigY + 60, FontSize = 24, Color = "#222222", Align = "left", Bold = true });
+        }
+        else
+        {
+            fields.Add(new CertificateField { Kind = "text", Text = "____________________________", X = leftX, Y = sigY, FontSize = 28, Color = "#222222", Align = "left" });
+            fields.Add(new CertificateField { Kind = "text", Text = "Signature", X = leftX, Y = sigY + 60, FontSize = 26, Color = "#222222", Align = "left", Bold = true });
+            fields.Add(new CertificateField { Kind = "text", Text = "Founder & CEO", X = leftX, Y = sigY + 110, FontSize = 24, Color = "#555555", Align = "left" });
+        }
+
+        var layout = new CertificateLayout
+        {
+            Width = 1414,
+            Height = 2000,
+            PageSize = "A4",
+            Orientation = "portrait",
+            Pages = [new CertificatePage { Fields = fields }],
+        };
+        return JsonSerializer.Serialize(layout, CertificateLayout.JsonOpts);
+    }
+
+    /// <summary>
+    /// The ready-made partnership document types the seeder offers: name +
+    /// starter design. Certificates/awards use the landscape certificate
+    /// style; agreements and letters use the portrait letter style.
+    /// </summary>
+    public static (string Name, string Layout)[] StarterTypes() =>
+    [
+        ("Partnership Certificate", DefaultLayoutJson()),
+        ("Partner Award", CertificateStyleLayoutJson(
+            "AWARD", "OF PARTNERSHIP EXCELLENCE",
+            "This award is proudly presented to:",
+            "In appreciation of outstanding commitment, dedication and results in our educational partnership.")),
+        ("Partner Recognition Certificate", CertificateStyleLayoutJson(
+            "CERTIFICATE", "OF RECOGNITION",
+            "In recognition of the valued partnership with:",
+            "We recognise and appreciate the contribution made to the growth and success of our academic community.")),
+        ("Partner Accreditation Certificate", CertificateStyleLayoutJson(
+            "CERTIFICATE", "OF ACCREDITATION",
+            "This certifies that the following institution is an accredited partner:",
+            "Having met the quality standards and requirements set by the institution for its partner network.")),
+        ("Authorization Letter", AuthorizationLetterLayoutJson()),
+        ("Letter of Authorization", AuthorizationLetterLayoutJson()),
+        ("Memorandum of Understanding (MoU)", LetterStyleLayoutJson(
+            "Memorandum of Understanding (MoU)",
+            [
+                "This Memorandum of Understanding (MoU) is made on [date] between [school name] (hereinafter the \"Institution\") and [partner name] (hereinafter the \"Partner\").",
+                "Purpose: to establish a framework of cooperation between the parties for the promotion of academic programs, the recruitment and support of prospective students, and the exchange of information relevant to the partnership.",
+                "Both parties agree to work together in good faith, to represent each other accurately and professionally, and to comply with the admission standards and quality guidelines of the Institution at all times.",
+                "This MoU takes effect on the date of signing and remains valid while the partnership agreement between the parties is in force.",
+            ], twoSignatures: true)),
+        ("Memorandum of Agreement (MoA)", LetterStyleLayoutJson(
+            "Memorandum of Agreement (MoA)",
+            [
+                "This Memorandum of Agreement (MoA) is entered into on [date] by and between [school name] (hereinafter the \"Institution\") and [partner name] (hereinafter the \"Partner\").",
+                "The parties hereby agree to cooperate on the promotion of the Institution's academic programs and the recruitment of prospective students, under the terms and responsibilities set out in the partnership agreement.",
+                "The Partner shall adhere to the admission standards, quality guidelines and code of conduct established by the Institution. The Institution shall provide the Partner with the information and materials required to fulfil its role.",
+                "This MoA takes effect on the date of signing and remains valid while the partnership agreement between the parties is in force.",
+            ], twoSignatures: true)),
+        ("Collaboration Agreement", LetterStyleLayoutJson(
+            "Collaboration Agreement",
+            [
+                "This Collaboration Agreement is entered into on [date] by and between [school name] and [partner name].",
+                "The parties agree to collaborate on the promotion of academic programs, student recruitment, marketing activities and student support services, to their mutual benefit.",
+                "Each party shall bear its own costs unless otherwise agreed in writing. Nothing in this agreement creates an employment or agency relationship beyond the scope described herein.",
+                "This agreement remains valid while the partnership between the parties is in force.",
+            ], twoSignatures: true)),
+        ("Appointment Letter", LetterStyleLayoutJson(
+            "Appointment Letter",
+            [
+                "To Whom It May Concern,",
+                "This is to confirm that [partner name] has been appointed as an official admissions partner of [school name], effective [date].",
+                "The appointment authorises the partner to promote the academic programs of [school name] and to guide prospective students through the admission process in accordance with the Institution's guidelines.",
+                "This appointment remains valid while the partnership agreement between the parties is in force.",
+            ], twoSignatures: false)),
+    ];
 }

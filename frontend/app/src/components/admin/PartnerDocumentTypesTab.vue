@@ -2,7 +2,7 @@
   <div class="pdt-wrap">
     <div class="pdt-head">
       <div>
-        <h2 class="pdt-title">Partner Documents</h2>
+        <h2 class="pdt-title">Partnership Documents</h2>
         <p class="pdt-sub">{{ items.length }} document type{{ items.length === 1 ? '' : 's' }} — each type has one shared
           design and a set of fields the Admission Office fills out per partner document.</p>
       </div>
