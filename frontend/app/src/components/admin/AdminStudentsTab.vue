@@ -594,6 +594,43 @@
                     </template>
                   </dl>
                 </div>
+
+                <!-- Module start dates: default = commencement; per module the
+                     Admission Office can override with an explicit date or
+                     commencement + N days (toggle between the two modes). -->
+                <div class="detail-section" style="grid-column: 1 / -1;">
+                  <h4>Module start dates</h4>
+                  <p v-if="moduleStarts.error" class="err-banner">{{ moduleStarts.error }}</p>
+                  <p v-if="moduleStarts.loading" class="muted">Loading…</p>
+                  <template v-else-if="moduleStarts.rows.length">
+                    <div v-for="row in moduleStarts.rows" :key="row.subjectId" class="ms-row">
+                      <span class="ms-code">{{ row.code }}</span>
+                      <span class="ms-name">{{ row.name }}</span>
+                      <button class="btn-mini btn-mini-ghost" :title="row.useOffset ? 'Switch to a fixed date' : 'Switch to commencement + N days'"
+                              @click="toggleMsMode(row)">
+                        {{ row.useOffset ? '＋ days' : '📅 Date' }}
+                      </button>
+                      <template v-if="row.useOffset">
+                        <span class="muted" style="font-size:.78rem;">commencement +</span>
+                        <input type="number" min="0" max="3650" v-model.number="row.offsetDays" class="ms-inp" style="width:80px" /> days
+                        <span class="ms-resolved">→ {{ msOffsetDate(row) || '—' }}</span>
+                      </template>
+                      <template v-else>
+                        <input type="date" v-model="row.startDate" class="ms-inp" />
+                      </template>
+                      <button v-if="row.hasOverride || row.startDate || row.offsetDays != null" class="btn-mini btn-mini-ghost"
+                              title="Back to the default (commencement date)" @click="resetMsRow(row)">↺ Default</button>
+                      <span v-else class="muted" style="font-size:.74rem;">default (commencement)</span>
+                    </div>
+                    <div style="margin-top:.5rem; display:flex; align-items:center; gap:.6rem;">
+                      <button class="btn-row-details btn-row-details-sm" :disabled="moduleStarts.saving" @click="saveModuleStarts">
+                        {{ moduleStarts.saving ? 'Saving…' : 'Save module start dates' }}
+                      </button>
+                      <span v-if="moduleStarts.ok" class="ok-banner" style="display:inline-block;">Saved</span>
+                    </div>
+                  </template>
+                  <p v-else class="muted">No modules on this specialization.</p>
+                </div>
               </div>
 
                   <!-- Grades sub-tab: the full grade editor, teleported inline.
@@ -1497,6 +1534,93 @@ watch(() => detailModal.value?.data, (d) => {
   moodleDraft.password = d?.moodlePassword ?? ''
   statusEdit.value = false
 }, { immediate: true })
+
+// ── Module start dates (Enrolment sub-tab, Admission-Office only) ───────────
+const moduleStarts = reactive({ loading: false, saving: false, error: '', ok: '', commencementDate: null, rows: [] })
+
+function fmtMsDate(d) {
+  if (!d) return ''
+  try { return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) } catch { return d }
+}
+function msOffsetDate(row) {
+  const base = moduleStarts.commencementDate
+  if (!base || row.offsetDays == null || row.offsetDays === '') return ''
+  const d = new Date(base)
+  d.setDate(d.getDate() + Number(row.offsetDays))
+  return fmtMsDate(d.toISOString())
+}
+function toggleMsMode(row) {
+  row.useOffset = !row.useOffset
+  if (row.useOffset && (row.offsetDays == null || row.offsetDays === '')) row.offsetDays = 30
+  if (!row.useOffset && !row.startDate) row.startDate = (row.resolvedDate ?? '').slice(0, 10)
+}
+function resetMsRow(row) {
+  row.useOffset = false
+  row.startDate = ''
+  row.offsetDays = null
+  row.hasOverride = false
+}
+
+async function loadModuleStarts() {
+  const m = detailModal.value
+  const enr = activeEnrollment.value
+  if (!m || !enr) return
+  moduleStarts.loading = true; moduleStarts.error = ''
+  try {
+    const res = await api.get(`/v1/admin/students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/module-starts`)
+    moduleStarts.commencementDate = res.data.commencementDate
+    moduleStarts.rows = (res.data.modules ?? []).map(x => ({
+      subjectId: x.subjectId, code: x.code, name: x.name,
+      hasOverride: !!x.hasOverride,
+      useOffset: !!x.useOffset,
+      startDate: !x.useOffset && x.hasOverride ? (x.startDate ?? '').slice(0, 10) : '',
+      offsetDays: x.useOffset ? x.offsetDays : null,
+      resolvedDate: x.resolvedDate,
+    }))
+  } catch (e) {
+    moduleStarts.error = e.response?.data?.error ?? e.message ?? 'Failed to load module start dates'
+  } finally {
+    moduleStarts.loading = false
+  }
+}
+
+async function saveModuleStarts() {
+  const m = detailModal.value
+  const enr = activeEnrollment.value
+  if (!m || !enr || moduleStarts.saving) return
+  moduleStarts.saving = true; moduleStarts.error = ''; moduleStarts.ok = ''
+  try {
+    const res = await api.put(`/v1/admin/students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/module-starts`, {
+      items: moduleStarts.rows.map(r => ({
+        subjectId: r.subjectId,
+        useOffset: !!r.useOffset,
+        startDate: !r.useOffset && r.startDate ? r.startDate : null,
+        offsetDays: r.useOffset && r.offsetDays != null && r.offsetDays !== '' ? Number(r.offsetDays) : null,
+        clearOverride: !r.useOffset ? !r.startDate : (r.offsetDays == null || r.offsetDays === ''),
+      })),
+    })
+    moduleStarts.commencementDate = res.data.commencementDate
+    moduleStarts.rows = (res.data.modules ?? []).map(x => ({
+      subjectId: x.subjectId, code: x.code, name: x.name,
+      hasOverride: !!x.hasOverride,
+      useOffset: !!x.useOffset,
+      startDate: !x.useOffset && x.hasOverride ? (x.startDate ?? '').slice(0, 10) : '',
+      offsetDays: x.useOffset ? x.offsetDays : null,
+      resolvedDate: x.resolvedDate,
+    }))
+    moduleStarts.ok = 'Saved'
+    setTimeout(() => { moduleStarts.ok = '' }, 2500)
+  } catch (e) {
+    moduleStarts.error = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    moduleStarts.saving = false
+  }
+}
+
+watch(() => [detailModal.value?.activeTab, programSubTab.value, activeEnrollment.value?.studentEnrollmentId],
+  ([tab, sub]) => {
+    if (tab === 'programs' && sub === 'enrolment') loadModuleStarts()
+  })
 
 // ── Payment tab (per-enrolment tuition plan + invoice) ───────────────────────
 const payment = reactive({
@@ -3362,6 +3486,11 @@ async function runExport() {
 .pay-method-input { display: block; width: 100%; margin-top: .25rem; padding: .3rem .5rem; font-size: .78rem; border: 1px solid #ccd5e0; border-radius: 6px; font-family: inherit; }
 .pay-invoice-link { color: #1a4d8c; font-weight: 600; cursor: pointer; font-size: .85rem; text-decoration: underline; }
 .pay-invoice-link.disabled { color: #9aa5b5; cursor: default; text-decoration: none; }
+.ms-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .3rem 0; border-bottom: 1px solid #f0f3f7; font-size: .85rem; }
+.ms-code { font-family: monospace; font-weight: 700; color: #003366; min-width: 110px; }
+.ms-name { flex: 1 1 220px; }
+.ms-inp { padding: .25rem .45rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; }
+.ms-resolved { font-weight: 600; color: #1a4d8c; font-size: .82rem; }
 .pay-add-head { display: flex; align-items: center; gap: .75rem; margin-top: 1rem; padding-top: .6rem; border-top: 1px solid #eef1f5; }
 .pay-ai-card { margin: .5rem 0; padding: .6rem .7rem; background: #fbfcfe; border: 1px solid #e3e9f1; border-radius: 8px; }
 .pay-ai-head { display: flex; align-items: center; gap: .75rem; margin-bottom: .45rem; }

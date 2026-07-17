@@ -339,6 +339,18 @@
                     <dt>Status</dt><dd>{{ activeEnrollment.statusName }}</dd>
                   </dl>
                 </div>
+                <div class="detail-section" v-if="activeEnrollment" style="grid-column: 1 / -1;">
+                  <h4>Module start dates</h4>
+                  <p v-if="partnerModuleStarts.loading" class="muted">Loading…</p>
+                  <dl v-else-if="partnerModuleStarts.rows.length">
+                    <template v-for="r in partnerModuleStarts.rows" :key="r.subjectId">
+                      <dt style="font-family:monospace">{{ r.code }}</dt>
+                      <dd>{{ r.name }} — <strong>{{ formatDateD(r.resolvedDate) || 'TBC' }}</strong>
+                        <span v-if="!r.hasOverride" class="muted" style="font-size:.72rem;"> (commencement)</span></dd>
+                    </template>
+                  </dl>
+                  <p v-else class="muted">No modules.</p>
+                </div>
               </div>
             </div>
 
@@ -877,9 +889,24 @@ async function loadPartnerMoodle() {
   }
 }
 
+// Module start dates (read-only, resolved by the backend).
+const partnerModuleStarts = reactive({ loading: false, rows: [] })
+async function loadPartnerModuleStarts() {
+  const m = detailModal.value
+  const enr = activeEnrollment.value
+  if (!m || !enr) return
+  partnerModuleStarts.loading = true
+  try {
+    const res = await api.get(`/v1/partner/my-students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/module-starts`)
+    partnerModuleStarts.rows = res.data.modules ?? []
+  } catch { partnerModuleStarts.rows = [] }
+  finally { partnerModuleStarts.loading = false }
+}
+
 watch(() => [detailModal.value?.activeTab, detailModal.value?.activeEnrollmentId], ([tab]) => {
   if (tab === 'payment') loadPartnerPayment()
   if (tab === 'moodle') loadPartnerMoodle()
+  if (tab === 'details') loadPartnerModuleStarts()
 })
 const activeEnrollment = computed(() =>
   detailEnrollments.value.find(e => e.studentEnrollmentId === detailModal.value?.activeEnrollmentId)

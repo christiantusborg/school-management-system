@@ -99,6 +99,7 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
 
     // ── Enrollment ────────────────────────────────────────────────────────
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
+    public DbSet<EnrollmentModuleStart> EnrollmentModuleStarts => Set<EnrollmentModuleStart>();
     public DbSet<EnrollmentStatusNote> EnrollmentStatusNotes => Set<EnrollmentStatusNote>();
     public DbSet<EnrollmentStatus> EnrollmentStatuses => Set<EnrollmentStatus>();
     public DbSet<ModeOfStudy> ModesOfStudy => Set<ModeOfStudy>();
