@@ -1,65 +1,56 @@
 using Odin.Api.Base.Storage;
+using School.PartnerAdminApi.Admin.V1.PartnerDatasheets;
+using School.PartnerAdminApi.Partner.V1.MyUsers;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
-namespace School.PartnerAdminApi.Admin.V1.PartnerDatasheets;
+namespace School.PartnerAdminApi.Partner.V1.MyDatasheets;
 
 /// <summary>
-/// Datasheets attached to ONE partner: extra structured data the Admission
-/// Office keeps per partner. Attach any definition any number of times (each
-/// sheet gets its own title); data is stored relationally — one row per
-/// grid line, one value per cell — never as JSON.
+/// Partner-portal datasheets (Faculties, Teachers, …): partners see every
+/// sheet whose definition is "view" or "edit", and on "edit" definitions may
+/// create sheets, add grid rows and fill exactly the fields flagged
+/// PartnerCanEdit. MGW-only fields and system fields (auto id / computed
+/// name) are read-only here; partners never delete rows or sheets. Teacher
+/// partner-users are read-only via RolePathGuardMiddleware's write gate.
 /// </summary>
-[Route("/v1/admin/partners/{partnerId:guid}/datasheets")]
-[EndpointTag("Admin.PartnerDatasheets")]
-public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
+[Route("/v1/partner/my/datasheets")]
+[EndpointTag("Partner.MyDatasheets")]
+public sealed class PartnerV1MyDatasheetsEndpoint : IEndpointMarker
 {
     private const string StoragePrefix = "partner-datasheets/";
 
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
-        app.MapGet("/v1/admin/partners/{partnerId:guid}/datasheets", ListAsync).RequireAuthorization("AdminOnly");
-        app.MapPost("/v1/admin/partners/{partnerId:guid}/datasheets", CreateAsync).RequireAuthorization("AdminOnly");
-        app.MapGet("/v1/admin/partner-datasheets/{sheetId:guid}", GetAsync).RequireAuthorization("AdminOnly");
-        app.MapPut("/v1/admin/partner-datasheets/{sheetId:guid}", SaveAsync).RequireAuthorization("AdminOnly");
-        app.MapDelete("/v1/admin/partner-datasheets/{sheetId:guid}", DeleteAsync).RequireAuthorization("AdminOnly");
-        app.MapPost("/v1/admin/partner-datasheet-files", UploadFileAsync)
-            .RequireAuthorization("AdminOnly").DisableAntiforgery();
-        app.MapGet("/v1/admin/partner-datasheet-values/{valueId:guid}/file", DownloadFileAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/partner/my/datasheets", ListAsync).RequireAuthorization("PartnerOnly");
+        app.MapPost("/v1/partner/my/datasheets", CreateAsync).RequireAuthorization("PartnerOnly");
+        app.MapGet("/v1/partner/my/datasheets/{sheetId:guid}", GetAsync).RequireAuthorization("PartnerOnly");
+        app.MapPut("/v1/partner/my/datasheets/{sheetId:guid}", SaveAsync).RequireAuthorization("PartnerOnly");
+        app.MapPost("/v1/partner/my/datasheet-files", UploadFileAsync)
+            .RequireAuthorization("PartnerOnly").DisableAntiforgery();
+        app.MapGet("/v1/partner/my/datasheet-values/{valueId:guid}/file", DownloadFileAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
-    public sealed class CreateBody
+    private static async Task<IResult> ListAsync(
+        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
     {
-        public Guid? DefinitionId { get; init; }
-        public string? Title { get; init; }
-    }
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
 
-    public sealed class CellDto
-    {
-        public string? Value { get; init; }
-        public string? FileName { get; init; }
-    }
-
-    public sealed class RowDto
-    {
-        public Guid? Id { get; init; }
-        public Guid SectionId { get; init; }
-        public Dictionary<string, CellDto>? Values { get; init; }
-    }
-
-    public sealed class SaveBody
-    {
-        public string? Title { get; init; }
-        public List<RowDto>? Rows { get; init; }
-    }
-
-    private static async Task<IResult> ListAsync(Guid partnerId, OdinDbContext db, CancellationToken ct)
-    {
-        var partnerExists = await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct);
-        if (!partnerExists) return Results.NotFound();
+        var definitions = await db.PartnerDatasheetDefinitions
+            .Where(d => d.DeletedAt == null && d.PartnerAccess != PartnerDatasheetDefinition.AccessHidden)
+            .OrderBy(d => d.SortOrder).ThenBy(d => d.Name)
+            .Select(d => new
+            {
+                partnerDatasheetDefinitionId = d.PartnerDatasheetDefinitionId,
+                name = d.Name,
+                partnerAccess = d.PartnerAccess,
+            })
+            .ToListAsync(ct);
+        var visibleDefIds = definitions.Select(d => d.partnerDatasheetDefinitionId).ToList();
 
         var items = await db.PartnerDatasheets
-            .Where(s => s.PartnerId == partnerId && s.DeletedAt == null)
+            .Where(s => s.PartnerId == partnerId && s.DeletedAt == null && visibleDefIds.Contains(s.PartnerDatasheetDefinitionId))
             .OrderBy(s => s.CreatedAt)
             .Select(s => new
             {
@@ -73,27 +64,24 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
             })
             .ToListAsync(ct);
 
-        var definitions = await db.PartnerDatasheetDefinitions
-            .Where(d => d.DeletedAt == null)
-            .OrderBy(d => d.SortOrder).ThenBy(d => d.Name)
-            .Select(d => new { partnerDatasheetDefinitionId = d.PartnerDatasheetDefinitionId, name = d.Name })
-            .ToListAsync(ct);
-
         return Results.Ok(new { items, definitions });
     }
 
     private static async Task<IResult> CreateAsync(
-        Guid partnerId, [FromBody] CreateBody body, OdinDbContext db, CancellationToken ct)
+        HttpContext httpContext, [FromBody] AdminV1PartnerDatasheetsEndpoint.CreateBody body,
+        OdinDbContext db, CancellationToken ct)
     {
-        var partnerExists = await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct);
-        if (!partnerExists) return Results.NotFound();
-        var defExists = await db.PartnerDatasheetDefinitions.AnyAsync(d =>
-            d.PartnerDatasheetDefinitionId == body.DefinitionId && d.DeletedAt == null, ct);
-        if (!defExists) return Results.BadRequest(new { error = "Unknown datasheet definition." });
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+
+        var editable = await db.PartnerDatasheetDefinitions.AnyAsync(d =>
+            d.PartnerDatasheetDefinitionId == body.DefinitionId && d.DeletedAt == null
+            && d.PartnerAccess == PartnerDatasheetDefinition.AccessEdit, ct);
+        if (!editable) return Results.BadRequest(new { error = "This datasheet cannot be created from the partner portal." });
 
         var sheet = new PartnerDatasheet
         {
-            PartnerId = partnerId,
+            PartnerId = partnerId!.Value,
             PartnerDatasheetDefinitionId = body.DefinitionId!.Value,
             Title = string.IsNullOrWhiteSpace(body.Title) ? null : body.Title.Trim(),
         };
@@ -102,19 +90,30 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
         return Results.Ok(new { partnerDatasheetId = sheet.PartnerDatasheetId });
     }
 
-    /// <summary>Full sheet: live structure + rows + cell values.</summary>
-    private static async Task<IResult> GetAsync(Guid sheetId, OdinDbContext db, CancellationToken ct)
+    private static async Task<(Guid PartnerId, PartnerDatasheet? Sheet, string Access)> ResolveSheetAsync(
+        HttpContext httpContext, Guid sheetId, OdinDbContext db, CancellationToken ct)
     {
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null || partnerId is null) return (Guid.Empty, null, PartnerDatasheetDefinition.AccessHidden);
         var sheet = await db.PartnerDatasheets
-            .Where(s => s.PartnerDatasheetId == sheetId && s.DeletedAt == null)
-            .Select(s => new { s.PartnerDatasheetId, s.PartnerDatasheetDefinitionId, s.Title })
-            .FirstOrDefaultAsync(ct);
-        if (sheet is null) return Results.NotFound();
+            .FirstOrDefaultAsync(s => s.PartnerDatasheetId == sheetId && s.PartnerId == partnerId && s.DeletedAt == null, ct);
+        if (sheet is null) return (partnerId.Value, null, PartnerDatasheetDefinition.AccessHidden);
+        var access = await db.PartnerDatasheetDefinitions
+            .Where(d => d.PartnerDatasheetDefinitionId == sheet.PartnerDatasheetDefinitionId && d.DeletedAt == null)
+            .Select(d => d.PartnerAccess)
+            .FirstOrDefaultAsync(ct) ?? PartnerDatasheetDefinition.AccessHidden;
+        return (partnerId.Value, sheet, access);
+    }
+
+    private static async Task<IResult> GetAsync(
+        Guid sheetId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var (_, sheet, access) = await ResolveSheetAsync(httpContext, sheetId, db, ct);
+        if (sheet is null || access == PartnerDatasheetDefinition.AccessHidden) return Results.NotFound();
 
         var definitionName = await db.PartnerDatasheetDefinitions
             .Where(d => d.PartnerDatasheetDefinitionId == sheet.PartnerDatasheetDefinitionId)
             .Select(d => d.Name).FirstOrDefaultAsync(ct) ?? "Datasheet";
-
         var sections = await db.PartnerDatasheetSections
             .Where(s => s.PartnerDatasheetDefinitionId == sheet.PartnerDatasheetDefinitionId && s.DeletedAt == null)
             .OrderBy(s => s.SortOrder)
@@ -124,7 +123,6 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
             .Where(f => sectionIds.Contains(f.PartnerDatasheetSectionId) && f.DeletedAt == null)
             .OrderBy(f => f.SortOrder)
             .ToListAsync(ct);
-
         var rows = await db.PartnerDatasheetRows
             .Where(r => r.PartnerDatasheetId == sheetId && r.DeletedAt == null)
             .OrderBy(r => r.SortOrder)
@@ -134,11 +132,13 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
             .Where(v => rowIds.Contains(v.PartnerDatasheetRowId))
             .ToListAsync(ct);
 
+        var canEdit = access == PartnerDatasheetDefinition.AccessEdit;
         return Results.Ok(new
         {
             partnerDatasheetId = sheet.PartnerDatasheetId,
             title = sheet.Title,
             definitionName,
+            partnerAccess = access,
             sections = sections.Select(s => new
             {
                 id = s.PartnerDatasheetSectionId,
@@ -156,7 +156,7 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
                                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                             : [],
                         isRequired = f.IsRequired,
-                        partnerCanEdit = f.PartnerCanEdit,
+                        partnerCanEdit = canEdit && f.PartnerCanEdit,
                     })
                     .ToList(),
             }).ToList(),
@@ -174,26 +174,26 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
     }
 
     /// <summary>
-    /// Wholesale save: rows in the payload are updated (by id) or created in
-    /// payload order; rows missing from the payload are deleted with their
-    /// values (removing a grid line is intentional). Cells upsert per
-    /// (row, field); an empty value deletes the cell.
+    /// Partner save: existing rows update, new rows append; rows missing from
+    /// the payload are KEPT (partners never delete data). Only fields with
+    /// PartnerCanEdit take values; everything else is ignored server-side.
     /// </summary>
     private static async Task<IResult> SaveAsync(
-        Guid sheetId, [FromBody] SaveBody body, OdinDbContext db, CancellationToken ct)
+        Guid sheetId, HttpContext httpContext, [FromBody] AdminV1PartnerDatasheetsEndpoint.SaveBody body,
+        OdinDbContext db, CancellationToken ct)
     {
-        var sheet = await db.PartnerDatasheets
-            .FirstOrDefaultAsync(s => s.PartnerDatasheetId == sheetId && s.DeletedAt == null, ct);
-        if (sheet is null) return Results.NotFound();
+        var (partnerId, sheet, access) = await ResolveSheetAsync(httpContext, sheetId, db, ct);
+        if (sheet is null || access == PartnerDatasheetDefinition.AccessHidden) return Results.NotFound();
+        if (access != PartnerDatasheetDefinition.AccessEdit)
+            return Results.StatusCode(403);
 
         var validSectionIds = (await db.PartnerDatasheetSections
             .Where(s => s.PartnerDatasheetDefinitionId == sheet.PartnerDatasheetDefinitionId && s.DeletedAt == null)
             .Select(s => s.PartnerDatasheetSectionId)
             .ToListAsync(ct)).ToHashSet();
-        // System fields (autoid/computed) never take client values — the
-        // generator below owns them.
-        var validFieldIds = (await db.PartnerDatasheetFields
+        var editableFieldIds = (await db.PartnerDatasheetFields
             .Where(f => validSectionIds.Contains(f.PartnerDatasheetSectionId) && f.DeletedAt == null
+                && f.PartnerCanEdit
                 && f.Type != PartnerDatasheetField.TypeAutoId && f.Type != PartnerDatasheetField.TypeComputed)
             .Select(f => f.PartnerDatasheetFieldId)
             .ToListAsync(ct)).ToHashSet();
@@ -206,27 +206,26 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
             .Where(v => existingRowIds.Contains(v.PartnerDatasheetRowId))
             .ToListAsync(ct);
 
-        var keptRowIds = new HashSet<Guid>();
-        var order = 0;
+        var order = existingRows.Count;
         foreach (var r in body.Rows ?? [])
         {
-            if (!validSectionIds.Contains(r.SectionId))
-                return Results.BadRequest(new { error = "Row references an unknown section." });
-
+            if (!validSectionIds.Contains(r.SectionId)) continue;
             var row = r.Id is { } rid ? existingRows.FirstOrDefault(x => x.PartnerDatasheetRowId == rid) : null;
             if (row is null)
             {
-                row = new PartnerDatasheetRow { PartnerDatasheetId = sheetId, PartnerDatasheetSectionId = r.SectionId };
+                row = new PartnerDatasheetRow
+                {
+                    PartnerDatasheetId = sheetId,
+                    PartnerDatasheetSectionId = r.SectionId,
+                    SortOrder = order++,
+                };
                 db.PartnerDatasheetRows.Add(row);
                 existingRows.Add(row);
             }
-            row.SortOrder = order++;
-            row.DeletedAt = null;
-            keptRowIds.Add(row.PartnerDatasheetRowId);
 
             foreach (var (fieldIdRaw, cell) in r.Values ?? [])
             {
-                if (!Guid.TryParse(fieldIdRaw, out var fieldId) || !validFieldIds.Contains(fieldId)) continue;
+                if (!Guid.TryParse(fieldIdRaw, out var fieldId) || !editableFieldIds.Contains(fieldId)) continue;
                 var existing = existingValues.FirstOrDefault(v =>
                     v.PartnerDatasheetRowId == row.PartnerDatasheetRowId && v.PartnerDatasheetFieldId == fieldId);
                 if (string.IsNullOrWhiteSpace(cell?.Value))
@@ -250,38 +249,19 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
             }
         }
 
-        foreach (var row in existingRows.Where(x => !keptRowIds.Contains(x.PartnerDatasheetRowId)).ToList())
-        {
-            db.PartnerDatasheetValues.RemoveRange(
-                existingValues.Where(v => v.PartnerDatasheetRowId == row.PartnerDatasheetRowId));
-            db.PartnerDatasheetRows.Remove(row);
-        }
-
-        sheet.Title = string.IsNullOrWhiteSpace(body.Title) ? sheet.Title : body.Title.Trim();
+        if (!string.IsNullOrWhiteSpace(body.Title)) sheet.Title = body.Title.Trim();
         sheet.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        await PartnerDatasheetSystemValues.ApplyAsync(db, sheetId, sheet.PartnerId, ct);
+        await PartnerDatasheetSystemValues.ApplyAsync(db, sheetId, partnerId, ct);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { saved = true });
     }
 
-    private static async Task<IResult> DeleteAsync(Guid sheetId, OdinDbContext db, CancellationToken ct)
-    {
-        var sheet = await db.PartnerDatasheets
-            .FirstOrDefaultAsync(s => s.PartnerDatasheetId == sheetId && s.DeletedAt == null, ct);
-        if (sheet is null) return Results.NotFound();
-        sheet.DeletedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-        return Results.Ok(new { deleted = true });
-    }
-
-    /// <summary>
-    /// Uploads a file for a "file" cell; the returned token goes into the
-    /// cell's value on the next sheet save. Any file type, 50 MB cap.
-    /// </summary>
     private static async Task<IResult> UploadFileAsync(
-        IFormFile file, IFileStorage storage, CancellationToken ct)
+        HttpContext httpContext, IFormFile file, OdinDbContext db, IFileStorage storage, CancellationToken ct)
     {
+        var (_, _, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
         if (file is null || file.Length == 0)
             return Results.BadRequest(new { error = "file is required" });
         if (file.Length > 50 * 1024 * 1024)
@@ -297,14 +277,17 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> DownloadFileAsync(
-        Guid valueId, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+        Guid valueId, HttpContext httpContext, OdinDbContext db, IFileStorage storage, CancellationToken ct)
     {
-        var value = await db.PartnerDatasheetValues
-            .Where(v => v.PartnerDatasheetValueId == valueId)
-            .Select(v => new { v.Value, v.FileName })
-            .FirstOrDefaultAsync(ct);
-        // Only paths minted by UploadFileAsync are servable — the value is
-        // client-supplied on save, so anything else must not touch storage.
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+
+        var value = await (
+            from v in db.PartnerDatasheetValues
+            join r in db.PartnerDatasheetRows on v.PartnerDatasheetRowId equals r.PartnerDatasheetRowId
+            join s in db.PartnerDatasheets on r.PartnerDatasheetId equals s.PartnerDatasheetId
+            where v.PartnerDatasheetValueId == valueId && s.PartnerId == partnerId && s.DeletedAt == null
+            select new { v.Value, v.FileName }).FirstOrDefaultAsync(ct);
         if (value is null || !value.Value.Contains(StoragePrefix)) return Results.NotFound();
 
         try

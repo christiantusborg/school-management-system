@@ -72,7 +72,10 @@
               <div v-for="f in sec.fields" :key="f.id" class="pd-field">
                 <label class="pd-lbl">{{ f.label }}<span v-if="f.isRequired" class="pd-req">*</span></label>
                 <component :is="'div'">
-                  <input v-if="f.type === 'text'" v-model="cell(fieldsRow(sec), f.id).value" class="pd-inp" />
+                  <div v-if="f.type === 'autoid' || f.type === 'computed'" class="pd-system">
+                    {{ cell(fieldsRow(sec), f.id).value || '— generated on save —' }}
+                  </div>
+                  <input v-else-if="f.type === 'text'" v-model="cell(fieldsRow(sec), f.id).value" class="pd-inp" />
                   <input v-else-if="f.type === 'number'" v-model="cell(fieldsRow(sec), f.id).value" type="number" class="pd-inp" style="max-width:200px" />
                   <input v-else-if="f.type === 'date'" v-model="cell(fieldsRow(sec), f.id).value" type="date" class="pd-inp" style="max-width:200px" />
                   <select v-else-if="f.type === 'select'" v-model="cell(fieldsRow(sec), f.id).value" class="pd-inp" style="max-width:280px">
@@ -105,7 +108,10 @@
                 <tbody>
                   <tr v-for="(row, ri) in gridRows(sec)" :key="ri">
                     <td v-for="f in sec.fields" :key="f.id">
-                      <input v-if="f.type === 'text'" v-model="cell(row, f.id).value" class="pd-inp" />
+                      <div v-if="f.type === 'autoid' || f.type === 'computed'" class="pd-system">
+                        {{ cell(row, f.id).value || '—' }}
+                      </div>
+                      <input v-else-if="f.type === 'text'" v-model="cell(row, f.id).value" class="pd-inp" />
                       <input v-else-if="f.type === 'number'" v-model="cell(row, f.id).value" type="number" class="pd-inp" />
                       <input v-else-if="f.type === 'date'" v-model="cell(row, f.id).value" type="date" class="pd-inp" />
                       <select v-else-if="f.type === 'select'" v-model="cell(row, f.id).value" class="pd-inp">
@@ -369,4 +375,5 @@ watch(() => props.partnerId, load, { immediate: true })
 .pd-file-ok { color: #1c7a4a; font-weight: 600; }
 .pd-grid { margin-bottom: .45rem; }
 .pd-grid td { padding: .3rem .35rem; }
+.pd-system { padding: .4rem .55rem; background: #f2f5f9; border: 1px dashed #cfd7e3; border-radius: 5px; font-size: .82rem; color: #44536a; }
 </style>

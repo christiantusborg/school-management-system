@@ -166,6 +166,7 @@ public static class DatabaseSeeder
         await DecryptLegacyIntakeAnswersAsync(context, logger);
         await SeedDefaultQuestionnairesAsync(context, logger);
         await SeedPartnerDocumentTypesAsync(context, logger);
+        await SeedPartnerDatasheetTemplatesAsync(context, logger);
         await SeedPathwaysAsync(context, logger, eduLevelByName);
         await SeedIbssCoreProgrammesAsync(context, logger);
         await SeedDemoPartnersAsync(context, logger);
@@ -1951,6 +1952,119 @@ public static class DatabaseSeeder
         {
             await context.SaveChangesAsync();
             logger.LogInformation("[Seeder] Partnership document types: +{Added} seeded, {Renamed} renamed", added, renamed);
+        }
+    }
+
+    /// <summary>
+    /// Ready-made partner datasheet templates: "Faculties" (per-partner
+    /// faculty units) and "Teachers" (one sheet per teacher, with the agreed
+    /// field list, auto Faculty ID, combined Name, MGW-only checkboxes and
+    /// the document checklist). Insert-by-name only — admin edits to the
+    /// structure are never overwritten.
+    /// </summary>
+    private static async Task SeedPartnerDatasheetTemplatesAsync(OdinDbContext context, ILogger logger)
+    {
+        var existingNames = (await context.PartnerDatasheetDefinitions
+                .IgnoreQueryFilters()
+                .Select(d => d.Name)
+                .ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var added = 0;
+
+        void AddDefinition(string name, params (string Title, string Kind, (string Label, string Type, string? Options, bool Required, bool PartnerEdit)[] Fields)[] sections)
+        {
+            if (existingNames.Contains(name)) return;
+            var def = new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetDefinition
+            {
+                Name = name,
+                PartnerAccess = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetDefinition.AccessEdit,
+            };
+            context.PartnerDatasheetDefinitions.Add(def);
+            var sOrder = 0;
+            foreach (var (title, kind, fields) in sections)
+            {
+                var section = new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetSection
+                {
+                    PartnerDatasheetDefinitionId = def.PartnerDatasheetDefinitionId,
+                    Title = title,
+                    Kind = kind,
+                    SortOrder = sOrder++,
+                };
+                context.PartnerDatasheetSections.Add(section);
+                var fOrder = 0;
+                foreach (var (label, type, options, required, partnerEdit) in fields)
+                {
+                    context.PartnerDatasheetFields.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField
+                    {
+                        PartnerDatasheetSectionId = section.PartnerDatasheetSectionId,
+                        Label = label,
+                        Type = type,
+                        OptionsText = options,
+                        IsRequired = required,
+                        PartnerCanEdit = partnerEdit,
+                        SortOrder = fOrder++,
+                    });
+                }
+            }
+            added++;
+        }
+
+        const string T = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeText;
+        const string Sel = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeSelect;
+        const string B = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeBool;
+        const string F = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeFile;
+        const string Auto = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeAutoId;
+        const string Comp = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeComputed;
+        const string Grid = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetSection.KindGrid;
+        const string Flds = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetSection.KindFields;
+
+        AddDefinition("Faculties",
+            ("Faculty units", Grid, new[]
+            {
+                ("Faculty name", T, (string?)null, true, true),
+                ("Description", T, null, false, true),
+            }));
+
+        AddDefinition("Teachers",
+            ("Teacher's information", Flds, new[]
+            {
+                ("First name", T, (string?)null, true, true),
+                ("Last name", T, null, true, true),
+                ("Name", Comp, "{First name} {Last name}", false, false),
+                ("Faculty ID", Auto, "MGW-ALC-FAC-{partner}-{n}", false, false),
+                ("Faculty", T, null, false, true),
+                ("School", T, null, false, false),
+                ("Email", T, null, true, true),
+                ("Position", Sel, "Professor\nSenior Lecturer\nLecturer\nTutor\nAssessment Marker", false, true),
+                ("Main Discipline", T, null, false, true),
+                ("Gender", Sel, "Male\nFemale\nAnother gender identity\nPrefer not to say", false, true),
+                ("Teaching Programme", Sel, "Dip\nBBA\nMBA\nDBA", false, true),
+                ("Highest Degree Achieved", T, null, false, true),
+                ("Brief Bio", T, null, false, true),
+                ("Approved by IBAS Academic Office", B, null, false, false),
+                ("Faculty Academic Onboarding Programme", B, null, false, false),
+                ("Employment Type", Sel, "Part-time\nFull-time", false, true),
+                ("Status", Sel, "Active\nInactive", false, false),
+                ("Nationality", T, null, false, true),
+                ("Earned degrees (highest to lowest, with year obtained)", T, null, false, true),
+                ("Professional qualifications (list 2 of: work experience, teaching excellence, professional certifications, additional coursework - last 5 years)", T, null, false, true),
+            }),
+            ("Teacher's profile - documents", Flds, new[]
+            {
+                ("CV", F, (string?)null, false, true),
+                ("Academic transcript", F, null, false, true),
+                ("Academic certificate", F, null, false, true),
+                ("Photo", F, null, false, true),
+                ("Other documents", F, null, false, true),
+                ("Documents are uploaded", B, null, false, false),
+                ("Missing documents", Sel, "CV\nAcademic transcript\nAcademic certificate\nPhoto\nBrief Bio for public relation", false, false),
+            }));
+
+        if (added > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Partner datasheet templates: +{Count} seeded", added);
         }
     }
 

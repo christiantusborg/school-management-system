@@ -14,7 +14,7 @@
     <div v-if="loading" class="loading-row">Loading…</div>
 
     <table v-else-if="items.length" class="data-table">
-      <thead><tr><th>Name</th><th>Structure</th><th>In use</th><th style="width:170px">Actions</th></tr></thead>
+      <thead><tr><th>Name</th><th>Structure</th><th>Partner access</th><th>In use</th><th style="width:170px">Actions</th></tr></thead>
       <tbody>
         <tr v-for="d in items" :key="d.partnerDatasheetDefinitionId" class="data-row">
           <td class="pds-name">{{ d.name }}</td>
@@ -24,6 +24,7 @@
               {{ s.title }}<em> · {{ s.kind === 'grid' ? 'table' : 'fields' }} · {{ s.fields.length }}</em>
             </span>
           </td>
+          <td>{{ accessLabel(d.partnerAccess) }}</td>
           <td>{{ d.inUse ? `${d.inUse} sheet${d.inUse === 1 ? '' : 's'}` : '—' }}</td>
           <td class="actions-cell">
             <button type="button" class="btn-sm" @click="openBuilder(d)">✎ Edit</button>
@@ -45,6 +46,13 @@
           <label class="pds-lbl">Name</label>
           <input v-model="form.name" class="pds-inp" placeholder="e.g. Partner Visit Report" />
 
+          <label class="pds-lbl" style="margin-top:.6rem">Partner access</label>
+          <select v-model="form.partnerAccess" class="pds-inp" style="max-width:340px">
+            <option value="hidden">Hidden — Admission Office only</option>
+            <option value="view">View — partner sees read-only</option>
+            <option value="edit">Edit — partner may create sheets and fill flagged fields</option>
+          </select>
+
           <div v-for="(s, si) in form.sections" :key="si" class="pds-section">
             <div class="pds-section-head">
               <input v-model="s.title" class="pds-inp" placeholder="Section title" style="flex:1.5" />
@@ -63,13 +71,22 @@
                 <option value="select">Dropdown</option>
                 <option value="bool">Yes / No</option>
                 <option value="file">File upload</option>
+                <option value="autoid">Auto ID (system)</option>
+                <option value="computed">Combined (system)</option>
               </select>
               <label class="pds-req"><input type="checkbox" v-model="f.isRequired" /> req.</label>
+              <label class="pds-req" :class="{ 'pds-off': f.type === 'autoid' || f.type === 'computed' }">
+                <input type="checkbox" v-model="f.partnerCanEdit" :disabled="f.type === 'autoid' || f.type === 'computed'" /> partner
+              </label>
               <button type="button" class="btn-sm btn-danger" @click="s.fields.splice(fi, 1)">✕</button>
               <textarea v-if="f.type === 'select'" v-model="f.optionsText" class="pds-inp pds-opts" rows="2"
                         placeholder="Dropdown options — one per line"></textarea>
+              <input v-else-if="f.type === 'autoid'" v-model="f.optionsText" class="pds-inp pds-opts"
+                     placeholder="ID pattern, e.g. MGW-ALC-FAC-{partner}-{n}" />
+              <input v-else-if="f.type === 'computed'" v-model="f.optionsText" class="pds-inp pds-opts"
+                     placeholder="Template from other fields, e.g. {First name} {Last name}" />
             </div>
-            <button type="button" class="btn-sm" @click="s.fields.push({ id: null, label: '', type: 'text', optionsText: '', isRequired: false })">
+            <button type="button" class="btn-sm" @click="s.fields.push({ id: null, label: '', type: 'text', optionsText: '', isRequired: false, partnerCanEdit: false })">
               + Add {{ s.kind === 'grid' ? 'column' : 'field' }}
             </button>
           </div>
@@ -102,7 +119,11 @@ const builderOpen = ref(false)
 const builderError = ref('')
 const saving = ref(false)
 const editingId = ref('')
-const form = ref({ name: '', sections: [] })
+const form = ref({ name: '', partnerAccess: 'hidden', sections: [] })
+
+function accessLabel(a) {
+  return a === 'edit' ? 'Partner can edit' : a === 'view' ? 'Partner view only' : 'Hidden'
+}
 
 async function load() {
   loading.value = true
@@ -121,6 +142,7 @@ function openBuilder(d) {
   editingId.value = d?.partnerDatasheetDefinitionId ?? ''
   form.value = {
     name: d?.name ?? '',
+    partnerAccess: d?.partnerAccess ?? 'hidden',
     sections: (d?.sections ?? []).map(s => ({
       id: s.id,
       title: s.title,
@@ -128,6 +150,7 @@ function openBuilder(d) {
       fields: s.fields.map(f => ({
         id: f.id, label: f.label, type: f.type,
         optionsText: f.optionsText ?? '', isRequired: !!f.isRequired,
+        partnerCanEdit: !!f.partnerCanEdit,
       })),
     })),
   }
@@ -141,11 +164,12 @@ async function saveBuilder() {
   builderError.value = ''
   try {
     let defId = editingId.value
+    const head = { name: form.value.name.trim(), partnerAccess: form.value.partnerAccess }
     if (!defId) {
-      const res = await api.post('/v1/admin/partner-datasheet-definitions', { name: form.value.name.trim() })
+      const res = await api.post('/v1/admin/partner-datasheet-definitions', head)
       defId = res.data.partnerDatasheetDefinitionId
     } else {
-      await api.patch(`/v1/admin/partner-datasheet-definitions/${defId}`, { name: form.value.name.trim() })
+      await api.patch(`/v1/admin/partner-datasheet-definitions/${defId}`, head)
     }
     await api.put(`/v1/admin/partner-datasheet-definitions/${defId}/structure`, {
       sections: form.value.sections
@@ -158,8 +182,9 @@ async function saveBuilder() {
             .filter(f => f.label.trim())
             .map(f => ({
               id: f.id, label: f.label.trim(), type: f.type,
-              optionsText: f.type === 'select' ? f.optionsText : null,
+              optionsText: ['select', 'autoid', 'computed'].includes(f.type) ? f.optionsText : null,
               isRequired: !!f.isRequired,
+              partnerCanEdit: !!f.partnerCanEdit,
             })),
         })),
     })
@@ -220,5 +245,6 @@ onMounted(load)
 .pds-field-row { display: flex; gap: .4rem; align-items: center; margin-bottom: .35rem; flex-wrap: wrap; }
 .pds-req { display: flex; align-items: center; gap: .25rem; font-size: .72rem; color: #44536a; white-space: nowrap; }
 .pds-opts { flex-basis: 100%; margin-left: .1rem; }
+.pds-off { opacity: .45; }
 .pds-add-section { margin-top: .8rem; }
 </style>

@@ -10,8 +10,16 @@ namespace SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 /// </summary>
 public class PartnerDatasheetDefinition : IDeletedAtEntity
 {
+    public const string AccessHidden = "hidden";
+    public const string AccessView = "view";
+    public const string AccessEdit = "edit";
+
     public Guid PartnerDatasheetDefinitionId { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
+    /// <summary>Partner-portal access to sheets of this definition:
+    /// "hidden" (admin only), "view" (partner sees read-only), or "edit"
+    /// (partner may create sheets and fill the fields flagged PartnerCanEdit).</summary>
+    public string PartnerAccess { get; set; } = AccessHidden;
     public int SortOrder { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
@@ -49,14 +57,24 @@ public class PartnerDatasheetField : IDeletedAtEntity
     public const string TypeFile = "file";
     public const string TypeSelect = "select";
     public const string TypeBool = "bool";
+    /// <summary>System-generated id, e.g. "MGW-ALC-FAC-{partner}-{n}" —
+    /// pattern in OptionsText, sequence counted per (field, partner).</summary>
+    public const string TypeAutoId = "autoid";
+    /// <summary>System-combined value from sibling fields by label,
+    /// e.g. "{First name} {Last name}" — template in OptionsText.</summary>
+    public const string TypeComputed = "computed";
 
     public Guid PartnerDatasheetFieldId { get; set; } = Guid.NewGuid();
     public Guid PartnerDatasheetSectionId { get; set; }
     public string Label { get; set; } = string.Empty;
     public string Type { get; set; } = TypeText;
-    /// <summary>Dropdown options for "select" fields, one per line.</summary>
+    /// <summary>Dropdown options (one per line) for "select"; the pattern /
+    /// template for "autoid" / "computed".</summary>
     public string? OptionsText { get; set; }
     public bool IsRequired { get; set; }
+    /// <summary>Partner users may fill this field (definitions with
+    /// PartnerAccess "edit"). System types and MGW-only checkboxes stay false.</summary>
+    public bool PartnerCanEdit { get; set; }
     public int SortOrder { get; set; }
     public DateTime? DeletedAt { get; set; }
 }

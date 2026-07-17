@@ -10,6 +10,7 @@ public class PartnerDatasheetDefinitionConfiguration : IEntityTypeConfiguration<
     {
         builder.HasKey(e => e.PartnerDatasheetDefinitionId);
         builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.PartnerAccess).HasMaxLength(20).IsRequired();
     }
 }
 

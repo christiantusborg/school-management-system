@@ -27,6 +27,7 @@
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'users' }]" @click="mainTab = 'users'">My Users</button>
       <button :class="['main-tab-btn', { active: mainTab === 'forms' }]" @click="mainTab = 'forms'">Forms</button>
       <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Partnership Documents</button>
+      <button :class="['main-tab-btn', { active: mainTab === 'datasheets' }]" @click="mainTab = 'datasheets'">Datasheets</button>
     </div>
 
     <!-- ══ MY CORE PROGRAMMES TAB ══════════════════════════════════════════════ -->
@@ -561,6 +562,11 @@
 
     <div v-show="mainTab === 'forms'" class="container">
       <IntakeFillPanel v-if="mainTab === 'forms'" api-base="/v1/partner/intake-forms" />
+    </div>
+
+    <!-- Partner datasheets (Faculties, Teachers, …) -->
+    <div v-show="mainTab === 'datasheets'" class="container">
+      <PartnerDatasheetsPanel v-if="mainTab === 'datasheets'" />
     </div>
 
     <!-- Partner cooperation certificates (issued by the Admission Office) -->
@@ -1298,6 +1304,7 @@ import { tickets } from '../mock/tickets.js'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
 import PartnerUsersTab from '../components/partner/tabs/PartnerUsersTab.vue'
 import IntakeFillPanel from '../components/intake/IntakeFillPanel.vue'
+import PartnerDatasheetsPanel from '../components/partner/PartnerDatasheetsPanel.vue'
 import StudentReviewWizard from '../components/partner/StudentReviewWizard.vue'
 
 const router = useRouter()

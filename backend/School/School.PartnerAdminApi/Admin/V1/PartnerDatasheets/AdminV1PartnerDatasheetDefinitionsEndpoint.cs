@@ -18,7 +18,15 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
     [
         PartnerDatasheetField.TypeText, PartnerDatasheetField.TypeNumber, PartnerDatasheetField.TypeDate,
         PartnerDatasheetField.TypeFile, PartnerDatasheetField.TypeSelect, PartnerDatasheetField.TypeBool,
+        PartnerDatasheetField.TypeAutoId, PartnerDatasheetField.TypeComputed,
     ];
+    private static readonly string[] AccessLevels =
+    [
+        PartnerDatasheetDefinition.AccessHidden, PartnerDatasheetDefinition.AccessView, PartnerDatasheetDefinition.AccessEdit,
+    ];
+    // System types keep their OptionsText (pattern/template) and are never partner-editable.
+    private static bool IsSystemType(string? t) =>
+        t is PartnerDatasheetField.TypeAutoId or PartnerDatasheetField.TypeComputed;
 
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
@@ -37,6 +45,7 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
         public string? Type { get; init; }
         public string? OptionsText { get; init; }
         public bool IsRequired { get; init; }
+        public bool PartnerCanEdit { get; init; }
     }
 
     public sealed class SectionDto
@@ -61,6 +70,7 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
             {
                 d.PartnerDatasheetDefinitionId,
                 d.Name,
+                d.PartnerAccess,
                 UpdatedAt = d.UpdatedAt ?? d.CreatedAt,
                 InUse = db.PartnerDatasheets.Count(s => s.PartnerDatasheetDefinitionId == d.PartnerDatasheetDefinitionId && s.DeletedAt == null),
             })
@@ -81,6 +91,7 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
         {
             partnerDatasheetDefinitionId = d.PartnerDatasheetDefinitionId,
             name = d.Name,
+            partnerAccess = d.PartnerAccess,
             inUse = d.InUse,
             updatedAt = d.UpdatedAt,
             sections = sections
@@ -99,6 +110,7 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
                             type = f.Type,
                             optionsText = f.OptionsText,
                             isRequired = f.IsRequired,
+                            partnerCanEdit = f.PartnerCanEdit,
                         })
                         .ToList(),
                 })
@@ -114,7 +126,10 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
         var name = body.GetValueOrDefault("name")?.Trim();
         if (string.IsNullOrWhiteSpace(name))
             return Results.BadRequest(new { error = "Name is required." });
-        var def = new PartnerDatasheetDefinition { Name = name };
+        var access = body.GetValueOrDefault("partnerAccess") ?? PartnerDatasheetDefinition.AccessHidden;
+        if (!AccessLevels.Contains(access))
+            return Results.BadRequest(new { error = "Unknown partner access level." });
+        var def = new PartnerDatasheetDefinition { Name = name, PartnerAccess = access };
         db.PartnerDatasheetDefinitions.Add(def);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { partnerDatasheetDefinitionId = def.PartnerDatasheetDefinitionId });
@@ -129,6 +144,13 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
         var name = body.GetValueOrDefault("name")?.Trim();
         if (string.IsNullOrWhiteSpace(name))
             return Results.BadRequest(new { error = "Name is required." });
+        var access = body.GetValueOrDefault("partnerAccess");
+        if (access is not null)
+        {
+            if (!AccessLevels.Contains(access))
+                return Results.BadRequest(new { error = "Unknown partner access level." });
+            def.PartnerAccess = access;
+        }
         def.Name = name;
         def.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -207,8 +229,11 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
                 }
                 field.Label = f.Label!.Trim();
                 field.Type = f.Type!;
-                field.OptionsText = f.Type == PartnerDatasheetField.TypeSelect ? f.OptionsText : null;
+                field.OptionsText = f.Type == PartnerDatasheetField.TypeSelect || IsSystemType(f.Type)
+                    ? f.OptionsText
+                    : null;
                 field.IsRequired = f.IsRequired;
+                field.PartnerCanEdit = f.PartnerCanEdit && !IsSystemType(f.Type);
                 field.SortOrder = fieldOrder++;
                 field.DeletedAt = null;
                 keptFieldIds.Add(field.PartnerDatasheetFieldId);
