@@ -37,7 +37,8 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     // ── Programme / Specialization / Subject ──────────────────────────────
     public DbSet<Programme> Programmes => Set<Programme>();
     public DbSet<School> Schools => Set<School>();
-    public DbSet<PartnerCertificate> PartnerCertificates => Set<PartnerCertificate>();
+    public DbSet<PartnerDocumentType> PartnerDocumentTypes => Set<PartnerDocumentType>();
+    public DbSet<PartnerDocument> PartnerDocuments => Set<PartnerDocument>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload> AssignmentUploads => Set<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentComment> AssignmentComments => Set<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentComment>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan> EnrollmentPaymentPlans => Set<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan>();

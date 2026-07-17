@@ -206,6 +206,16 @@ public sealed class LetterTagResolver(OdinDbContext db)
         result["[partner name]"]        = enrollment.Partner?.Name ?? string.Empty;
         result["[specialization name]"] = enrollment.Specialization?.Name ?? string.Empty;
 
+        // [valid until] = end date of the partner's most-recent contract
+        // (primarily used on partner certificates; resolved here too so the
+        // tag never renders literally on a student letter).
+        var partnerContractEnd = await db.PartnerContracts
+            .Where(c => c.PartnerId == enrollment.PartnerId && c.DeletedAt == null)
+            .OrderByDescending(c => c.StartDate)
+            .Select(c => c.EndDate)
+            .FirstOrDefaultAsync(ct);
+        result["[valid until]"] = partnerContractEnd?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
+
         if (enrollment.Specialization is not null)
         {
             var prog = await db.Programmes

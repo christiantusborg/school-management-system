@@ -4,9 +4,9 @@ using School.PartnerAdminApi.Partner.V1.MyUsers;
 namespace School.PartnerAdminApi.Partner.V1.MyCertificates;
 
 /// <summary>
-/// Partner-portal view of the partner's own cooperation certificates: list the
-/// ones the Admission Office created and download each as a live-rendered PDF.
-/// Read-only for partners.
+/// Partner-portal view of the partner's own documents (certificates,
+/// authorization letters, diplomas, …): list what the Admission Office issued
+/// and download each as a live-rendered PDF. Read-only for partners.
 /// </summary>
 [Route("/v1/partner/my/certificates")]
 [EndpointTag("Partner.MyCertificates")]
@@ -15,7 +15,7 @@ public sealed class PartnerV1MyCertificatesEndpoint : IEndpointMarker
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
         app.MapGet("/v1/partner/my/certificates", ListAsync).RequireAuthorization("PartnerOnly");
-        app.MapGet("/v1/partner/my/certificates/{certificateId:guid}/download", DownloadAsync).RequireAuthorization("PartnerOnly");
+        app.MapGet("/v1/partner/my/certificates/{documentId:guid}/download", DownloadAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
@@ -25,43 +25,41 @@ public sealed class PartnerV1MyCertificatesEndpoint : IEndpointMarker
         var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
         if (fail is not null) return fail;
 
-        var items = (await db.PartnerCertificates
-            .Where(c => c.PartnerId == partnerId && c.DeletedAt == null)
-            .OrderBy(c => c.CreatedAt)
-            .Select(c => new
+        var items = (await db.PartnerDocuments
+            .Where(d => d.PartnerId == partnerId && d.DeletedAt == null)
+            .OrderBy(d => d.CreatedAt)
+            .Select(d => new
             {
-                c.PartnerCertificateId,
-                SchoolName = db.Schools.Where(s => s.SchoolId == c.SchoolId).Select(s => s.Name).FirstOrDefault(),
-                c.Kind,
-                c.Title,
-                UpdatedAt = c.UpdatedAt ?? c.CreatedAt,
+                d.PartnerDocumentId,
+                TypeName = db.PartnerDocumentTypes
+                    .Where(t => t.PartnerDocumentTypeId == d.PartnerDocumentTypeId)
+                    .Select(t => t.Name).FirstOrDefault(),
+                UpdatedAt = d.UpdatedAt ?? d.CreatedAt,
             })
             .ToListAsync(ct))
-            .Select(c => new
+            .Select(d => new
             {
-                partnerCertificateId = c.PartnerCertificateId,
-                schoolName = c.SchoolName,
-                kind = c.Kind.ToString(),
-                title = c.Title,
-                updatedAt = c.UpdatedAt,
+                partnerDocumentId = d.PartnerDocumentId,
+                typeName = d.TypeName ?? "Document",
+                updatedAt = d.UpdatedAt,
             })
             .ToList();
         return Results.Ok(new { items });
     }
 
     private static async Task<IResult> DownloadAsync(
-        Guid certificateId, HttpContext httpContext, OdinDbContext db,
-        PartnerCertificateService service, CancellationToken ct)
+        Guid documentId, HttpContext httpContext, OdinDbContext db,
+        PartnerDocumentService service, CancellationToken ct)
     {
         var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
         if (fail is not null) return fail;
 
-        var owned = await db.PartnerCertificates.AnyAsync(c =>
-            c.PartnerCertificateId == certificateId && c.PartnerId == partnerId && c.DeletedAt == null, ct);
+        var owned = await db.PartnerDocuments.AnyAsync(d =>
+            d.PartnerDocumentId == documentId && d.PartnerId == partnerId && d.DeletedAt == null, ct);
         if (!owned) return Results.NotFound();
 
-        var pdf = await service.RenderAsync(certificateId, ct);
+        var pdf = await service.RenderDocumentAsync(documentId, ct);
         if (pdf is null) return Results.NotFound();
-        return Results.File(pdf, "application/pdf", $"partner-certificate-{DateTime.UtcNow:yyyyMMdd}.pdf");
+        return Results.File(pdf, "application/pdf", $"partner-document-{DateTime.UtcNow:yyyyMMdd}.pdf");
     }
 }

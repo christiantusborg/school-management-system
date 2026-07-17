@@ -165,6 +165,7 @@ public static class DatabaseSeeder
         await SeedEmploymentIndustriesAsync(context, logger);
         await DecryptLegacyIntakeAnswersAsync(context, logger);
         await SeedDefaultQuestionnairesAsync(context, logger);
+        await SeedPartnerDocumentTypesAsync(context, logger);
         await SeedPathwaysAsync(context, logger, eduLevelByName);
         await SeedIbssCoreProgrammesAsync(context, logger);
         await SeedDemoPartnersAsync(context, logger);
@@ -1897,6 +1898,48 @@ public static class DatabaseSeeder
         {
             await context.SaveChangesAsync();
             logger.LogInformation("[Seeder] Default questionnaires: +{Count} seeded", added);
+        }
+    }
+
+    /// <summary>
+    /// Two starter partner-document types (System Config → Partner Documents):
+    /// the partnership certificate and the recruitment authorization letter.
+    /// Insert-by-name only — admin edits to fields, name or design are never
+    /// overwritten, and removed types are not resurrected past their names.
+    /// </summary>
+    private static async Task SeedPartnerDocumentTypesAsync(OdinDbContext context, ILogger logger)
+    {
+        var existingNames = (await context.PartnerDocumentTypes
+                .IgnoreQueryFilters()
+                .Select(t => t.Name)
+                .ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Both starters place a "[school name]" tag, backed by a free-text
+        // field so the Admission Office types the issuing school per document.
+        var schoolField = new Letters.PartnerDocField("school-name", "School name", Letters.PartnerDocumentService.TextField, null);
+        var seeds = new (string Name, string Layout)[]
+        {
+            ("Certificate of Partnership", Letters.PartnerDocumentService.DefaultLayoutJson()),
+            ("Partnership Authorization Letter", Letters.PartnerDocumentService.AuthorizationLetterLayoutJson()),
+        };
+
+        var added = 0;
+        foreach (var (name, layout) in seeds)
+        {
+            if (existingNames.Contains(name)) continue;
+            context.PartnerDocumentTypes.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDocumentType
+            {
+                Name = name,
+                FieldsJson = Letters.PartnerDocumentService.SerializeFields([schoolField]),
+                LayoutJson = layout,
+            });
+            added++;
+        }
+        if (added > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Partner document types: +{Count} seeded", added);
         }
     }
 

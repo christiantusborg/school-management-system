@@ -566,16 +566,15 @@
     <!-- Partner cooperation certificates (issued by the Admission Office) -->
     <div v-show="mainTab === 'certs'" class="container">
       <div class="page-head"><h1>Certificates</h1></div>
-      <p class="cert-tab-sub">Cooperation certificates and recruitment authorization letters issued to your institution by the schools of MGW.</p>
+      <p class="cert-tab-sub">Certificates, authorization letters and other documents issued to your institution by MGW.</p>
       <div v-if="certsError" class="err-banner">{{ certsError }}</div>
       <div v-if="certsLoading" class="loading-row">Loading…</div>
       <table v-else-if="certs.length" class="partner-tbl">
-        <thead><tr><th>School</th><th>Type</th><th>Document</th><th style="width:160px"></th></tr></thead>
+        <thead><tr><th>Document</th><th>Updated</th><th style="width:160px"></th></tr></thead>
         <tbody>
-          <tr v-for="c in certs" :key="c.partnerCertificateId">
-            <td>{{ c.schoolName || '—' }}</td>
-            <td>{{ c.kind === 'AuthorizationLetter' ? 'Authorization letter' : 'Certificate' }}</td>
-            <td>{{ c.title }}</td>
+          <tr v-for="c in certs" :key="c.partnerDocumentId">
+            <td>{{ c.typeName }}</td>
+            <td>{{ c.updatedAt ? new Date(c.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' }}</td>
             <td>
               <button class="cert-dl-btn" :disabled="c.downloading" @click="downloadCertificate(c)">
                 {{ c.downloading ? 'Preparing…' : '⤓ Download' }}
@@ -584,7 +583,7 @@
           </tr>
         </tbody>
       </table>
-      <p v-else-if="!certsLoading" class="cert-tab-sub">No certificates have been issued yet.</p>
+      <p v-else-if="!certsLoading" class="cert-tab-sub">No documents have been issued yet.</p>
     </div>
 
     <!-- Clone core programme modal -->
@@ -1327,7 +1326,7 @@ async function downloadCertificate(c) {
   c.downloading = true
   certsError.value = ''
   try {
-    const res = await apiClient.get(`/v1/partner/my/certificates/${c.partnerCertificateId}/download`, { responseType: 'blob' })
+    const res = await apiClient.get(`/v1/partner/my/certificates/${c.partnerDocumentId}/download`, { responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
     window.open(url, '_blank')
     setTimeout(() => URL.revokeObjectURL(url), 60_000)

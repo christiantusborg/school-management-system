@@ -33,5 +33,6 @@ public static class LetterTagRegistry
         new LetterTag("[total fees]",          "payment.totalFees"),
         new LetterTag("[number of payments]",  "payment.numberOfPayments"),
         new LetterTag("[payment plan]",        "payment.planTable"),
+        new LetterTag("[valid until]",         "partner.contractEnd"),
     };
 }

@@ -121,7 +121,7 @@
               </div>
               <p class="cert-side-hint">Click a field on the canvas to edit it, or use + Text / + Image above.</p>
 
-              <template v-if="!partnerCertificateId">
+              <template v-if="!partnerDocTypeId">
                 <h4 class="mt-row">Copy from another partner</h4>
                 <select v-model="copyFromPartnerId" class="copy-prog-select" @change="copyFromProgrammeId = ''">
                   <option v-for="p in copyPartners" :key="p.partnerId" :value="p.partnerId">{{ p.name }}</option>
@@ -135,6 +135,19 @@
                 <button type="button" class="tb-btn copy-prog-btn" :disabled="!copyFromProgrammeId || copying" @click="copyFromProgramme">
                   {{ copying ? 'Copying…' : `📋 Copy ${titleFor(letterType)} from this programme` }}
                 </button>
+              </template>
+              <template v-else>
+                <h4 class="mt-row">Copy design from another type</h4>
+                <select v-model="copyFromCertId" class="copy-prog-select">
+                  <option value="">— pick a document type —</option>
+                  <option v-for="s in copyCertSources" :key="s.partnerDocumentTypeId" :value="s.partnerDocumentTypeId">
+                    {{ s.name }}
+                  </option>
+                </select>
+                <button type="button" class="tb-btn copy-prog-btn" :disabled="!copyFromCertId || copying" @click="copyFromPartnerCert">
+                  {{ copying ? 'Copying…' : '📋 Copy this design' }}
+                </button>
+                <p v-if="!copyCertSources.length" class="cert-side-hint">No other document types exist yet.</p>
               </template>
             </template>
             <template v-else>
@@ -155,6 +168,14 @@
                   <div><label>Height</label><input type="number" :value="Math.round(selectedField.height)" min="10" @input="onImageDimChange('height', $event.target.value)" /></div>
                 </div>
                 <div class="check"><label><input type="checkbox" v-model="selectedField.lockAspect" /> Keep image ratio</label></div>
+                <template v-if="partnerDocTypeId && imageFieldTags.length">
+                  <label class="mt-row">Replace per document with</label>
+                  <select v-model="selectedField.tag">
+                    <option :value="null">— fixed image —</option>
+                    <option v-for="t in imageFieldTags" :key="t.token" :value="t.token">{{ t.token }}</option>
+                  </select>
+                  <p class="cert-side-hint">Bound placeholders show the file uploaded when the document is filled out (e.g. a partner logo).</p>
+                </template>
               </template>
 
               <template v-else-if="isGradeTableField">
@@ -286,10 +307,10 @@ const props = defineProps({
   programmeName: { type: String, default: '' },
   partnerId: { type: String, default: '' },
   letterType: { type: String, default: 'Certificate' },
-  // Partner cooperation certificate mode: when set, the editor loads/saves
-  // /v1/admin/partner-certificates/{id} instead of programme letter templates.
-  // programmeName should carry the partner name and letterType the title.
-  partnerCertificateId: { type: String, default: '' },
+  // Partner document TYPE mode: when set, the editor loads/saves the global
+  // template at /v1/admin/partner-document-types/{id} instead of programme
+  // letter templates. letterType should carry the type name for the title.
+  partnerDocTypeId: { type: String, default: '' },
 })
 const emit = defineEmits(['close', 'saved'])
 
@@ -381,6 +402,11 @@ function toggleColumn(field, key) {
 const rangeMenuOpen = ref(false)
 const copyFromProgrammeId = ref('')
 const copyFromPartnerId = ref('')
+// Partner-document-type mode: other types to copy the design from.
+const copyCertSources = ref([])
+const copyFromCertId = ref('')
+// Image-upload fields of this document type — bindable to image placeholders.
+const imageFieldTags = computed(() => tags.value.filter(t => t.source === 'field.image'))
 const partnerNames = ref({}) // partnerId → partner display name
 const partners = ref([])     // [{ partnerId, name }]
 
@@ -947,6 +973,35 @@ async function copyFromProgramme() {
   }
 }
 
+async function loadCertCopySources() {
+  if (!props.partnerDocTypeId) return
+  try {
+    const r = await apiClient.get('/v1/admin/partner-document-types')
+    copyCertSources.value = (r.data.items ?? []).filter(t => t.partnerDocumentTypeId !== props.partnerDocTypeId)
+  } catch {
+    copyCertSources.value = []
+  }
+}
+
+async function copyFromPartnerCert() {
+  if (!copyFromCertId.value || copying.value) return
+  const src = copyCertSources.value.find(s => s.partnerDocumentTypeId === copyFromCertId.value)
+  const srcLabel = src?.name ?? 'the selected type'
+  if (!confirm(`Replace this design with the one from "${srcLabel}"? Unsaved changes will be lost.`)) return
+  copying.value = true
+  try {
+    const r = await apiClient.get(`/v1/admin/partner-document-types/${copyFromCertId.value}`)
+    let parsed
+    try { parsed = JSON.parse(r.data?.certificateLayoutJson ?? 'null') } catch { parsed = null }
+    if (!parsed) { alert(`"${srcLabel}" has no valid saved design.`); return }
+    await applyParsedLayout(parsed)
+  } catch (e) {
+    saveError.value = e.response?.data?.message ?? e.message ?? 'Copy failed'
+  } finally {
+    copying.value = false
+  }
+}
+
 async function copyFromSibling() {
   const other = siblingType.value
   if (!other || copying.value) return
@@ -1034,20 +1089,21 @@ async function deleteAsset(asset) {
 
 async function load() {
   if (!props.open) return
-  if (!props.partnerCertificateId && (!props.programmeId || !props.partnerId)) return
+  if (!props.partnerDocTypeId && (!props.programmeId || !props.partnerId)) return
   loading.value = true
   loadError.value = ''
   try {
     const [tplRes, tagRes, assetRes] = await Promise.all([
-      props.partnerCertificateId
-        ? apiClient.get(`/v1/admin/partner-certificates/${props.partnerCertificateId}`)
+      props.partnerDocTypeId
+        ? apiClient.get(`/v1/admin/partner-document-types/${props.partnerDocTypeId}`)
         : apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`, {
             params: { partnerId: props.partnerId },
           }),
       apiClient.get('/v1/admin/letter-tags'),
       apiClient.get('/v1/admin/letter-assets'),
     ])
-    tags.value = tagRes.data.items ?? []
+    // Document types bring their own tag palette (base tags + custom fields).
+    tags.value = props.partnerDocTypeId ? (tplRes.data.tags ?? []) : (tagRes.data.items ?? [])
     assets.value = assetRes.data.items ?? []
     const urlMap = { ...assetUrls.value }
     await Promise.all(assets.value.map(async (a) => {
@@ -1055,10 +1111,10 @@ async function load() {
       catch { urlMap[a.letterAssetId] = '' }
     }))
     assetUrls.value = urlMap
-    const existing = props.partnerCertificateId
+    const existing = props.partnerDocTypeId
       ? tplRes.data
       : (tplRes.data.items ?? []).find(t => t.letterType === props.letterType)
-    isPublished.value = props.partnerCertificateId ? true : !!existing?.isPublished
+    isPublished.value = props.partnerDocTypeId ? true : !!existing?.isPublished
     let next
     try { next = JSON.parse(existing?.certificateLayoutJson ?? 'null') } catch { next = null }
     layout.width = next?.width ?? 2000
@@ -1143,8 +1199,8 @@ async function onPreview() {
   previewing.value = true
   saveError.value = ''
   try {
-    const previewUrl = props.partnerCertificateId
-      ? `/v1/admin/partner-certificates/${props.partnerCertificateId}/preview`
+    const previewUrl = props.partnerDocTypeId
+      ? `/v1/admin/partner-document-types/${props.partnerDocTypeId}/preview`
       : `/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}/preview`
     const res = await apiClient.post(previewUrl, buildLayoutPayload(), { responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
@@ -1170,8 +1226,8 @@ async function onSave() {
   saveError.value = ''
   try {
     const payload = buildLayoutPayload()
-    if (props.partnerCertificateId) {
-      await apiClient.put(`/v1/admin/partner-certificates/${props.partnerCertificateId}`, payload)
+    if (props.partnerDocTypeId) {
+      await apiClient.put(`/v1/admin/partner-document-types/${props.partnerDocTypeId}`, payload)
     } else {
       await apiClient.put(`/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}`, payload,
         { params: { partnerId: props.partnerId } })
@@ -1189,7 +1245,9 @@ let resizeHandler = null
 watch(() => props.open, (open) => {
   if (open) {
     copyFromProgrammeId.value = ''
-    if (!props.partnerCertificateId) loadProgrammes()
+    copyFromCertId.value = ''
+    if (props.partnerDocTypeId) loadCertCopySources()
+    else loadProgrammes()
     load()
     resizeHandler = () => fitStage()
     window.addEventListener('resize', resizeHandler)

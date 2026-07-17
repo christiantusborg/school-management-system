@@ -235,7 +235,7 @@ builder.Services.AddScoped<Odin.Api.Base.Letters.LetterTagResolver>();
 builder.Services.AddSingleton<Odin.Api.Base.Letters.LetterPdfRenderer>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.LetterReleaseService>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.ProvisionalTranscriptService>();
-builder.Services.AddScoped<Odin.Api.Base.Letters.PartnerCertificateService>();
+builder.Services.AddScoped<Odin.Api.Base.Letters.PartnerDocumentService>();
 builder.Services.AddScoped<Odin.Api.Base.Documents.AssignmentService>();
 builder.Services.AddScoped<Odin.Api.Base.Payments.InvoicePdfService>();
 builder.Services.AddScoped<Odin.Api.Base.Letters.LetterEmailService>();

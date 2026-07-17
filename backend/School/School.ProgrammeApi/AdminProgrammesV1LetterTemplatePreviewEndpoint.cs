@@ -122,6 +122,7 @@ public sealed class AdminProgrammesV1LetterTemplatePreviewEndpoint : IEndpointMa
         tags["[additional fees]"]      = "-";
         tags["[total fees]"]           = "-";
         tags["[number of payments]"]   = "-";
+        tags["[valid until]"]          = "-";
         tags["[payment plan]"] =
             "Payment 1: Bank transfer / Credit card, USD 2,250.00, due 01 September 2026\n" +
             "Payment 2: Bank transfer / Credit card, USD 2,250.00, due 01 December 2026\n" +
