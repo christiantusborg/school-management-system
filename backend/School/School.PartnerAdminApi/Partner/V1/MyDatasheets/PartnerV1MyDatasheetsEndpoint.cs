@@ -32,13 +32,19 @@ public sealed class PartnerV1MyDatasheetsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> ListAsync(
-        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        HttpContext httpContext, OdinDbContext db, CancellationToken ct, [FromQuery] string? scope = null)
     {
         var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
         if (fail is not null) return fail;
 
+        // Faculty side matches Scope == faculty; datasheet side matches
+        // everything else (legacy rows may carry an empty Scope).
+        var faculty = scope == "faculty";
         var definitions = await db.PartnerDatasheetDefinitions
-            .Where(d => d.DeletedAt == null && d.PartnerAccess != PartnerDatasheetDefinition.AccessHidden)
+            .Where(d => d.DeletedAt == null && d.PartnerAccess != PartnerDatasheetDefinition.AccessHidden
+                && (faculty
+                    ? d.Scope == PartnerDatasheetDefinition.ScopeFaculty
+                    : d.Scope != PartnerDatasheetDefinition.ScopeFaculty))
             .OrderBy(d => d.SortOrder).ThenBy(d => d.Name)
             .Select(d => new
             {
@@ -62,6 +68,7 @@ public sealed class PartnerV1MyDatasheetsEndpoint : IEndpointMarker
                 kind = s.Kind,
                 parentId = s.ParentPartnerDatasheetId,
                 partnerCanAddItems = s.PartnerCanAddItems,
+                teacherUserId = s.TeacherUserId,
                 title = s.Title,
                 updatedAt = s.UpdatedAt ?? s.CreatedAt,
             })

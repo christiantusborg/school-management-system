@@ -167,6 +167,7 @@ public static class DatabaseSeeder
         await SeedDefaultQuestionnairesAsync(context, logger);
         await SeedPartnerDocumentTypesAsync(context, logger);
         await SeedPartnerDatasheetTemplatesAsync(context, logger);
+        await SeedFacultyProfileStructureAsync(context, logger);
         await SeedPathwaysAsync(context, logger, eduLevelByName);
         await SeedIbssCoreProgrammesAsync(context, logger);
         await SeedDemoPartnersAsync(context, logger);
@@ -1956,78 +1957,53 @@ public static class DatabaseSeeder
     }
 
     /// <summary>
-    /// Ready-made partner datasheet templates: "Faculties" (per-partner
-    /// faculty units) and "Teachers" (one sheet per teacher, with the agreed
-    /// field list, auto Faculty ID, combined Name, MGW-only checkboxes and
-    /// the document checklist). Insert-by-name only — admin edits to the
-    /// structure are never overwritten.
+    /// Retires the first-generation "Faculties"/"Teachers" datasheet seeds
+    /// (superseded by the dedicated Faculties feature) when no partner ever
+    /// used them.
     /// </summary>
     private static async Task SeedPartnerDatasheetTemplatesAsync(OdinDbContext context, ILogger logger)
     {
-        var existingNames = (await context.PartnerDatasheetDefinitions
-                .IgnoreQueryFilters()
-                .Select(d => d.Name)
-                .ToListAsync())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var added = 0;
-
-        void AddDefinition(string name, params (string Title, string Kind, (string Label, string Type, string? Options, bool Required, bool PartnerEdit)[] Fields)[] sections)
+        var legacy = await context.PartnerDatasheetDefinitions
+            .Where(d => d.DeletedAt == null
+                && d.Scope != SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetDefinition.ScopeFaculty
+                && (d.Name == "Faculties" || d.Name == "Teachers"))
+            .ToListAsync();
+        var retired = 0;
+        foreach (var d in legacy)
         {
-            if (existingNames.Contains(name)) return;
-            var def = new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetDefinition
-            {
-                Name = name,
-                PartnerAccess = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetDefinition.AccessEdit,
-            };
-            context.PartnerDatasheetDefinitions.Add(def);
-            var sOrder = 0;
-            foreach (var (title, kind, fields) in sections)
-            {
-                var section = new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetSection
-                {
-                    PartnerDatasheetDefinitionId = def.PartnerDatasheetDefinitionId,
-                    Title = title,
-                    Kind = kind,
-                    SortOrder = sOrder++,
-                };
-                context.PartnerDatasheetSections.Add(section);
-                var fOrder = 0;
-                foreach (var (label, type, options, required, partnerEdit) in fields)
-                {
-                    context.PartnerDatasheetFields.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField
-                    {
-                        PartnerDatasheetSectionId = section.PartnerDatasheetSectionId,
-                        Label = label,
-                        Type = type,
-                        OptionsText = options,
-                        IsRequired = required,
-                        PartnerCanEdit = partnerEdit,
-                        SortOrder = fOrder++,
-                    });
-                }
-            }
-            added++;
+            var inUse = await context.PartnerDatasheets.AnyAsync(s =>
+                s.PartnerDatasheetDefinitionId == d.PartnerDatasheetDefinitionId && s.DeletedAt == null);
+            if (inUse) continue;
+            d.DeletedAt = DateTime.UtcNow;
+            retired++;
         }
+        if (retired > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Legacy faculty datasheet templates retired: {Count}", retired);
+        }
+    }
 
-        const string T = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeText;
-        const string Sel = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeSelect;
-        const string B = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeBool;
-        const string F = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeFile;
-        const string Auto = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeAutoId;
-        const string Comp = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetField.TypeComputed;
-        const string Grid = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetSection.KindGrid;
-        const string Flds = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.PartnerDatasheetSection.KindFields;
+    /// <summary>
+    /// Seeds the default Faculty Profile Information structure (the Faculties
+    /// feature's OWN tables — not datasheets) with the agreed teacher field
+    /// list. Runs only when the structure tables are completely empty, so an
+    /// admin-edited (or migrated) structure is never overwritten.
+    /// </summary>
+    private static async Task SeedFacultyProfileStructureAsync(OdinDbContext context, ILogger logger)
+    {
+        if (await context.FacultyProfileSections.IgnoreQueryFilters().AnyAsync()) return;
 
-        AddDefinition("Faculties",
-            ("Faculty units", Grid, new[]
-            {
-                ("Faculty name", T, (string?)null, true, true),
-                ("Description", T, null, false, true),
-            }));
+        const string T = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileField.TypeText;
+        const string Sel = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileField.TypeSelect;
+        const string B = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileField.TypeBool;
+        const string F = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileField.TypeFile;
+        const string Auto = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileField.TypeAutoId;
+        const string Comp = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileField.TypeComputed;
 
-        AddDefinition("Teachers",
-            ("Teacher's information", Flds, new[]
+        var sections = new (string Title, string Kind, (string Label, string Type, string? Options, bool Required, bool PartnerEdit)[] Fields)[]
+        {
+            ("Teacher's information", SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileSection.KindFields, new[]
             {
                 ("First name", T, (string?)null, true, true),
                 ("Last name", T, null, true, true),
@@ -2050,7 +2026,7 @@ public static class DatabaseSeeder
                 ("Earned degrees (highest to lowest, with year obtained)", T, null, false, true),
                 ("Professional qualifications (list 2 of: work experience, teaching excellence, professional certifications, additional coursework - last 5 years)", T, null, false, true),
             }),
-            ("Teacher's profile - documents", Flds, new[]
+            ("Teacher's profile - documents", SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileSection.KindFields, new[]
             {
                 ("CV", F, (string?)null, false, true),
                 ("Academic transcript", F, null, false, true),
@@ -2059,13 +2035,36 @@ public static class DatabaseSeeder
                 ("Other documents", F, null, false, true),
                 ("Documents are uploaded", B, null, false, false),
                 ("Missing documents", Sel, "CV\nAcademic transcript\nAcademic certificate\nPhoto\nBrief Bio for public relation", false, false),
-            }));
+            }),
+        };
 
-        if (added > 0)
+        var sOrder = 0;
+        foreach (var (title, kind, fields) in sections)
         {
-            await context.SaveChangesAsync();
-            logger.LogInformation("[Seeder] Partner datasheet templates: +{Count} seeded", added);
+            var section = new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileSection
+            {
+                Title = title,
+                Kind = kind,
+                SortOrder = sOrder++,
+            };
+            context.FacultyProfileSections.Add(section);
+            var fOrder = 0;
+            foreach (var (label, type, options, required, partnerEdit) in fields)
+            {
+                context.FacultyProfileFields.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileField
+                {
+                    FacultyProfileSectionId = section.FacultyProfileSectionId,
+                    Label = label,
+                    Type = type,
+                    OptionsText = options,
+                    IsRequired = required,
+                    PartnerCanEdit = partnerEdit,
+                    SortOrder = fOrder++,
+                });
+            }
         }
+        await context.SaveChangesAsync();
+        logger.LogInformation("[Seeder] Faculty profile structure seeded ({Count} sections)", sections.Length);
     }
 
     /// <summary>

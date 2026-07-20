@@ -2,19 +2,22 @@
   <div>
     <div class="pd-head">
       <div>
-        <div class="manage-section-title">Datasheets</div>
-        <p class="pd-sub">Extra structured data on this partner. Templates are built in
+        <div class="manage-section-title">{{ isFaculty ? 'Faculties' : 'Datasheets' }}</div>
+        <p v-if="isFaculty" class="pd-sub">This partner's teachers. Each teacher gets a profile based on the
+          structure defined in System Config → Faculty Profile Information (auto Faculty ID and combined
+          name are generated on save). Partners fill their part from the portal; 🔒 fields are MGW-only.</p>
+        <p v-else class="pd-sub">Extra structured data on this partner. Templates are built in
           System Config → Partner Datasheets; the same template can be attached any number of times
           (each sheet with its own title).</p>
       </div>
-      <button type="button" class="btn-primary-sm" @click="openAddDialog">+ Add datasheet</button>
+      <button type="button" class="btn-primary-sm" @click="openAddDialog">{{ isFaculty ? '+ Add teacher' : '+ Add datasheet' }}</button>
     </div>
 
     <div v-if="error" class="err-banner">{{ error }}</div>
     <div v-if="loading" class="loading-row">Loading…</div>
 
     <table v-else-if="items.length" class="data-table" style="margin-bottom:.75rem">
-      <thead><tr><th>Datasheet</th><th>Title</th><th>Updated</th><th style="width:200px">Actions</th></tr></thead>
+      <thead><tr><th>{{ isFaculty ? 'Faculty profile' : 'Datasheet' }}</th><th>{{ isFaculty ? 'Teacher' : 'Title' }}</th><th>Updated</th><th style="width:200px">Actions</th></tr></thead>
       <tbody>
         <tr v-for="s in displayRows" :key="s.partnerDatasheetId" class="data-row">
           <td class="pd-name">
@@ -36,15 +39,16 @@
         </tr>
       </tbody>
     </table>
-    <p v-else-if="!loading" class="pd-sub" style="margin:.5rem 0;">No datasheets yet — click “+ Add datasheet”.</p>
+    <p v-else-if="!loading" class="pd-sub" style="margin:.5rem 0;">
+      {{ isFaculty ? 'No teachers yet — click “+ Add teacher”.' : 'No datasheets yet — click “+ Add datasheet”.' }}</p>
 
     <!-- Add dialog -->
     <div v-if="addOpen" class="pd-backdrop" @click.self="addOpen = false">
       <div class="pd-dialog" style="width:min(440px,100%)">
-        <div class="pd-dialog-head"><h3>Add datasheet</h3>
+        <div class="pd-dialog-head"><h3>{{ isFaculty ? 'Add teacher' : 'Add datasheet' }}</h3>
           <button type="button" class="pd-x" @click="addOpen = false">✕</button></div>
         <div class="pd-dialog-body">
-          <template v-if="!addParent">
+          <template v-if="!addParent && !isFaculty">
             <label class="pd-lbl">Datasheet template</label>
             <select v-model="addDefId" class="pd-inp">
               <option value="">— pick a template —</option>
@@ -60,16 +64,33 @@
               Partner may add items to this group from the partner portal
             </label>
           </template>
-          <div v-else class="pd-sub" style="margin-bottom:.4rem">
+          <div v-else-if="addParent" class="pd-sub" style="margin-bottom:.4rem">
             New <strong>{{ addParent.definitionName }}</strong> item in the group “{{ addParent.title || addParent.definitionName }}”.
           </div>
-          <label class="pd-lbl" style="margin-top:.6rem">Title (optional)</label>
-          <input v-model="addTitle" class="pd-inp" placeholder="e.g. Visit 17 Jul 2026" />
+          <label class="pd-lbl" style="margin-top:.6rem">{{ isFaculty ? "Teacher's name" : 'Title (optional)' }}</label>
+          <input v-model="addTitle" class="pd-inp" :placeholder="isFaculty ? 'e.g. Nguyen Van Anh' : 'e.g. Visit 17 Jul 2026'" />
+
+          <template v-if="isFaculty && !addParent">
+            <label class="pd-check" style="margin-top:.8rem">
+              <input type="checkbox" v-model="addCreateLogin" />
+              Also create a portal login for this teacher (partner user with the Teacher role)
+            </label>
+            <template v-if="addCreateLogin">
+              <label class="pd-lbl" style="margin-top:.5rem">Login username *</label>
+              <input v-model="addLoginUsername" class="pd-inp" placeholder="e.g. nguyen.van.anh" />
+              <label class="pd-lbl" style="margin-top:.5rem">Login email</label>
+              <input v-model="addLoginEmail" class="pd-inp" type="email" placeholder="teacher@partner.edu" />
+              <label class="pd-lbl" style="margin-top:.5rem">Password (leave blank to auto-generate)</label>
+              <input v-model="addLoginPassword" class="pd-inp" type="text" />
+            </template>
+          </template>
           <div v-if="addError" class="err-banner" style="margin-top:.5rem">{{ addError }}</div>
         </div>
         <div class="pd-dialog-foot">
           <button type="button" class="btn-sm" @click="addOpen = false">Cancel</button>
-          <button type="button" class="btn-primary-sm" :disabled="adding || (!addDefId && !addParent)" @click="addSheet">
+          <button type="button" class="btn-primary-sm"
+                  :disabled="adding || (!addDefId && !addParent && !isFaculty) || (isFaculty && addCreateLogin && !addLoginUsername.trim())"
+                  @click="addSheet">
             {{ adding ? 'Adding…' : 'Add' }}
           </button>
         </div>
@@ -182,7 +203,10 @@ import api from '../../api/client.js'
 const props = defineProps({
   partnerId: { type: String, required: true },
   partnerName: { type: String, default: '' },
+  // 'datasheet' (default) or 'faculty' — same engine, different feature.
+  scope: { type: String, default: 'datasheet' },
 })
+const isFaculty = computed(() => props.scope === 'faculty')
 
 const items = ref([])
 const definitions = ref([])
@@ -197,6 +221,11 @@ const addPartnerCanAdd = ref(false)
 const addParent = ref(null)
 const adding = ref(false)
 const addError = ref('')
+// Faculty mode: optionally create the teacher's portal login alongside the profile.
+const addCreateLogin = ref(true)
+const addLoginUsername = ref('')
+const addLoginEmail = ref('')
+const addLoginPassword = ref('')
 
 // Tree order: top-level sheets/groups, each group's items right below it.
 const displayRows = computed(() => {
@@ -244,7 +273,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const res = await api.get(`/v1/admin/partners/${props.partnerId}/datasheets`)
+    const res = await api.get(`/v1/admin/partners/${props.partnerId}/datasheets`, { params: { scope: props.scope } })
     items.value = res.data.items ?? []
     definitions.value = res.data.definitions ?? []
   } catch (e) {
@@ -260,22 +289,38 @@ function openAddDialog() {
   addTitle.value = ''
   addKind.value = 'standalone'
   addPartnerCanAdd.value = false
+  addCreateLogin.value = isFaculty.value
+  addLoginUsername.value = ''
+  addLoginEmail.value = ''
+  addLoginPassword.value = ''
   addError.value = ''
   addOpen.value = true
 }
 
 async function addSheet() {
-  if (adding.value || (!addDefId.value && !addParent.value)) return
+  const facultyDefId = isFaculty.value ? definitions.value[0]?.partnerDatasheetDefinitionId : null
+  if (adding.value || (!addDefId.value && !addParent.value && !facultyDefId)) return
   adding.value = true
   addError.value = ''
   try {
     const res = await api.post(`/v1/admin/partners/${props.partnerId}/datasheets`, {
-      definitionId: addParent.value ? null : addDefId.value,
+      definitionId: addParent.value ? null : (facultyDefId ?? addDefId.value),
       title: addTitle.value.trim() || null,
       kind: addParent.value ? null : addKind.value,
       parentId: addParent.value?.partnerDatasheetId ?? null,
       partnerCanAddItems: addKind.value === 'group' ? addPartnerCanAdd.value : false,
     })
+    // Faculty mode: also create the teacher's partner-user login (Teacher role).
+    if (isFaculty.value && !addParent.value && addCreateLogin.value && addLoginUsername.value.trim()) {
+      const ures = await api.post(`/v1/admin/school/partners/${props.partnerId}/users`, {
+        username: addLoginUsername.value.trim(),
+        email: addLoginEmail.value.trim() || undefined,
+        password: addLoginPassword.value.trim() || undefined,
+        isTeacher: true,
+      })
+      if (ures.data?.temporaryPassword)
+        alert(`Teacher login created.\nUsername: ${addLoginUsername.value.trim()}\nTemporary password: ${ures.data.temporaryPassword}\n\nCopy it now — it is not shown again.`)
+    }
     const wasGroup = !addParent.value && addKind.value === 'group'
     addOpen.value = false
     addTitle.value = ''

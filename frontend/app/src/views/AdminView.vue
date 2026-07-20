@@ -483,8 +483,8 @@
           <PartnerCertificatesTab v-if="manageTab === 'certs'" :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
         </div>
 
-        <div v-show="manageTab === 'datasheets'" class="manage-section">
-          <PartnerDatasheetsTab v-if="manageTab === 'datasheets'" :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
+        <div v-show="manageTab === 'faculties'" class="manage-section">
+          <FacultyTeachersTab v-if="manageTab === 'faculties'" :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
         </div>
 
         <div v-show="manageTab === 'students'" class="manage-section">
@@ -672,7 +672,7 @@ import PartnerProfileTab from '../components/partner/tabs/PartnerProfileTab.vue'
 import PartnerCoreProgrammesTab from '../components/partner/tabs/PartnerCoreProgrammesTab.vue'
 import PartnerCustomProgrammesTab from '../components/partner/tabs/PartnerCustomProgrammesTab.vue'
 import PartnerCertificatesTab from '../components/admin/PartnerCertificatesTab.vue'
-import PartnerDatasheetsTab from '../components/admin/PartnerDatasheetsTab.vue'
+import FacultyTeachersTab from '../components/admin/FacultyTeachersTab.vue'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
 import AdminStudentsTab from '../components/admin/AdminStudentsTab.vue'
 import AdminUsersTab from '../components/admin/AdminUsersTab.vue'
@@ -837,13 +837,13 @@ const showPartnerWizard = ref(false)
 // Everyday tabs stay in the row; setup-ish tabs live under the ⚙ gear.
 const MANAGE_TABS = [
   { k: 'students', label: 'Students' },
-  { k: 'datasheets', label: 'Datasheets' },
 ]
 const GEAR_TABS = [
   { k: 'profile',    label: 'Profile' },
   { k: 'users',      label: 'Users' },
   { k: 'programmes', label: 'Programmes' },
   { k: 'certs',      label: 'Partnership Documents' },
+  { k: 'faculties',  label: 'Faculties' },
 ]
 const manageTab = ref('students')
 const gearOpen = ref(false)

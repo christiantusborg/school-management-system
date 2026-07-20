@@ -63,8 +63,10 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
 
     private static async Task<IResult> ListAsync(OdinDbContext db, CancellationToken ct)
     {
+        // != faculty (not == datasheet) so legacy rows with an empty Scope
+        // keep behaving as ordinary datasheets.
         var defs = await db.PartnerDatasheetDefinitions
-            .Where(d => d.DeletedAt == null)
+            .Where(d => d.DeletedAt == null && d.Scope != PartnerDatasheetDefinition.ScopeFaculty)
             .OrderBy(d => d.SortOrder).ThenBy(d => d.Name)
             .Select(d => new
             {

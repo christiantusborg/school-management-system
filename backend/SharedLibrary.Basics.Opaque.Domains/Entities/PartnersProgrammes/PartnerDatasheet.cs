@@ -14,8 +14,16 @@ public class PartnerDatasheetDefinition : IDeletedAtEntity
     public const string AccessView = "view";
     public const string AccessEdit = "edit";
 
+    /// <summary>Ordinary datasheet template (Partner Datasheets config).</summary>
+    public const string ScopeDatasheet = "datasheet";
+    /// <summary>THE single Faculty Profile Information structure — same
+    /// builder/engine, but surfaced as the Faculties feature, never in the
+    /// datasheet UIs.</summary>
+    public const string ScopeFaculty = "faculty";
+
     public Guid PartnerDatasheetDefinitionId { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
+    public string Scope { get; set; } = ScopeDatasheet;
     /// <summary>Partner-portal access to sheets of this definition:
     /// "hidden" (admin only), "view" (partner sees read-only), or "edit"
     /// (partner may create sheets and fill the fields flagged PartnerCanEdit).</summary>
@@ -104,6 +112,11 @@ public class PartnerDatasheet : IDeletedAtEntity
     /// group from the partner portal (the definition must also be
     /// partner-editable). Admin-controlled per group.</summary>
     public bool PartnerCanAddItems { get; set; }
+
+    /// <summary>Faculty profiles only: the teacher USER (partner user with
+    /// IsTeacher) this profile belongs to. Teachers are accounts, not sheets
+    /// — the sheet merely stores the profile data for that user.</summary>
+    public string? TeacherUserId { get; set; }
     public string? Title { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

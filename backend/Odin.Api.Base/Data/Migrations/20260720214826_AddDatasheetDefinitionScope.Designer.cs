@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Odin.Api.Base.Data;
@@ -11,9 +12,11 @@ using Odin.Api.Base.Data;
 namespace Odin.Api.Base.Data.Migrations
 {
     [DbContext(typeof(OdinDbContext))]
-    partial class OdinDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260720214826_AddDatasheetDefinitionScope")]
+    partial class AddDatasheetDefinitionScope
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -4552,74 +4555,6 @@ namespace Odin.Api.Base.Data.Migrations
                     b.ToTable("PartnerUsers");
                 });
 
-            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileField", b =>
-                {
-                    b.Property<Guid>("FacultyProfileFieldId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<Guid>("FacultyProfileSectionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsRequired")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<string>("OptionsText")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("PartnerCanEdit")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.HasKey("FacultyProfileFieldId");
-
-                    b.HasIndex("FacultyProfileSectionId");
-
-                    b.ToTable("FacultyProfileFields");
-                });
-
-            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.FacultyProfileSection", b =>
-                {
-                    b.Property<Guid>("FacultyProfileSectionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.HasKey("FacultyProfileSectionId");
-
-                    b.ToTable("FacultyProfileSections");
-                });
-
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.LetterAsset", b =>
                 {
                     b.Property<Guid>("LetterAssetId")
@@ -4798,10 +4733,6 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Property<Guid>("PartnerId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("TeacherUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("character varying(450)");
-
                     b.Property<string>("Title")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
@@ -4816,8 +4747,6 @@ namespace Odin.Api.Base.Data.Migrations
                     b.HasIndex("PartnerDatasheetDefinitionId");
 
                     b.HasIndex("PartnerId");
-
-                    b.HasIndex("TeacherUserId");
 
                     b.ToTable("PartnerDatasheets");
                 });
@@ -5340,98 +5269,6 @@ namespace Odin.Api.Base.Data.Migrations
                     b.HasIndex("SpecializationId");
 
                     b.ToTable("Subjects");
-                });
-
-            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.Teacher", b =>
-                {
-                    b.Property<Guid>("TeacherId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<Guid>("PartnerId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("UserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("character varying(450)");
-
-                    b.HasKey("TeacherId");
-
-                    b.HasIndex("PartnerId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("Teachers");
-                });
-
-            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.TeacherProfileRow", b =>
-                {
-                    b.Property<Guid>("TeacherProfileRowId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<Guid>("FacultyProfileSectionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("TeacherId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("TeacherProfileRowId");
-
-                    b.HasIndex("TeacherId");
-
-                    b.ToTable("TeacherProfileRows");
-                });
-
-            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.TeacherProfileValue", b =>
-                {
-                    b.Property<Guid>("TeacherProfileValueId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("FacultyProfileFieldId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("FileName")
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<Guid>("TeacherProfileRowId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("Value")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("TeacherProfileValueId");
-
-                    b.HasIndex("TeacherProfileRowId", "FacultyProfileFieldId")
-                        .IsUnique();
-
-                    b.ToTable("TeacherProfileValues");
                 });
 
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.Pathway", b =>

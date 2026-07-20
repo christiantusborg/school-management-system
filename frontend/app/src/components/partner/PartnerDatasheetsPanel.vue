@@ -2,22 +2,27 @@
   <div>
     <div class="pp-head">
       <div>
-        <h1>Datasheets</h1>
-        <p class="pp-sub">Faculty and teacher records for your institution. Fields marked with a lock are
+        <h1>{{ isFaculty ? 'Faculties' : 'Datasheets' }}</h1>
+        <p v-if="isFaculty" class="pp-sub">Your institution's teachers. Add one profile per teacher and fill in
+          their information — 🔒 fields are maintained by the Admission Office. Faculty ID and Name are
+          generated automatically on save.</p>
+        <p v-else class="pp-sub">Additional records for your institution. Fields marked with a lock are
           maintained by the Admission Office.</p>
       </div>
       <div v-if="!readOnly" class="pp-add">
-        <select v-model="addDefId" class="pp-inp" style="min-width:220px">
-          <option value="">— pick a datasheet —</option>
-          <option v-for="d in editableDefs" :key="d.partnerDatasheetDefinitionId" :value="d.partnerDatasheetDefinitionId">{{ d.name }}</option>
-        </select>
-        <select v-model="addKind" class="pp-inp" style="min-width:140px">
-          <option value="standalone">Single sheet</option>
-          <option value="group">Group (folder)</option>
-        </select>
-        <input v-model="addTitle" class="pp-inp" placeholder="Title, e.g. teacher's name" style="min-width:200px" />
-        <button type="button" class="pp-btn-primary" :disabled="adding || !addDefId" @click="addSheet(null)">
-          {{ adding ? 'Adding…' : '+ Add' }}
+        <template v-if="!isFaculty">
+          <select v-model="addDefId" class="pp-inp" style="min-width:220px">
+            <option value="">— pick a datasheet —</option>
+            <option v-for="d in editableDefs" :key="d.partnerDatasheetDefinitionId" :value="d.partnerDatasheetDefinitionId">{{ d.name }}</option>
+          </select>
+          <select v-model="addKind" class="pp-inp" style="min-width:140px">
+            <option value="standalone">Single sheet</option>
+            <option value="group">Group (folder)</option>
+          </select>
+        </template>
+        <input v-model="addTitle" class="pp-inp" :placeholder="isFaculty ? 'Teacher\'s name' : 'Title, e.g. teacher\'s name'" style="min-width:200px" />
+        <button type="button" class="pp-btn-primary" :disabled="adding || (!addDefId && !isFaculty)" @click="addSheet(null)">
+          {{ adding ? 'Adding…' : (isFaculty ? '+ Add teacher' : '+ Add') }}
         </button>
       </div>
     </div>
@@ -26,7 +31,7 @@
     <div v-if="loading" class="pp-loading">Loading…</div>
 
     <table v-else-if="items.length" class="partner-tbl pp-tbl">
-      <thead><tr><th>Datasheet</th><th>Title</th><th>Updated</th><th style="width:110px"></th></tr></thead>
+      <thead><tr><th>{{ isFaculty ? 'Faculty profile' : 'Datasheet' }}</th><th>{{ isFaculty ? 'Teacher' : 'Title' }}</th><th>Updated</th><th style="width:110px"></th></tr></thead>
       <tbody>
         <tr v-for="s in displayRows" :key="s.partnerDatasheetId">
           <td>
@@ -43,7 +48,7 @@
         </tr>
       </tbody>
     </table>
-    <p v-else-if="!loading" class="pp-sub">No datasheets yet.</p>
+    <p v-else-if="!loading" class="pp-sub">{{ isFaculty ? 'No teachers yet.' : 'No datasheets yet.' }}</p>
 
     <!-- Fill dialog -->
     <div v-if="sheetOpen" class="pp-backdrop" @click.self="sheetOpen = false">
@@ -145,6 +150,12 @@ import { ref, computed, onMounted } from 'vue'
 import apiClient from '../../api/client.js'
 import { auth } from '../../store/auth.js'
 
+const props = defineProps({
+  // 'datasheet' (default) or 'faculty' — same engine, different feature.
+  scope: { type: String, default: 'datasheet' },
+})
+const isFaculty = computed(() => props.scope === 'faculty')
+
 const items = ref([])
 const definitions = ref([])
 const loading = ref(false)
@@ -197,7 +208,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const res = await apiClient.get('/v1/partner/my/datasheets')
+    const res = await apiClient.get('/v1/partner/my/datasheets', { params: { scope: props.scope } })
     items.value = res.data.items ?? []
     definitions.value = res.data.definitions ?? []
   } catch (e) {
@@ -208,12 +219,13 @@ async function load() {
 }
 
 async function addSheet(parent, itemTitle) {
-  if (adding.value || (!parent && !addDefId.value)) return
+  const facultyDefId = isFaculty.value ? definitions.value[0]?.partnerDatasheetDefinitionId : null
+  if (adding.value || (!parent && !addDefId.value && !facultyDefId)) return
   adding.value = true
   error.value = ''
   try {
     const res = await apiClient.post('/v1/partner/my/datasheets', {
-      definitionId: parent ? null : addDefId.value,
+      definitionId: parent ? null : (facultyDefId ?? addDefId.value),
       title: (parent ? (itemTitle ?? '') : addTitle.value).trim() || null,
       kind: parent ? null : addKind.value,
       parentId: parent?.partnerDatasheetId ?? null,

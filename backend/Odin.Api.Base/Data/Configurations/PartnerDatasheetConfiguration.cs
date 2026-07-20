@@ -11,6 +11,7 @@ public class PartnerDatasheetDefinitionConfiguration : IEntityTypeConfiguration<
         builder.HasKey(e => e.PartnerDatasheetDefinitionId);
         builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
         builder.Property(e => e.PartnerAccess).HasMaxLength(20).IsRequired();
+        builder.Property(e => e.Scope).HasMaxLength(20).IsRequired();
     }
 }
 
@@ -44,6 +45,8 @@ public class PartnerDatasheetConfiguration : IEntityTypeConfiguration<PartnerDat
         builder.Property(e => e.Title).HasMaxLength(300);
         builder.Property(e => e.Kind).HasMaxLength(20).IsRequired();
         builder.HasIndex(e => e.ParentPartnerDatasheetId);
+        builder.Property(e => e.TeacherUserId).HasMaxLength(450);
+        builder.HasIndex(e => e.TeacherUserId);
         builder.HasIndex(e => e.PartnerId);
         builder.HasIndex(e => e.PartnerDatasheetDefinitionId);
     }
