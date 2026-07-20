@@ -837,13 +837,13 @@ const showPartnerWizard = ref(false)
 // Everyday tabs stay in the row; setup-ish tabs live under the ⚙ gear.
 const MANAGE_TABS = [
   { k: 'students', label: 'Students' },
-  { k: 'certs',    label: 'Partnership Documents' },
   { k: 'datasheets', label: 'Datasheets' },
 ]
 const GEAR_TABS = [
   { k: 'profile',    label: 'Profile' },
   { k: 'users',      label: 'Users' },
   { k: 'programmes', label: 'Programmes' },
+  { k: 'certs',      label: 'Partnership Documents' },
 ]
 const manageTab = ref('students')
 const gearOpen = ref(false)
