@@ -301,6 +301,7 @@
 
     <!-- ══════════════════════ PARTNERS TAB ══════════════════════ -->
     <div v-show="tab === 'partners'" class="container">
+      <template v-if="!managingPartner">
       <div class="page-header">
         <div>
           <h1 class="page-title">Partners</h1>
@@ -357,13 +358,16 @@
           </tbody>
         </table>
       </div>
+      </template>
 
-      <!-- Manage partner — right-side drawer so it isn't buried under a long list -->
-      <Teleport to="body">
-        <div v-if="managingPartner" class="manage-backdrop" @click="managingPartner = null"></div>
-        <aside v-if="managingPartner" ref="managePanelEl" class="manage-drawer" @click.stop>
-        <div class="manage-panel-header">
-          <h2>{{ managingPartner.name }}</h2>
+      <!-- Manage partner — full-page view replacing the list, so every tab
+           (students, documents, datasheets, …) gets the whole width. -->
+      <div v-if="managingPartner" class="manage-full">
+        <div class="manage-full-header">
+          <div>
+            <a href="#" class="manage-back" @click.prevent="managingPartner = null">← Back to partners overview</a>
+            <h1 class="page-title">{{ managingPartner.name }}</h1>
+          </div>
           <button class="btn-close-panel" @click="managingPartner = null">✕ Close</button>
         </div>
 
@@ -471,8 +475,7 @@
         <div v-show="manageTab === 'students'" class="manage-section">
           <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" @add-student="openAddStudentForManagedPartner" />
         </div>
-        </aside>
-      </Teleport>
+      </div>
     </div>
 
     <!-- ══════════════════════ ADMIN USERS TAB (SuperAdministrator only) ══════════════════════ -->
@@ -1515,15 +1518,16 @@ function logout() { auth.logout(); router.push('/login') }
 
 /* Manage drawer — right-side slide-in for editing a partner. Renders via
    <Teleport to="body"> so it isn't constrained by the partners container. */
-.manage-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45);
-  z-index: 1000; animation: fade-in 120ms ease-out; }
-.manage-drawer { position: fixed; top: 0; right: 0; bottom: 0;
-  width: min(780px, 95vw); background: #fff; z-index: 1001;
-  box-shadow: -8px 0 24px rgba(0,0,0,0.15);
-  padding: 1.25rem 1.5rem; overflow-y: auto;
-  animation: slide-in 180ms ease-out; }
+/* Manage partner — full-page card replacing the partners list. */
+.manage-full { background: #fff; border: 1.5px solid #dde6f0; border-radius: 10px;
+  padding: 1.25rem 1.75rem 1.75rem; box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+  animation: fade-in 120ms ease-out; }
+.manage-full-header { display: flex; justify-content: space-between; align-items: flex-start;
+  border-bottom: 1.5px solid #e8edf4; padding-bottom: 0.75rem; margin-bottom: 1rem; }
+.manage-back { display: inline-block; font-size: 0.82rem; color: #4a6a96; text-decoration: none;
+  margin-bottom: 0.35rem; font-weight: 600; }
+.manage-back:hover { text-decoration: underline; color: #003366; }
 @keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 
 /* Legacy inline panel styles (kept in case other views still use them) */
 .manage-panel { background: #fff; border: 1.5px solid #dde6f0; border-radius: 10px;
