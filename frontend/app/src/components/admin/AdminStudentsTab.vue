@@ -63,6 +63,13 @@
             </div>
           </td>
           <td class="enrol-actions-cell">
+            <div v-if="s.signingUp" class="enrol-actions">
+              <button class="btn-review-sm btn-continue-signup" :disabled="s.openingSignup"
+                      title="Open the signup wizard exactly where this applicant stopped — no password needed."
+                      @click.stop="continueSignup(s)">
+                {{ s.openingSignup ? 'Opening…' : '▶ Continue signup' }}
+              </button>
+            </div>
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-actions">
               <button v-if="e.statusCode === 'AwaitingGradesApproval'" class="btn-review-sm btn-grades-approve"
                       @click.stop="openGradeReview(s, e)">
@@ -2604,6 +2611,23 @@ const REJECT_PRESETS = [
 ]
 
 const gradeModal = ref(null)
+// "Continue signup": mint a wizard token for the unfinished application and
+// open the public wizard in a new tab exactly where the applicant stopped.
+async function continueSignup(s) {
+  if (s.openingSignup) return
+  s.openingSignup = true
+  loadError.value = ''
+  try {
+    const res = await api.post(`/v1/admin/students/${s.studentId}/signup-token`)
+    const { wizardToken, partnerSlug } = res.data
+    window.open(`/#/apply?partner=${encodeURIComponent(partnerSlug)}&resume=${encodeURIComponent(wizardToken)}`, '_blank')
+  } catch (e) {
+    loadError.value = e.response?.data?.error ?? e.message ?? 'Could not open the signup wizard'
+  } finally {
+    s.openingSignup = false
+  }
+}
+
 async function openGradeReview(s, e) {
   gradeModal.value = reactive({
     studentId: s.studentId,
@@ -3389,6 +3413,7 @@ async function runExport() {
 .muted { color: #888; font-size: .82rem; }
 .btn-link { background: none; border: 0; color: #0055a5; cursor: pointer; font-size: .85rem; }
 .btn-review-sm { margin-left: .4rem; background: #003366; color: #fff; border: none; border-radius: 4px; padding: 1px 8px; font-size: .72rem; font-weight: 600; cursor: pointer; }
+.btn-continue-signup { background: #b66a00; }
 .btn-review-sm:hover:not(:disabled) { background: #0055a5; }
 .btn-review-sm:disabled { background: #c0c8d2; cursor: not-allowed; opacity: 0.7; }
 .btn-grades-approve { background: #16a34a; }

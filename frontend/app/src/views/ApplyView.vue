@@ -957,7 +957,22 @@ async function submitApplication() {
   finally { busy.value = false }
 }
 
+// Admin "Continue signup": a pre-minted wizard token rides the URL
+// (/#/apply?partner=<slug>&resume=<token>) so the Admission Office lands
+// straight in the interrupted application, no password needed.
+function resolveResumeToken() {
+  const hash = window.location.hash || ''
+  const q = hash.indexOf('?')
+  const params = new URLSearchParams(q >= 0 ? hash.slice(q + 1) : window.location.search)
+  return (params.get('resume') || '').trim()
+}
+
 onMounted(async () => {
+  const resumeToken = resolveResumeToken()
+  if (resumeToken) {
+    setToken(resumeToken)
+    state.existingUser = true
+  }
   if (!await loadCatalogue()) { loaded.value = true; return }
   await loadDraft()
   loaded.value = true
