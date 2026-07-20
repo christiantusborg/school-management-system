@@ -52,6 +52,22 @@ public sealed class DraftSignupV1StartEndpoint : IEndpointMarker
         if (!partnerExists)
             return Results.BadRequest(new { error = "Unknown partner slug." });
 
+        // Email already registered? Don't fail into a dead end — tell the
+        // wizard so it can offer to CONTINUE the existing application
+        // (password-verified via /resume-init + /resume-finish).
+        var normalized = body.Email.Trim().ToUpperInvariant();
+        var existingUserId = await db.Users
+            .Where(u => u.NormalizedEmail == normalized)
+            .Select(u => u.Id)
+            .FirstOrDefaultAsync(ct);
+        if (existingUserId is not null)
+        {
+            var isStudent = await db.Students.AnyAsync(s => s.UserId == existingUserId && s.DeletedAt == null, ct);
+            if (!isStudent)
+                return Results.BadRequest(new { error = "This email belongs to a staff or partner account and cannot be used for a student application." });
+            return Results.Ok(new { existingUser = true });
+        }
+
         // Username = email (no separate username for student applicants).
         var initCommand = new RegisterInitV1CreateCommand
         {

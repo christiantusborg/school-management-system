@@ -42,10 +42,20 @@
 
       <p v-if="error" class="form-error">{{ error }}</p>
 
+      <!-- Persistent reminder while continuing an already-existing application -->
+      <div v-if="state.existingUser && state.step > 1 && !state.submitted" class="existing-user-strip">
+        ⚠️ Continuing an EXISTING application for {{ form.email }} — previously entered data has been loaded.
+      </div>
+
       <!-- ── Step 1: Account ── -->
       <section v-if="state.step === 1" class="step">
         <h2 class="step-title">Create your account</h2>
         <p class="step-hint">We'll save your progress as you go and send a confirmation email.</p>
+        <div v-if="state.existingUser" class="existing-user-warn">
+          ⚠️ THIS EMAIL ALREADY HAS AN APPLICATION / STUDENT ACCOUNT.<br />
+          You are <u>continuing the existing application</u> — everything already entered will be loaded.
+          Enter the <strong>same password</strong> that was used when it was first created to continue.
+        </div>
         <div class="row-2">
           <div class="field"><label>First name *</label><input v-model="form.firstName" /></div>
           <div class="field"><label>Last name *</label><input v-model="form.lastName" /></div>
@@ -357,7 +367,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import api from '../api/client.js'
 import { ACCEPTED_DOC_ACCEPT_ATTR } from '../utils/uploadPolicy.js'
 import { resolvePartnerSlug } from '../lib/partner.js'
-import { blindPassword, deriveClientPublicKey } from '../crypto/opaque.js'
+import { blindPassword, deriveClientPublicKey, signChallenge } from '../crypto/opaque.js'
 import SurveyStep from '../components/intake/SurveyStep.vue'
 
 const STEPS = [
@@ -442,6 +452,9 @@ const state = reactive({
   step: 1,
   emailVerified: false,
   submitted: false,
+  // True once /start reports the email already has a user — the wizard then
+  // CONTINUES the existing application (password-verified) instead of failing.
+  existingUser: false,
 })
 
 const form = reactive({
@@ -774,6 +787,12 @@ async function startAccount() {
       email: form.email.trim(),
       blindedElement,
     })
+    if (startRes.data?.existingUser) {
+      // The email already has an application — continue it instead of failing.
+      state.existingUser = true
+      await resumeExisting()
+      return
+    }
     const { registrationId, evaluatedElement } = startRes.data
     const clientPublicKey = deriveClientPublicKey(form.password, blind, evaluatedElement)
     const finRes = await api.post('/v1/public/draft-signup/finish', { registrationId, clientPublicKey })
@@ -785,6 +804,31 @@ async function startAccount() {
     error.value = extractApiError(e, 'Account creation failed. Check the email and password and try again.')
   } finally {
     busy.value = false
+  }
+}
+
+// Continue an interrupted application: prove the ORIGINAL password via the
+// OPAQUE login pipeline, get a fresh wizard token for the existing student
+// and reload every step already saved.
+async function resumeExisting() {
+  try {
+    const { blind, blindedElement } = blindPassword(form.password)
+    const initRes = await api.post('/v1/public/draft-signup/resume-init', {
+      email: form.email.trim(),
+      blindedElement,
+    })
+    const { loginId, evaluatedElement, challenge } = initRes.data
+    const signature = signChallenge(form.password, blind, evaluatedElement, challenge)
+    const finRes = await api.post('/v1/public/draft-signup/resume-finish', {
+      email: form.email.trim(),
+      loginId,
+      signature,
+    })
+    setToken(finRes.data.wizardToken)
+    form.password = ''
+    await loadDraft()
+  } catch (e) {
+    error.value = 'This email already has an application. To continue it, enter the SAME password that was used when the application was first created.'
   }
 }
 
@@ -945,6 +989,16 @@ onMounted(async () => {
 
 .banner-warn { background: #fff7e0; border: 1px solid #f5d684; color: #856404; padding: 0.6rem 0.85rem; border-radius: 6px; font-size: 0.86rem; margin-bottom: 1rem; }
 .form-error { color: #b91c1c; font-size: 0.86rem; margin: 0 0 0.6rem; }
+.existing-user-warn {
+  background: #b91c1c; color: #fff; border: 3px solid #7f1212; border-radius: 8px;
+  padding: 0.9rem 1.1rem; margin: 0 0 1rem; font-size: 1.02rem; font-weight: 700;
+  line-height: 1.5; letter-spacing: .01em;
+}
+.existing-user-warn u { text-decoration: underline; }
+.existing-user-strip {
+  background: #fdecec; color: #b91c1c; border: 1.5px solid #e59d9d; border-radius: 7px;
+  padding: 0.5rem 0.8rem; margin: 0 0 0.8rem; font-size: 0.85rem; font-weight: 700;
+}
 .field-hint-err { color: #b91c1c; font-size: 0.76rem; margin-top: 0.2rem; display: block; }
 
 .step { display: flex; flex-direction: column; gap: 0.85rem; }

@@ -13,5 +13,6 @@
       <ProjectReference Include="..\..\..\SharedLibrary.Basics.TransientStateCache\SharedLibrary.Basics.TransientStateCache.csproj" />
       <ProjectReference Include="..\..\..\SharedLibrary.Basics.OpaqueService\SharedLibrary.Basics.OpaqueService.csproj" />
       <ProjectReference Include="..\..\RegisterApi\SharedLibrary.Basics.Opaque.RegisterApi\SharedLibrary.Basics.Opaque.RegisterApi.csproj" />
+      <ProjectReference Include="..\..\..\SharedLibrary.Basics.Opaque.LoginApi\SharedLibrary.Basics.Opaque.LoginApi.csproj" />
     </ItemGroup>
 </Project>
