@@ -487,6 +487,10 @@
           <FacultyTeachersTab v-if="manageTab === 'faculties'" :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
         </div>
 
+        <div v-show="manageTab === 'cohorts'" class="manage-section">
+          <ModuleCohortsTab v-if="manageTab === 'cohorts'" mode="admin" :partner-id="managingPartner.partnerId" />
+        </div>
+
         <div v-show="manageTab === 'students'" class="manage-section">
           <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" @add-student="openAddStudentForManagedPartner" />
         </div>
@@ -673,6 +677,7 @@ import PartnerCoreProgrammesTab from '../components/partner/tabs/PartnerCoreProg
 import PartnerCustomProgrammesTab from '../components/partner/tabs/PartnerCustomProgrammesTab.vue'
 import PartnerCertificatesTab from '../components/admin/PartnerCertificatesTab.vue'
 import FacultyTeachersTab from '../components/admin/FacultyTeachersTab.vue'
+import ModuleCohortsTab from '../components/admin/ModuleCohortsTab.vue'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
 import AdminStudentsTab from '../components/admin/AdminStudentsTab.vue'
 import AdminUsersTab from '../components/admin/AdminUsersTab.vue'
@@ -837,6 +842,7 @@ const showPartnerWizard = ref(false)
 // Everyday tabs stay in the row; setup-ish tabs live under the ⚙ gear.
 const MANAGE_TABS = [
   { k: 'students', label: 'Students' },
+  { k: 'cohorts',  label: 'Module Cohorts' },
 ]
 const GEAR_TABS = [
   { k: 'profile',    label: 'Profile' },

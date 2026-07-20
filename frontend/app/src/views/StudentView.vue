@@ -174,26 +174,6 @@
             </div>
           </div>
 
-          <!-- Module start dates (set by the Admission Office; read-only) -->
-          <div class="extra-docs">
-            <div class="docs-head" style="cursor:pointer" @click="toggleModuleStarts(enr)">
-              {{ msOpen[enr.enrollmentId] ? '▾' : '▸' }} Module start dates
-            </div>
-            <div v-if="msOpen[enr.enrollmentId]">
-              <p v-if="msData[enr.enrollmentId] === undefined" class="doc-hint">Loading…</p>
-              <ul v-else-if="(msData[enr.enrollmentId] || []).length" class="doc-list">
-                <li v-for="r in msData[enr.enrollmentId]" :key="r.subjectId" class="doc-row">
-                  <div class="doc-info" style="display:flex; gap:.6rem; align-items:baseline;">
-                    <span style="font-family:monospace; font-weight:700;">{{ r.code }}</span>
-                    <span style="flex:1">{{ r.name }}</span>
-                    <strong>{{ r.resolvedDate ? new Date(r.resolvedDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'TBC' }}<template v-if="r.resolvedEndDate"> → {{ new Date(r.resolvedEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }}</template></strong>
-                  </div>
-                </li>
-              </ul>
-              <p v-else class="doc-hint">No modules yet.</p>
-            </div>
-          </div>
-
           <!-- Uploaded Assignments: per-module work with a required title and
                a comment chat with the teachers. -->
           <div class="extra-docs">
@@ -337,18 +317,6 @@ const additionalDialog = reactive({ open: false, enrollmentId: null })
 // Per-enrolment collapse state for the Uploaded Assignments section.
 const asgOpen = reactive({})
 
-// Module start dates (read-only, lazy-loaded on expand).
-const msOpen = reactive({})
-const msData = reactive({})
-async function toggleModuleStarts(enr) {
-  msOpen[enr.enrollmentId] = !msOpen[enr.enrollmentId]
-  if (msOpen[enr.enrollmentId] && msData[enr.enrollmentId] === undefined) {
-    try {
-      const res = await api.get(`/v1/student/me/enrollments/${enr.enrollmentId}/module-starts`)
-      msData[enr.enrollmentId] = res.data.modules ?? []
-    } catch { msData[enr.enrollmentId] = [] }
-  }
-}
 function openAddAdditional(enrollmentId) {
   additionalDialog.enrollmentId = enrollmentId
   additionalDialog.open = true

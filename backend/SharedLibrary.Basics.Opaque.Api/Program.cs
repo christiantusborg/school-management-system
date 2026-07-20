@@ -202,6 +202,7 @@ builder.Services.AddSingleton<Odin.Api.Base.DocumentScanning.IAiDocumentValidato
             builder.Configuration["DocumentScan:OllamaModel"] ?? "llama3.2:latest"),
     });
 builder.Services.AddHostedService<DocumentScanWorker>();
+builder.Services.AddHostedService<SharedLibrary.Basics.Opaque.Api.Infrastructure.GradingSheetReminderWorker>();
 
 // Repositories
 

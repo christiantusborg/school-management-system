@@ -20,14 +20,10 @@ public class Subject : IDeletedAtEntity
     /// </summary>
     public bool IsThesis { get; set; }
 
-    /// <summary>Programme-level default module start: commencement + N days.
     /// Applies automatically to every student unless the Admission Office
     /// sets a per-student override. Null = module starts at commencement.</summary>
-    public int? DefaultStartOffsetDays { get; set; }
 
-    /// <summary>Programme-level default module end: commencement + N days.
     /// Null = no default end date (shown as TBC until overridden).</summary>
-    public int? DefaultEndOffsetDays { get; set; }
 
     public DateTime? IsActive { get; set; }
     public DateTime? DeletedAt { get; set; }

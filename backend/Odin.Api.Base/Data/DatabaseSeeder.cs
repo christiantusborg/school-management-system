@@ -168,6 +168,7 @@ public static class DatabaseSeeder
         await SeedPartnerDocumentTypesAsync(context, logger);
         await SeedPartnerDatasheetTemplatesAsync(context, logger);
         await SeedFacultyProfileStructureAsync(context, logger);
+        await SeedCohortUploadFieldsAsync(context, logger);
         await SeedPathwaysAsync(context, logger, eduLevelByName);
         await SeedIbssCoreProgrammesAsync(context, logger);
         await SeedDemoPartnersAsync(context, logger);
@@ -2065,6 +2066,38 @@ public static class DatabaseSeeder
         }
         await context.SaveChangesAsync();
         logger.LogInformation("[Seeder] Faculty profile structure seeded ({Count} sections)", sections.Length);
+    }
+
+    /// <summary>
+    /// Seeds the five agreed Module Cohort upload fields (Teaching Materials
+    /// + grading sheets). Runs only when the table is completely empty, so
+    /// admin edits in the builder are never overwritten.
+    /// </summary>
+    private static async Task SeedCohortUploadFieldsAsync(OdinDbContext context, ILogger logger)
+    {
+        if (await context.CohortUploadFields.IgnoreQueryFilters().AnyAsync()) return;
+
+        var seeds = new (string Label, bool Multiple, bool Grading)[]
+        {
+            ("Teaching / Study Plan", false, false),
+            ("Module Assessment Details", true, false),
+            ("Module Teaching Materials", true, false),
+            ("Grading Sheets & Rubrics", true, true),
+            ("Module Outline Given to Students", false, false),
+        };
+        var order = 0;
+        foreach (var (label, multiple, grading) in seeds)
+        {
+            context.CohortUploadFields.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.CohortUploadField
+            {
+                Label = label,
+                AllowMultiple = multiple,
+                IsGradingSheet = grading,
+                SortOrder = order++,
+            });
+        }
+        await context.SaveChangesAsync();
+        logger.LogInformation("[Seeder] Module cohort upload fields seeded ({Count})", seeds.Length);
     }
 
     /// <summary>

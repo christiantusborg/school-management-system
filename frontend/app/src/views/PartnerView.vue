@@ -28,6 +28,7 @@
       <button :class="['main-tab-btn', { active: mainTab === 'forms' }]" @click="mainTab = 'forms'">Forms</button>
       <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Partnership Documents</button>
       <button :class="['main-tab-btn', { active: mainTab === 'faculties' }]" @click="mainTab = 'faculties'">Faculties</button>
+      <button :class="['main-tab-btn', { active: mainTab === 'cohorts' }]" @click="mainTab = 'cohorts'">Module Cohorts</button>
     </div>
 
     <!-- ══ MY CORE PROGRAMMES TAB ══════════════════════════════════════════════ -->
@@ -567,6 +568,11 @@
     <!-- Faculties — the partner's teachers, based on Faculty Profile Information -->
     <div v-show="mainTab === 'faculties'" class="container">
       <PartnerFacultyPanel v-if="mainTab === 'faculties'" />
+    </div>
+
+    <!-- Module Cohorts — schedule runs of modules; teachers see their own read-only -->
+    <div v-show="mainTab === 'cohorts'" class="container">
+      <ModuleCohortsTab v-if="mainTab === 'cohorts'" mode="partner" />
     </div>
 
     <!-- Partner cooperation certificates (issued by the Admission Office) -->
@@ -1305,6 +1311,7 @@ import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vu
 import PartnerUsersTab from '../components/partner/tabs/PartnerUsersTab.vue'
 import IntakeFillPanel from '../components/intake/IntakeFillPanel.vue'
 import PartnerFacultyPanel from '../components/partner/PartnerFacultyPanel.vue'
+import ModuleCohortsTab from '../components/admin/ModuleCohortsTab.vue'
 import StudentReviewWizard from '../components/partner/StudentReviewWizard.vue'
 
 const router = useRouter()

@@ -10,6 +10,7 @@
         <span class="asg-caret">{{ open[m.subjectId] ? '▾' : '▸' }}</span>
         <span class="asg-code">{{ m.code }}</span>
         <span class="asg-name">{{ m.name }}</span>
+        <span v-if="m.cohortNumber" class="asg-cohort">{{ m.cohortNumber }}</span>
         <span class="asg-count" :class="{ 'asg-count-zero': !m.uploads.length }">{{ m.uploads.length }}</span>
       </button>
 
@@ -189,6 +190,7 @@ defineExpose({ reload: load })
 .asg-module-head { display: flex; align-items: center; gap: .55rem; width: 100%; background: #f7f9fc; border: none; padding: .55rem .75rem; cursor: pointer; font-size: .86rem; border-radius: 8px; text-align: left; }
 .asg-caret { color: #667; width: 1em; }
 .asg-code { font-family: monospace; font-weight: 700; color: #003366; }
+.asg-cohort { background: #eef3fa; border: 1px solid #d5e0ee; color: #2c3e50; border-radius: 12px; padding: .05rem .55rem; font-size: .72rem; font-weight: 700; }
 .asg-name { flex: 1; color: #2c3e50; }
 .asg-count { background: #003366; color: #fff; border-radius: 10px; font-size: .7rem; font-weight: 700; padding: .05rem .5rem; }
 .asg-count-zero { background: #c3ccd8; }

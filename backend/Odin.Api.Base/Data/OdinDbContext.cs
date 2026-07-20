@@ -48,6 +48,11 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<FacultyProfileSection> FacultyProfileSections => Set<FacultyProfileSection>();
     public DbSet<FacultyProfileField> FacultyProfileFields => Set<FacultyProfileField>();
     public DbSet<Teacher> Teachers => Set<Teacher>();
+    public DbSet<ModuleCohort> ModuleCohorts => Set<ModuleCohort>();
+    public DbSet<ModuleCohortStudent> ModuleCohortStudents => Set<ModuleCohortStudent>();
+    public DbSet<CohortUploadField> CohortUploadFields => Set<CohortUploadField>();
+    public DbSet<CohortUploadFile> CohortUploadFiles => Set<CohortUploadFile>();
+    public DbSet<ModuleCohortSettings> ModuleCohortSettings => Set<ModuleCohortSettings>();
     public DbSet<TeacherProfileRow> TeacherProfileRows => Set<TeacherProfileRow>();
     public DbSet<TeacherProfileValue> TeacherProfileValues => Set<TeacherProfileValue>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload> AssignmentUploads => Set<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload>();
@@ -111,7 +116,6 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
 
     // ── Enrollment ────────────────────────────────────────────────────────
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
-    public DbSet<EnrollmentModuleStart> EnrollmentModuleStarts => Set<EnrollmentModuleStart>();
     public DbSet<EnrollmentStatusNote> EnrollmentStatusNotes => Set<EnrollmentStatusNote>();
     public DbSet<EnrollmentStatus> EnrollmentStatuses => Set<EnrollmentStatus>();
     public DbSet<ModeOfStudy> ModesOfStudy => Set<ModeOfStudy>();

@@ -26,11 +26,28 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
             .Select(e => e.SpecializationId)
             .FirstOrDefaultAsync(ct);
 
-        var subjects = await db.Subjects
-            .Where(s => s.SpecializationId == specId && s.DeletedAt == null)
-            .OrderBy(s => s.Code)
-            .Select(s => new { s.SubjectId, s.Code, s.Name })
+        // Uploaded assignments are organised by the student's MODULE COHORTS;
+        // when no cohorts are assigned yet, fall back to the specialization's
+        // module list so the panel never goes empty.
+        var cohortModules = await (
+            from mcs in db.ModuleCohortStudents
+            join mc in db.ModuleCohorts on mcs.ModuleCohortId equals mc.ModuleCohortId
+            join s in db.Subjects on mc.SubjectId equals s.SubjectId
+            where mcs.StudentEnrollmentId == enrollmentId && mcs.DeletedAt == null
+                && mc.DeletedAt == null && s.DeletedAt == null
+            orderby s.Code
+            select new { s.SubjectId, s.Code, s.Name, mc.CohortNumber })
             .ToListAsync(ct);
+
+        var subjects = cohortModules.Count > 0
+            ? cohortModules.Select(x => new { x.SubjectId, x.Code, x.Name, CohortNumber = (string?)x.CohortNumber }).ToList()
+            : (await db.Subjects
+                .Where(s => s.SpecializationId == specId && s.DeletedAt == null)
+                .OrderBy(s => s.Code)
+                .Select(s => new { s.SubjectId, s.Code, s.Name })
+                .ToListAsync(ct))
+                .Select(s => new { s.SubjectId, s.Code, s.Name, CohortNumber = (string?)null })
+                .ToList();
 
         var uploads = await db.AssignmentUploads
             .Where(a => a.StudentEnrollmentId == enrollmentId && a.DeletedAt == null)
@@ -63,6 +80,7 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
                 subjectId = s.SubjectId,
                 code = s.Code,
                 name = s.Name,
+                cohortNumber = s.CohortNumber,
                 uploads = bySubject[s.SubjectId].Select(u => new
                 {
                     assignmentUploadId = u.AssignmentUploadId,
@@ -108,8 +126,17 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
             .Where(e => e.StudentEnrollmentId == enrollmentId)
             .Select(e => e.SpecializationId)
             .FirstOrDefaultAsync(ct);
+        // Valid target: a module of the enrolment's specialization OR a
+        // module the student is cohort-assigned to (cohorts may span specs).
         var subjectOk = await db.Subjects.AnyAsync(s =>
             s.SubjectId == input.SubjectId && s.SpecializationId == specId && s.DeletedAt == null, ct);
+        if (!subjectOk)
+            subjectOk = await (
+                from mcs in db.ModuleCohortStudents
+                join mc in db.ModuleCohorts on mcs.ModuleCohortId equals mc.ModuleCohortId
+                where mcs.StudentEnrollmentId == enrollmentId && mcs.DeletedAt == null
+                    && mc.DeletedAt == null && mc.SubjectId == input.SubjectId
+                select mc.ModuleCohortId).AnyAsync(ct);
         if (!subjectOk)
             return ("That module doesn't belong to this enrolment.", Guid.Empty);
 

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Odin.Api.Base.Data;
@@ -11,9 +12,11 @@ using Odin.Api.Base.Data;
 namespace Odin.Api.Base.Data.Migrations
 {
     [DbContext(typeof(OdinDbContext))]
-    partial class OdinDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260720230455_AddModuleCohorts")]
+    partial class AddModuleCohorts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -662,6 +665,44 @@ namespace Odin.Api.Base.Data.Migrations
                     b.HasIndex("StudentId");
 
                     b.ToTable("Enrollments");
+                });
+
+            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.EnrollmentModuleStart", b =>
+                {
+                    b.Property<Guid>("EnrollmentModuleStartId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int?>("EndOffsetDays")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("EndUseOffset")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("OffsetDays")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StartDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("StudentEnrollmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SubjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("UseOffset")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("EnrollmentModuleStartId");
+
+                    b.HasIndex("StudentEnrollmentId", "SubjectId")
+                        .IsUnique();
+
+                    b.ToTable("EnrollmentModuleStarts");
                 });
 
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.EnrollmentPayment", b =>
@@ -5448,6 +5489,12 @@ namespace Odin.Api.Base.Data.Migrations
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int?>("DefaultEndOffsetDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("DefaultStartOffsetDays")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp without time zone");

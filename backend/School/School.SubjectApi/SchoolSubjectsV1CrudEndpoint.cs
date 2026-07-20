@@ -43,10 +43,6 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
         public string? Description { get; init; }
         public decimal? Ects { get; init; }
         public bool? IsThesis { get; init; }
-        // Programme-level default module dates: commencement + N days.
-        // Send -1 to clear a default back to null.
-        public int? DefaultStartOffsetDays { get; init; }
-        public int? DefaultEndOffsetDays { get; init; }
     }
 
     private static async Task<IResult> CreateAsync(
@@ -66,8 +62,6 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
             Description = body.Description ?? string.Empty,
             Ects = body.Ects ?? 0,
             IsThesis = body.IsThesis ?? false,
-            DefaultStartOffsetDays = body.DefaultStartOffsetDays is { } ds && ds >= 0 ? ds : null,
-            DefaultEndOffsetDays = body.DefaultEndOffsetDays is { } de && de >= 0 ? de : null,
             IsActive = DateTime.UtcNow,
         };
         db.Subjects.Add(entity);
@@ -89,8 +83,6 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
                 description = x.Description,
                 ects = x.Ects,
                 isThesis = x.IsThesis,
-                defaultStartOffsetDays = x.DefaultStartOffsetDays,
-                defaultEndOffsetDays = x.DefaultEndOffsetDays,
                 deletedAt = x.DeletedAt,
             })
             .FirstOrDefaultAsync(ct);
@@ -108,8 +100,6 @@ public sealed class SchoolSubjectsV1CrudEndpoint : IEndpointMarker
         if (body.Description is not null) entity.Description = body.Description;
         if (body.Ects is not null) entity.Ects = body.Ects.Value;
         if (body.IsThesis is not null) entity.IsThesis = body.IsThesis.Value;
-        if (body.DefaultStartOffsetDays is { } ds) entity.DefaultStartOffsetDays = ds >= 0 ? ds : null;
-        if (body.DefaultEndOffsetDays is { } de) entity.DefaultEndOffsetDays = de >= 0 ? de : null;
 
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { subjectId = id });

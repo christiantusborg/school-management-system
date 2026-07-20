@@ -607,67 +607,31 @@
                   </dl>
                 </div>
 
-                <!-- Module start & end dates: defaults come from the programme
-                     config (commencement + N days per module) or commencement
-                     itself; per student the Admission Office can override each
-                     with an explicit date or commencement + N days. -->
+                <!-- Module cohorts: modules are scheduled via the partner's
+                     Module Cohort Schedule; pick the cohort the student
+                     attends per module (saves immediately). -->
                 <div class="detail-section" style="grid-column: 1 / -1;">
-                  <h4>Module start &amp; end dates</h4>
-                  <p v-if="moduleStarts.error" class="err-banner">{{ moduleStarts.error }}</p>
-                  <p v-if="moduleStarts.loading" class="muted">Loading…</p>
-                  <template v-else-if="moduleStarts.rows.length">
-                    <div v-for="row in moduleStarts.rows" :key="row.subjectId" class="ms-row">
+                  <h4>Module cohorts</h4>
+                  <p v-if="studentCohorts.error" class="err-banner">{{ studentCohorts.error }}</p>
+                  <template v-if="Object.keys(studentCohorts.bySubject).length">
+                    <div v-for="mod in studentCohorts.bySubject" :key="mod.subjectId" class="ms-row">
                       <div class="ms-head">
-                        <span class="ms-code">{{ row.code }}</span>
-                        <span class="ms-name">{{ row.name }}</span>
+                        <span class="ms-code">{{ mod.code }}</span>
+                        <span class="ms-name">{{ mod.name }}</span>
+                        <template v-if="mod.cohorts.length">
+                          <span class="muted" style="font-size:.74rem; margin-left:auto;">Cohort:</span>
+                          <select class="ms-inp" style="min-width:220px"
+                                  :value="mod.assignedCohortId ?? ''"
+                                  @change="setStudentCohort(mod.subjectId, $event.target.value)">
+                            <option value="">— none —</option>
+                            <option v-for="c in mod.cohorts" :key="c.moduleCohortId" :value="c.moduleCohortId">
+                              {{ c.cohortNumber }}{{ c.startDate ? ` (${new Date(c.startDate).toLocaleDateString('en-GB')} → ${c.endDate ? new Date(c.endDate).toLocaleDateString('en-GB') : 'TBC'})` : '' }}
+                            </option>
+                          </select>
+                        </template>
+                        <span v-else class="muted" style="font-size:.74rem; margin-left:auto;">
+                          no cohorts scheduled — create one under the partner's Module Cohorts tab</span>
                       </div>
-                      <div class="ms-line">
-                        <span class="ms-kind">Start</span>
-                        <button class="btn-mini btn-mini-ghost" :title="row.useOffset ? 'Switch to a fixed date' : 'Switch to commencement + N days'"
-                                @click="toggleMsMode(row)">
-                          {{ row.useOffset ? '＋ days' : '📅 Date' }}
-                        </button>
-                        <template v-if="row.useOffset">
-                          <span class="muted" style="font-size:.78rem;">commencement +</span>
-                          <input type="number" min="0" max="3650" v-model.number="row.offsetDays" class="ms-inp" style="width:80px" /> days
-                          <span class="ms-resolved">→ {{ msOffsetDate(row.offsetDays) || '—' }}</span>
-                        </template>
-                        <template v-else>
-                          <input type="date" v-model="row.startDate" class="ms-inp" />
-                        </template>
-                        <button v-if="row.hasOverride || row.startDate || row.offsetDays != null" class="btn-mini btn-mini-ghost"
-                                title="Back to the default" @click="resetMsRow(row)">↺ Default</button>
-                        <span v-else class="muted" style="font-size:.74rem;">
-                          default: {{ row.defaultStartOffsetDays != null ? `commencement +${row.defaultStartOffsetDays}d → ${msOffsetDate(row.defaultStartOffsetDays)}` : 'commencement' }}
-                        </span>
-                      </div>
-                      <div class="ms-line">
-                        <span class="ms-kind">End</span>
-                        <button class="btn-mini btn-mini-ghost" :title="row.endUseOffset ? 'Switch to a fixed date' : 'Switch to commencement + N days'"
-                                @click="toggleMsEndMode(row)">
-                          {{ row.endUseOffset ? '＋ days' : '📅 Date' }}
-                        </button>
-                        <template v-if="row.endUseOffset">
-                          <span class="muted" style="font-size:.78rem;">commencement +</span>
-                          <input type="number" min="0" max="3650" v-model.number="row.endOffsetDays" class="ms-inp" style="width:80px" /> days
-                          <span class="ms-resolved">→ {{ msOffsetDate(row.endOffsetDays) || '—' }}</span>
-                        </template>
-                        <template v-else>
-                          <input type="date" v-model="row.endDate" class="ms-inp" />
-                        </template>
-                        <button v-if="row.hasEndOverride || row.endDate || row.endOffsetDays != null" class="btn-mini btn-mini-ghost"
-                                title="Back to the default" @click="resetMsEndRow(row)">↺ Default</button>
-                        <span v-else class="muted" style="font-size:.74rem;">
-                          default: {{ row.defaultEndOffsetDays != null ? `commencement +${row.defaultEndOffsetDays}d → ${msOffsetDate(row.defaultEndOffsetDays)}` : 'TBC' }}
-                        </span>
-                      </div>
-                    </div>
-                    <div style="margin-top:.5rem; display:flex; align-items:center; gap:.6rem;">
-                      <button class="btn-row-details btn-row-details-sm" :disabled="moduleStarts.saving" @click="saveModuleStarts">
-                        {{ moduleStarts.saving ? 'Saving…' : 'Save module dates' }}
-                      </button>
-                      <span v-if="moduleStarts.ok" class="ok-banner" style="display:inline-block;">Saved</span>
-                      <span class="muted" style="font-size:.72rem;">Programme-wide defaults are set per module on the Academic page.</span>
                     </div>
                   </template>
                   <p v-else class="muted">No modules on this specialization.</p>
@@ -1579,109 +1543,38 @@ watch(() => detailModal.value?.data, (d) => {
   statusEdit.value = false
 }, { immediate: true })
 
-// ── Module start dates (Enrolment sub-tab, Admission-Office only) ───────────
-const moduleStarts = reactive({ loading: false, saving: false, error: '', ok: '', commencementDate: null, rows: [] })
-
-function fmtMsDate(d) {
-  if (!d) return ''
-  try { return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) } catch { return d }
-}
-function msOffsetDate(days) {
-  const base = moduleStarts.commencementDate
-  if (!base || days == null || days === '') return ''
-  const d = new Date(base)
-  d.setDate(d.getDate() + Number(days))
-  return fmtMsDate(d.toISOString())
-}
-function toggleMsMode(row) {
-  row.useOffset = !row.useOffset
-  if (row.useOffset && (row.offsetDays == null || row.offsetDays === '')) row.offsetDays = 30
-  if (!row.useOffset && !row.startDate) row.startDate = (row.resolvedDate ?? '').slice(0, 10)
-}
-function resetMsRow(row) {
-  row.useOffset = false
-  row.startDate = ''
-  row.offsetDays = null
-  row.hasOverride = false
-}
-function toggleMsEndMode(row) {
-  row.endUseOffset = !row.endUseOffset
-  if (row.endUseOffset && (row.endOffsetDays == null || row.endOffsetDays === '')) row.endOffsetDays = 30
-  if (!row.endUseOffset && !row.endDate) row.endDate = (row.resolvedEndDate ?? '').slice(0, 10)
-}
-function resetMsEndRow(row) {
-  row.endUseOffset = false
-  row.endDate = ''
-  row.endOffsetDays = null
-  row.hasEndOverride = false
-}
-function mapMsRow(x) {
-  return {
-    subjectId: x.subjectId, code: x.code, name: x.name,
-    defaultStartOffsetDays: x.defaultStartOffsetDays,
-    defaultEndOffsetDays: x.defaultEndOffsetDays,
-    hasOverride: !!x.hasOverride,
-    useOffset: !!x.useOffset,
-    startDate: !x.useOffset && x.hasOverride ? (x.startDate ?? '').slice(0, 10) : '',
-    offsetDays: x.useOffset ? x.offsetDays : null,
-    resolvedDate: x.resolvedDate,
-    hasEndOverride: !!x.hasEndOverride,
-    endUseOffset: !!x.endUseOffset,
-    endDate: !x.endUseOffset && x.hasEndOverride ? (x.endDate ?? '').slice(0, 10) : '',
-    endOffsetDays: x.endUseOffset ? x.endOffsetDays : null,
-    resolvedEndDate: x.resolvedEndDate,
-  }
-}
-
-async function loadModuleStarts() {
+// ── Module cohorts (Enrolment sub-tab) — module scheduling lives in the
+// Module Cohort Schedule; per student only the cohort pick per module remains.
+const studentCohorts = reactive({ bySubject: {}, error: '' })
+async function loadStudentCohorts() {
   const m = detailModal.value
   const enr = activeEnrollment.value
   if (!m || !enr) return
-  moduleStarts.loading = true; moduleStarts.error = ''
+  studentCohorts.error = ''
   try {
-    const res = await api.get(`/v1/admin/students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/module-starts`)
-    moduleStarts.commencementDate = res.data.commencementDate
-    moduleStarts.rows = (res.data.modules ?? []).map(mapMsRow)
-  } catch (e) {
-    moduleStarts.error = e.response?.data?.error ?? e.message ?? 'Failed to load module start dates'
-  } finally {
-    moduleStarts.loading = false
-  }
+    const res = await api.get(`/v1/admin/students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/cohorts`)
+    const map = {}
+    for (const mod of res.data.modules ?? []) map[mod.subjectId] = mod
+    studentCohorts.bySubject = map
+  } catch { studentCohorts.bySubject = {} }
 }
-
-async function saveModuleStarts() {
+async function setStudentCohort(subjectId, cohortId) {
   const m = detailModal.value
   const enr = activeEnrollment.value
-  if (!m || !enr || moduleStarts.saving) return
-  moduleStarts.saving = true; moduleStarts.error = ''; moduleStarts.ok = ''
+  if (!m || !enr) return
   try {
-    const res = await api.put(`/v1/admin/students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/module-starts`, {
-      items: moduleStarts.rows.map(r => ({
-        subjectId: r.subjectId,
-        useOffset: !!r.useOffset,
-        startDate: !r.useOffset && r.startDate ? r.startDate : null,
-        offsetDays: r.useOffset && r.offsetDays != null && r.offsetDays !== '' ? Number(r.offsetDays) : null,
-        clearOverride: !r.useOffset ? !r.startDate : (r.offsetDays == null || r.offsetDays === ''),
-        endUseOffset: !!r.endUseOffset,
-        endDate: !r.endUseOffset && r.endDate ? r.endDate : null,
-        endOffsetDays: r.endUseOffset && r.endOffsetDays != null && r.endOffsetDays !== '' ? Number(r.endOffsetDays) : null,
-        clearEndOverride: !r.endUseOffset ? !r.endDate : (r.endOffsetDays == null || r.endOffsetDays === ''),
-      })),
+    await api.put(`/v1/admin/students/${m.studentId}/enrollments/${enr.studentEnrollmentId}/cohorts`, {
+      subjectId, cohortId: cohortId || null,
     })
-    moduleStarts.commencementDate = res.data.commencementDate
-    moduleStarts.rows = (res.data.modules ?? []).map(mapMsRow)
-    moduleStarts.ok = 'Saved'
-    setTimeout(() => { moduleStarts.ok = '' }, 2500)
+    await loadStudentCohorts()
   } catch (e) {
-    moduleStarts.error = e.response?.data?.error ?? e.message ?? 'Save failed'
-  } finally {
-    moduleStarts.saving = false
+    studentCohorts.error = e.response?.data?.error ?? e.message ?? 'Failed to set cohort'
   }
 }
 
 watch(() => [detailModal.value?.activeTab, programSubTab.value, activeEnrollment.value?.studentEnrollmentId],
   ([tab, sub]) => {
-    if (tab === 'programs' && sub === 'enrolment') loadModuleStarts()
+    if (tab === 'programs' && sub === 'enrolment') loadStudentCohorts()
   })
 
 // ── Payment tab (per-enrolment tuition plan + invoice) ───────────────────────
