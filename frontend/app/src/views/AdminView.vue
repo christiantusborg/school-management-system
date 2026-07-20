@@ -456,12 +456,17 @@
           <p v-if="addUserError" class="form-error">{{ addUserError }}</p>
         </div>
 
-        <div v-show="manageTab === 'core'" class="manage-section">
-          <PartnerCoreProgrammesTab :partner-id="managingPartner.partnerId" />
-        </div>
-
-        <div v-show="manageTab === 'custom'" class="manage-section">
-          <PartnerCustomProgrammesTab :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
+        <div v-show="manageTab === 'programmes'" class="manage-section">
+          <div class="prog-sub-bar">
+            <button :class="['prog-sub-btn', { active: progSubTab === 'core' }]" @click="progSubTab = 'core'">Core</button>
+            <button :class="['prog-sub-btn', { active: progSubTab === 'custom' }]" @click="progSubTab = 'custom'">Custom</button>
+          </div>
+          <div v-show="progSubTab === 'core'">
+            <PartnerCoreProgrammesTab :partner-id="managingPartner.partnerId" />
+          </div>
+          <div v-show="progSubTab === 'custom'">
+            <PartnerCustomProgrammesTab :partner-id="managingPartner.partnerId" :partner-name="managingPartner.name" />
+          </div>
         </div>
 
         <div v-show="manageTab === 'certs'" class="manage-section">
@@ -822,13 +827,14 @@ const showPartnerWizard = ref(false)
 const MANAGE_TABS = [
   { k: 'profile',  label: 'Profile' },
   { k: 'users',    label: 'Users' },
-  { k: 'core',     label: 'Core Programmes' },
-  { k: 'custom',   label: 'Custom Programmes' },
+  { k: 'programmes', label: 'Programmes' },
   { k: 'students', label: 'Students' },
   { k: 'certs',    label: 'Partnership Documents' },
   { k: 'datasheets', label: 'Datasheets' },
 ]
 const manageTab = ref('users')
+// Programmes tab sub-menu: Core ⇄ Custom.
+const progSubTab = ref('core')
 
 // Add user to partner
 const newUserCustomPassword = ref('')
@@ -1547,6 +1553,11 @@ function logout() { auth.logout(); router.push('/login') }
 .manage-tab-btn:hover { color: #0a264f; }
 .manage-tab-btn.active { color: #0a264f; border-bottom-color: #0a264f; }
 .manage-section { padding: 0; }
+.prog-sub-bar { display: flex; gap: .35rem; margin-bottom: .9rem; }
+.prog-sub-btn { background: #f2f5f9; border: 1.5px solid #d5deea; border-radius: 16px;
+  padding: .3rem .95rem; font-size: .82rem; font-weight: 600; color: #5f6e85; cursor: pointer; }
+.prog-sub-btn:hover { color: #0a264f; }
+.prog-sub-btn.active { background: #0a264f; border-color: #0a264f; color: #fff; }
 
 .add-user-row { display: flex; gap: 0.55rem; align-items: center; margin-top: 0.75rem;
   padding-top: 0.75rem; border-top: 1px dashed #dde6f0; }
