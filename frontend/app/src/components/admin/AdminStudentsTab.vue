@@ -56,6 +56,11 @@
               <span v-if="e.paymentOverdue" class="s-badge s-badge-overdue"
                     title="An installment or additional invoice is unpaid past its due date (Programs → Payment).">Payment overdue</span>
             </div>
+            <div v-if="s.signingUp" class="enrol-line">
+              <span class="s-badge s-badge-signup"
+                    title="The signup wizard was started but never submitted. Re-entering the same email in the wizard continues where it stopped.">
+                Signing up — step {{ Math.max(s.wizardStep, 1) }} of 6</span>
+            </div>
           </td>
           <td class="enrol-actions-cell">
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-actions">
@@ -1196,6 +1201,9 @@ const STATUS_FILTERS = [
   { id: 'submitted',                 label: 'Submitted',                   codes: ['ApplicationSubmitted', 'ApplicationAwaitingReviewByPartner'] },
   { id: 'rejected-awaiting-student', label: 'Rejected — Awaiting Student', codes: ['ApplicationRejectedByPartner', 'ApplicationRejectedByAdmission'] },
   { id: 'applying',                  label: 'Applying (draft)',            codes: ['Draft'], includeNoEnrolment: true },
+  // Not a status: the signup wizard was started but never finished
+  // (flag computed by the list endpoint from Student.WizardStep).
+  { id: 'signing-up',                label: 'Signing up',                  codes: null, signingUp: true },
   { id: 'awaiting-student-accept',   label: 'Awaiting Student Acceptance', codes: ['AcceptOffer'] },
   { id: 'admitted',                  label: 'Admitted',                    codes: ['ApplicationApprovedAdmission', 'AcceptAdmission'] },
   { id: 'awaiting-grades-submit',    label: 'Awaiting Grades Submit',      codes: ['AwaitingGradesSubmit'] },
@@ -2828,6 +2836,7 @@ function countFor(id) {
   let n = 0
   for (const s of list.value) {
     if (f.overdue) { if (s.enrollments.some(e => e.paymentOverdue)) n++; continue }
+    if (f.signingUp) { if (s.signingUp) n++; continue }
     if (f.includeNoEnrolment && s.enrollments.length === 0) { n++; continue }
     if (s.enrollments.some(e => f.codes?.includes(e.statusCode))) n++
   }
@@ -2890,6 +2899,7 @@ const filtered = computed(() => {
     const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
     rows = rows.filter(s => {
       if (f?.overdue) return s.enrollments.some(e => e.paymentOverdue)
+      if (f?.signingUp) return s.signingUp
       const matchesNoEnrolment = f?.includeNoEnrolment && s.enrollments.length === 0
       const matchesCode = s.enrollments.some(e => f?.codes?.includes(e.statusCode))
       return matchesNoEnrolment || matchesCode
@@ -3394,6 +3404,7 @@ async function runExport() {
 .enr-prog { background: #e8f0f8; color: #003366; border-radius: 4px; padding: 1px 6px; font-size: .75rem; font-weight: 700; margin: 0 .3rem; }
 .s-badge { font-size: .7rem; padding: 1px 6px; border-radius: 10px; margin-left: .3rem; font-weight: 600; }
 .s-badge-overdue { background: #fde7e5; color: #a8241e; border: 1px solid #e8b3af; }
+.s-badge-signup  { background: #fff4e6; color: #b66a00; border: 1px solid #f0d2a8; }
 .st-submitted { background: #fff7e0; color: #8a6d00; }
 .st-pending   { background: #e8f0f8; color: #0055a5; }
 .st-rejected  { background: #fee2e2; color: #991b1b; }

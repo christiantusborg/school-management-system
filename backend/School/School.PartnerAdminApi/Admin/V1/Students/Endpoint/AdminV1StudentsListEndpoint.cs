@@ -69,14 +69,22 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                 .Select(p => p.StudentEnrollmentId)
                 .ToListAsync(cancellationToken)).ToHashSet();
 
-        // Group by student.
+        // Group by student. Students with NO enrolment yet (mid-signup,
+        // wizard steps 1–3) must appear too — the "Signing up" chip lives off
+        // them — so the student set is enrolment students PLUS unfinished
+        // signups, unless a programme/specialization filter excludes them.
         var studentIds = enrollments.Select(e => e.StudentId).Distinct().ToList();
-        var students = await db.Students
-            .Where(s => studentIds.Contains(s.StudentId) && s.DeletedAt == null)
+        var studentsQuery = db.Students.Where(s => s.DeletedAt == null);
+        if (programmeId is not null || specializationId is not null)
+            studentsQuery = studentsQuery.Where(s => studentIds.Contains(s.StudentId));
+        else if (partnerId is not null)
+            studentsQuery = studentsQuery.Where(s => studentIds.Contains(s.StudentId) || s.PartnerId == partnerId);
+        var students = await studentsQuery
             .Select(s => new
             {
                 s.StudentId,
                 s.StudentNumber,
+                s.WizardStep,
                 s.UserId,
                 s.PartnerId,
                 User = new { s.User.UserName, s.User.Email, s.User.EmailConfirmed },
@@ -91,10 +99,15 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
         var items = students.Select(s =>
         {
             var enrs = enrollmentsByStudent.GetValueOrDefault(s.StudentId) ?? new();
+            // Still signing up = wizard never finished AND nothing beyond a
+            // draft enrolment exists (guards legacy rows with WizardStep 0).
+            var signingUp = s.WizardStep < 6 && enrs.All(e => e.StatusCode == "Draft");
             return new
             {
                 studentId = s.StudentId,
                 studentNumber = s.StudentNumber,
+                wizardStep = s.WizardStep,
+                signingUp,
                 username = s.User.UserName,
                 email = s.User.Email,
                 emailVerified = s.User.EmailConfirmed,
