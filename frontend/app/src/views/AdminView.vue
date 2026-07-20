@@ -372,7 +372,17 @@
         </div>
 
         <div class="manage-tab-bar">
-          <button v-for="t in MANAGE_TABS" :key="t.k" :class="['manage-tab-btn', { active: manageTab === t.k }]" @click="manageTab = t.k">{{ t.label }}</button>
+          <button v-for="t in MANAGE_TABS" :key="t.k" :class="['manage-tab-btn', { active: manageTab === t.k }]" @click="manageTab = t.k; gearOpen = false">{{ t.label }}</button>
+          <div class="manage-gear-wrap">
+            <button :class="['manage-tab-btn', 'manage-gear-btn', { active: isGearTab }]" title="Partner setup: profile, users, programmes"
+                    @click="gearOpen = !gearOpen">
+              ⚙<span v-if="isGearTab" class="gear-current">{{ GEAR_TABS.find(t => t.k === manageTab)?.label }}</span>
+            </button>
+            <div v-if="gearOpen" class="manage-gear-menu">
+              <button v-for="t in GEAR_TABS" :key="t.k" :class="['gear-item', { active: manageTab === t.k }]"
+                      @click="manageTab = t.k; gearOpen = false">{{ t.label }}</button>
+            </div>
+          </div>
         </div>
 
         <div v-show="manageTab === 'profile'" class="manage-section">
@@ -824,15 +834,20 @@ const partnerUsersLoading = ref(false)
 const showPartnerWizard = ref(false)
 
 // Manage panel tabs
+// Everyday tabs stay in the row; setup-ish tabs live under the ⚙ gear.
 const MANAGE_TABS = [
-  { k: 'profile',  label: 'Profile' },
-  { k: 'users',    label: 'Users' },
-  { k: 'programmes', label: 'Programmes' },
   { k: 'students', label: 'Students' },
   { k: 'certs',    label: 'Partnership Documents' },
   { k: 'datasheets', label: 'Datasheets' },
 ]
-const manageTab = ref('users')
+const GEAR_TABS = [
+  { k: 'profile',    label: 'Profile' },
+  { k: 'users',      label: 'Users' },
+  { k: 'programmes', label: 'Programmes' },
+]
+const manageTab = ref('students')
+const gearOpen = ref(false)
+const isGearTab = computed(() => GEAR_TABS.some(t => t.k === manageTab.value))
 // Programmes tab sub-menu: Core ⇄ Custom.
 const progSubTab = ref('core')
 
@@ -937,6 +952,7 @@ async function restorePartner(p) {
 
 async function openManagePartner(p) {
   managingPartner.value = p
+  gearOpen.value = false
   newUserUsername.value = ''; newUserEmail.value = ''; newUserPassword.value = ''; newUserCustomPassword.value = ''; addUserError.value = ''
   editingUserId.value = null; editError.value = ''
   resetUserId.value = null; resetPassword.value = ''
@@ -1553,6 +1569,17 @@ function logout() { auth.logout(); router.push('/login') }
 .manage-tab-btn:hover { color: #0a264f; }
 .manage-tab-btn.active { color: #0a264f; border-bottom-color: #0a264f; }
 .manage-section { padding: 0; }
+.manage-gear-wrap { margin-left: auto; position: relative; }
+.manage-gear-btn { font-size: 1rem; }
+.gear-current { font-size: .82rem; margin-left: .35rem; }
+.manage-gear-menu { position: absolute; right: 0; top: calc(100% + 4px); background: #fff;
+  border: 1.5px solid #d5deea; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.12);
+  min-width: 170px; z-index: 50; padding: .25rem; display: flex; flex-direction: column; }
+.gear-item { background: none; border: none; text-align: left; padding: .5rem .7rem;
+  font-size: .86rem; font-weight: 600; color: #2c3e50; cursor: pointer; border-radius: 6px; }
+.gear-item:hover { background: #f0f4fa; }
+.gear-item.active { background: #0a264f; color: #fff; }
+
 .prog-sub-bar { display: flex; gap: .35rem; margin-bottom: .9rem; }
 .prog-sub-btn { background: #f2f5f9; border: 1.5px solid #d5deea; border-radius: 16px;
   padding: .3rem .95rem; font-size: .82rem; font-weight: 600; color: #5f6e85; cursor: pointer; }
