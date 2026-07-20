@@ -103,6 +103,8 @@
           <button :class="['mc-tab', { active: detTab === 'record' }]" @click="detTab = 'record'">Record</button>
           <button v-if="!readOnly" :class="['mc-tab', { active: detTab === 'students' }]" @click="detTab = 'students'; loadStudents()">
             Assign students ({{ det.cohort?.studentCount ?? 0 }})</button>
+          <button :class="['mc-tab', { active: detTab === 'assignments' }]" @click="detTab = 'assignments'; loadStudents()">
+            Uploaded Assignments</button>
         </div>
         <div class="mc-dialog-body">
           <template v-if="detTab === 'record'">
@@ -197,6 +199,24 @@
             </div>
           </template>
 
+          <template v-else-if="detTab === 'assignments'">
+            <p class="mc-sub">Assignment uploads and comment chat for this cohort's module
+              ({{ det.cohort.moduleCode }}), per assigned student.</p>
+            <div v-if="studentsLoading" class="loading-row">Loading…</div>
+            <template v-else-if="assignedStudents.length">
+              <div v-for="s in assignedStudents" :key="s.enrollmentId" class="mc-section" style="padding:.5rem .8rem;">
+                <button type="button" class="mc-asg-stu" @click="asgOpen[s.enrollmentId] = !asgOpen[s.enrollmentId]">
+                  {{ asgOpen[s.enrollmentId] ? '▾' : '▸' }} {{ s.firstName }} {{ s.lastName }}
+                  <span class="mc-muted">· {{ s.studentNumber }}</span>
+                </button>
+                <AssignmentsPanel v-if="asgOpen[s.enrollmentId]"
+                  :api-base="assignmentsBase(s)"
+                  :subject-id="det.cohort.subjectId" />
+              </div>
+            </template>
+            <p v-else class="mc-sub">No students assigned to this cohort yet.</p>
+          </template>
+
           <template v-else>
             <p class="mc-sub">Admitted / active students enrolled in {{ det.cohort.programmeName }} at this partner.
               Tick to assign to this cohort.</p>
@@ -229,9 +249,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import api from '../../api/client.js'
 import { auth } from '../../store/auth.js'
+import AssignmentsPanel from '../assignments/AssignmentsPanel.vue'
 
 const props = defineProps({
   // 'admin' (MGW admin drawer, needs partnerId) or 'partner' (partner portal).
@@ -284,6 +305,14 @@ const uploading = ref(false)
 
 const students = ref([])
 const studentsLoading = ref(false)
+// Uploaded Assignments tab: per-student fold-outs within this cohort.
+const asgOpen = reactive({})
+const assignedStudents = computed(() => students.value.filter(s => s.assigned))
+function assignmentsBase(s) {
+  return props.mode === 'admin'
+    ? `/v1/admin/students/${s.studentId}/enrollments/${s.enrollmentId}/assignments`
+    : `/v1/partner/my-students/${s.studentId}/enrollments/${s.enrollmentId}/assignments`
+}
 
 // Admin-side QA report filters (client-side, by module start-date range).
 const filterFrom = ref('')
@@ -526,5 +555,6 @@ watch(() => props.partnerId, load, { immediate: true })
 .mc-section-title { font-weight: 700; color: #003366; font-size: .85rem; margin-bottom: .5rem; }
 .mc-system { padding: .4rem .55rem; background: #f2f5f9; border: 1px dashed #cfd7e3; border-radius: 5px; font-size: .82rem; color: #44536a; min-height: 1.9rem; }
 .mc-upl { margin-bottom: .6rem; }
+.mc-asg-stu { background: none; border: none; font-size: .88rem; font-weight: 700; color: #1a2d4f; cursor: pointer; padding: .2rem 0; }
 .mc-file-row { display: flex; align-items: center; gap: .4rem; font-size: .82rem; margin: .2rem 0; }
 </style>

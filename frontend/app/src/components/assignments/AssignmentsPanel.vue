@@ -71,7 +71,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import api from '../../api/client.js'
 import { ACCEPTED_DOC_ACCEPT_ATTR } from '../../utils/uploadPolicy.js'
 
@@ -80,9 +80,13 @@ const props = defineProps({
   apiBase: { type: String, required: true },
   canUpload: { type: Boolean, default: true },
   canComment: { type: Boolean, default: true },
+  // When set, only this module is shown (cohort context: one module per cohort).
+  subjectId: { type: String, default: '' },
 })
 
-const modules = ref([])
+const allModules = ref([])
+const modules = computed(() =>
+  props.subjectId ? allModules.value.filter(m => m.subjectId === props.subjectId) : allModules.value)
 const loading = ref(false)
 const error = ref('')
 const open = reactive({})
@@ -107,7 +111,7 @@ async function load() {
   error.value = ''
   try {
     const res = await api.get(props.apiBase)
-    modules.value = res.data.modules ?? []
+    allModules.value = res.data.modules ?? []
     // Auto-open modules that already have uploads.
     for (const m of modules.value) if (m.uploads.length && open[m.subjectId] === undefined) open[m.subjectId] = true
   } catch (e) {

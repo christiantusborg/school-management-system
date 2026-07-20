@@ -397,16 +397,6 @@
               @close="additionalDialog.open = false"
               @uploaded="onAdditionalUploaded" />
 
-            <!-- Uploaded Assignments: module tree, downloads and comment chat.
-                 Teachers are read-only but may still comment. -->
-            <div v-if="detailModal.activeTab === 'assignments'" class="tab-pane">
-              <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
-              <!-- Teachers may upload assignments too (code switch:
-                   TeacherCanUploadAssignments in RolePathGuardMiddleware). -->
-              <AssignmentsPanel v-else
-                :api-base="`/v1/partner/my-students/${detailModal.studentId}/enrollments/${activeEnrollment.studentEnrollmentId}/assignments`" />
-            </div>
-
             <div v-if="detailModal.activeTab === 'letters'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
               <div v-else class="letters-list">
@@ -543,7 +533,6 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import Fuse from 'fuse.js'
 import api from '../../../api/client.js'
 import { auth } from '../../../store/auth.js'
-import AssignmentsPanel from '../../assignments/AssignmentsPanel.vue'
 import StudentReviewWizard from '../StudentReviewWizard.vue'
 import EnrollmentActivityLog from '../../letters/EnrollmentActivityLog.vue'
 import AdditionalDocumentUploadDialog from '../../letters/AdditionalDocumentUploadDialog.vue'
@@ -782,7 +771,6 @@ async function load() {
 const DETAIL_TABS = [
   { id: 'details',     label: 'Details' },
   { id: 'documents',   label: 'Documents' },
-  { id: 'assignments', label: 'Uploaded Assignments' },
   { id: 'letters',     label: 'Letters' },
   { id: 'payment',     label: 'Payment' },
   { id: 'moodle',      label: 'Moodle' },

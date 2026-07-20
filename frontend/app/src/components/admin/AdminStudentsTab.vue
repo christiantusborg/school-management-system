@@ -940,18 +940,6 @@
               @close="additionalDialog.open = false"
               @uploaded="onAdditionalUploaded" />
 
-            <!-- Uploaded Assignments tab: module tree + comment chat per enrolment -->
-            <div v-if="detailModal.activeTab === 'assignments'" class="tab-pane">
-              <div v-for="enr in detailModal.data?.enrollments ?? []" :key="enr.studentEnrollmentId" class="docs-group">
-                <div class="docs-group-head">
-                  <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
-                </div>
-                <AssignmentsPanel
-                  :api-base="`/v1/admin/students/${detailModal.studentId}/enrollments/${enr.studentEnrollmentId}/assignments`" />
-              </div>
-              <p v-if="!(detailModal.data?.enrollments ?? []).length" class="muted">No enrolments for this student yet.</p>
-            </div>
-
             <!-- Moodle tab -->
             <div v-if="detailModal.activeTab === 'moodle'" class="tab-pane">
               <div class="moodle-row">
@@ -1153,7 +1141,6 @@ import AdminReviewWizard from './AdminReviewWizard.vue'
 import StudentReviewWizard from '../partner/StudentReviewWizard.vue'
 import EnrollmentActivityLog from '../letters/EnrollmentActivityLog.vue'
 import AdditionalDocumentUploadDialog from '../letters/AdditionalDocumentUploadDialog.vue'
-import AssignmentsPanel from '../assignments/AssignmentsPanel.vue'
 import { ACCEPTED_DOC_ACCEPT_ATTR } from '../../utils/uploadPolicy.js'
 
 const props = defineProps({
@@ -1244,7 +1231,6 @@ const DETAIL_TABS = [
   { id: 'details',     label: 'Details' },
   { id: 'programs',    label: 'Programs' },
   { id: 'documents',   label: 'Documents' },
-  { id: 'assignments', label: 'Uploaded Assignments' },
   { id: 'moodle',      label: 'Moodle' },
   { id: 'activity',    label: 'Activity log' },
 ]
