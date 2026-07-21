@@ -31,6 +31,7 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
         app.MapGet("/v1/partner/my/cohort-files/{fileId:guid}/file", DownloadFileAsync).RequireAuthorization("PartnerOnly");
         app.MapGet("/v1/partner/my/cohorts/{cohortId:guid}/grades", GradesAsync).RequireAuthorization("PartnerOnly");
         app.MapPost("/v1/partner/my/cohorts/{cohortId:guid}/grades/draft", SaveGradesDraftAsync).RequireAuthorization("PartnerOnly");
+        app.MapPost("/v1/partner/my/cohorts/{cohortId:guid}/grades/submit", SubmitGradesAsync).RequireAuthorization("PartnerOnly");
         app.MapGet("/v1/partner/my-students/{studentId:guid}/enrollments/{enrollmentId:guid}/cohorts", StudentCohortsAsync).RequireAuthorization("PartnerOnly");
         app.MapPut("/v1/partner/my-students/{studentId:guid}/enrollments/{enrollmentId:guid}/cohorts", SetStudentCohortAsync).RequireAuthorization("PartnerOnly");
         return app;
@@ -482,6 +483,23 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
         }
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { saved = items.Count });
+    }
+
+    /// <summary>Partner-admin submit (teachers draft only — the write-gate
+    /// blocks them here, and the ownership check double-locks it).</summary>
+    private static async Task<IResult> SubmitGradesAsync(
+        Guid cohortId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var (callerId, partnerId, teacherId, fail) = await ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+        if (teacherId is not null)
+            return Results.StatusCode(403); // teachers may draft, not submit
+        var owned = await db.ModuleCohorts.AnyAsync(c =>
+            c.ModuleCohortId == cohortId && c.PartnerId == partnerId && c.DeletedAt == null, ct);
+        if (!owned) return Results.NotFound();
+        Guid.TryParse(callerId, out var byUserId);
+        var result = await ModuleCohortLogic.SubmitGradesAsync(db, cohortId, byUserId, "Partner", ct);
+        return result is null ? Results.NotFound() : Results.Ok(result);
     }
 
     private static async Task<IResult> StudentCohortsAsync(

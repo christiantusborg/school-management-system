@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Odin.Api.Base.Storage;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
@@ -24,6 +25,9 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         app.MapPut("/v1/admin/cohorts/{cohortId:guid}", UpdateAsync).RequireAuthorization("AdminOnly");
         app.MapDelete("/v1/admin/cohorts/{cohortId:guid}", DeleteAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/cohorts/{cohortId:guid}/students", StudentsAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/cohorts/{cohortId:guid}/grades", GradesAsync).RequireAuthorization("AdminOnly");
+        app.MapPost("/v1/admin/cohorts/{cohortId:guid}/grades/draft", SaveGradesDraftAsync).RequireAuthorization("AdminOnly");
+        app.MapPost("/v1/admin/cohorts/{cohortId:guid}/grades/submit", SubmitGradesAsync).RequireAuthorization("AdminOnly");
         app.MapPut("/v1/admin/cohorts/{cohortId:guid}/students", AssignStudentsAsync).RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/cohorts/{cohortId:guid}/files", UploadFilesAsync)
             .RequireAuthorization("AdminOnly").DisableAntiforgery();
@@ -273,6 +277,29 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         cohort.DeletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { deleted = true });
+    }
+
+    private static async Task<IResult> GradesAsync(Guid cohortId, OdinDbContext db, CancellationToken ct)
+    {
+        var result = await ModuleCohortLogic.GradesAsync(db, cohortId, ct);
+        return result is null ? Results.NotFound() : Results.Ok(result);
+    }
+
+    private static async Task<IResult> SaveGradesDraftAsync(
+        Guid cohortId, [FromBody] ModuleCohortLogic.GradesDraftBody body, OdinDbContext db, CancellationToken ct)
+    {
+        var (found, error, saved) = await ModuleCohortLogic.SaveGradesDraftAsync(db, cohortId, body, ct);
+        if (!found) return Results.NotFound();
+        return error is null ? Results.Ok(new { saved }) : Results.BadRequest(new { error });
+    }
+
+    private static async Task<IResult> SubmitGradesAsync(
+        Guid cohortId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var callerId = httpContext.User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+        Guid.TryParse(callerId, out var byUserId);
+        var result = await ModuleCohortLogic.SubmitGradesAsync(db, cohortId, byUserId, "Admission Office", ct);
+        return result is null ? Results.NotFound() : Results.Ok(result);
     }
 
     /// <summary>Assigned students + the partner's assignable (admitted/active)

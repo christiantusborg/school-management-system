@@ -105,6 +105,8 @@
             Assign students ({{ det.cohort?.studentCount ?? 0 }})</button>
           <button :class="['mc-tab', { active: detTab === 'assignments' }]" @click="detTab = 'assignments'; loadStudents()">
             Uploaded Assignments</button>
+          <button :class="['mc-tab', { active: detTab === 'grades' }]" @click="detTab = 'grades'; loadGrades()">
+            Grades</button>
           <button :class="['mc-tab', { active: detTab === 'questionnaires' }]" @click="detTab = 'questionnaires'">
             Questionnaires</button>
         </div>
@@ -201,6 +203,38 @@
             </div>
           </template>
 
+          <template v-else-if="detTab === 'grades'">
+            <p class="mc-sub">Marks for {{ det.cohort.moduleCode }} — saved into each student's normal grade sheet
+              (Programme → Specialization → Module). Draft never changes status; “Submit for approval” moves
+              fully-graded students to Grades — Awaiting Approval.</p>
+            <div v-if="gradesLoading" class="loading-row">Loading…</div>
+            <table v-else-if="grades.length" class="data-table">
+              <thead><tr><th>Student</th><th>Student #</th><th>Status</th><th style="width:140px">Score (0–100)</th></tr></thead>
+              <tbody>
+                <tr v-for="g in grades" :key="g.enrollmentId">
+                  <td>{{ g.firstName }} {{ g.lastName }}</td>
+                  <td>{{ g.studentNumber }}</td>
+                  <td>{{ g.statusName }}</td>
+                  <td><input v-model.number="g.score" type="number" min="0" max="100" class="mc-inp" style="width:110px" /></td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="mc-sub">No students assigned to this cohort yet.</p>
+            <div v-if="grades.length" style="margin-top:.6rem; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;">
+              <button type="button" class="btn-primary-sm" :disabled="savingGrades" @click="saveGradesDraft">
+                {{ savingGrades ? 'Saving…' : 'Save marks (draft)' }}</button>
+              <button v-if="!readOnly" type="button" class="btn-sm" :disabled="savingGrades" @click="submitGrades"
+                      title="Moves each fully-graded student to Grades — Awaiting Approval.">
+                ✓ Submit for approval</button>
+              <span v-if="gradesOk" class="mc-chip mc-ok">{{ gradesOk }}</span>
+            </div>
+            <div v-if="gradesSkipped.length" class="mc-section" style="margin-top:.6rem;">
+              <div class="mc-section-title">Not submitted</div>
+              <p v-for="(sk, i) in gradesSkipped" :key="i" class="mc-sub" style="margin:.15rem 0;">
+                {{ sk.studentNumber }} — {{ sk.reason }}</p>
+            </div>
+          </template>
+
           <template v-else-if="detTab === 'assignments'">
             <p class="mc-sub">Assignment uploads and comment chat for this cohort's module
               ({{ det.cohort.moduleCode }}), per assigned student.</p>
@@ -285,6 +319,7 @@ const P = computed(() => props.mode === 'admin'
       students: id => `/v1/admin/cohorts/${id}/students`,
       files: id => `/v1/admin/cohorts/${id}/files`,
       file: id => `/v1/admin/cohort-files/${id}`,
+      grades: id => `/v1/admin/cohorts/${id}/grades`,
     }
   : {
       list: '/v1/partner/my/cohorts',
@@ -293,6 +328,7 @@ const P = computed(() => props.mode === 'admin'
       students: id => `/v1/partner/my/cohorts/${id}/students`,
       files: id => `/v1/partner/my/cohorts/${id}/files`,
       file: id => `/v1/partner/my/cohort-files/${id}`,
+      grades: id => `/v1/partner/my/cohorts/${id}/grades`,
     })
 
 // Teacher partner-users are read-only.
@@ -322,6 +358,72 @@ const uploading = ref(false)
 
 const students = ref([])
 const studentsLoading = ref(false)
+
+// Grades tab: marks for the cohort's module, drafted into SubjectGrades;
+// optional submit flips fully-graded students to awaiting approval.
+const grades = ref([])
+const gradesLoading = ref(false)
+const savingGrades = ref(false)
+const gradesOk = ref('')
+const gradesSkipped = ref([])
+async function loadGrades() {
+  gradesLoading.value = true
+  detError.value = ''
+  gradesSkipped.value = []
+  try {
+    const res = await api.get(P.value.grades(det.value.cohort.moduleCohortId))
+    grades.value = res.data.students ?? []
+  } catch (e) {
+    detError.value = e.response?.data?.error ?? e.message ?? 'Failed to load grades'
+  } finally {
+    gradesLoading.value = false
+  }
+}
+async function saveGradesDraft() {
+  if (savingGrades.value) return
+  savingGrades.value = true
+  detError.value = ''
+  gradesOk.value = ''
+  try {
+    await api.post(`${P.value.grades(det.value.cohort.moduleCohortId)}/draft`, {
+      items: grades.value
+        .filter(g => g.score !== null && g.score !== '' && g.score !== undefined)
+        .map(g => ({ enrollmentId: g.enrollmentId, score: g.score })),
+    })
+    gradesOk.value = 'Draft saved'
+    setTimeout(() => { gradesOk.value = '' }, 2500)
+  } catch (e) {
+    detError.value = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    savingGrades.value = false
+  }
+}
+async function submitGrades() {
+  if (savingGrades.value) return
+  if (!confirm('Submit grades for approval? Fully-graded students move to “Grades — Awaiting Approval”.')) return
+  savingGrades.value = true
+  detError.value = ''
+  gradesOk.value = ''
+  try {
+    await saveGradesDraftInternal()
+    const res = await api.post(`${P.value.grades(det.value.cohort.moduleCohortId)}/submit`)
+    gradesSkipped.value = res.data.skipped ?? []
+    gradesOk.value = `Submitted: ${res.data.submitted}`
+    await loadGrades()
+    await load()
+  } catch (e) {
+    detError.value = e.response?.data?.error ?? e.message ?? 'Submit failed'
+  } finally {
+    savingGrades.value = false
+  }
+}
+async function saveGradesDraftInternal() {
+  await api.post(`${P.value.grades(det.value.cohort.moduleCohortId)}/draft`, {
+    items: grades.value
+      .filter(g => g.score !== null && g.score !== '' && g.score !== undefined)
+      .map(g => ({ enrollmentId: g.enrollmentId, score: g.score })),
+  })
+}
 // Uploaded Assignments tab: per-student fold-outs within this cohort.
 const asgOpen = reactive({})
 const assignedStudents = computed(() => students.value.filter(s => s.assigned))
