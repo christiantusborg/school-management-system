@@ -22,6 +22,7 @@ const routes = [
   { path: '/apply/verify-email', component: VerifyEmailView },
   { path: '/verify', component: PublicVerifyView },
   { path: '/f/:slug', component: () => import('../views/PublicFormFillView.vue') },
+  { path: '/import-converter', component: () => import('../views/CsvConvertView.vue') },
   {
     path: '/student/application',
     component: ApplicationView,

@@ -254,6 +254,15 @@
             <div class="maj-row" @click="toggleMaj(maj.specializationId)">
               <span class="maj-arrow">{{ xMaj === maj.specializationId ? '▼' : '▶' }}</span>
               <strong class="maj-name">{{ maj.name }}</strong>
+              <input
+                class="inp-speccode-inline"
+                :value="maj.code || ''"
+                placeholder="code"
+                @click.stop
+                @blur="updateSpecializationCode(maj, $event.target.value)"
+                @keyup.enter="$event.target.blur()"
+                title="Specialization code (like programme/module codes)"
+              />
               <span class="maj-count">{{ subjectsFor(maj.specializationId).length }} subject{{ subjectsFor(maj.specializationId).length !== 1 ? 's' : '' }}</span>
               <input
                 class="inp-lang-inline"
@@ -928,6 +937,19 @@ async function addSpecialization(progId) {
   } catch (e) { mfErr[progId] = e.response?.data?.message ?? e.message ?? 'Failed to save' }
 }
 
+async function updateSpecializationCode(maj, raw) {
+  const next = (raw ?? '').trim().toUpperCase()
+  const previous = maj.code ?? ''
+  if (!next || next === previous) return
+  maj.code = next
+  try {
+    await api.put(`/v1/school/specializations/${maj.specializationId}`, { code: next })
+  } catch (e) {
+    maj.code = previous
+    loadError.value = e.response?.data?.message ?? e.message ?? 'Failed to update specialization code'
+  }
+}
+
 async function updateSpecializationLanguage(maj, raw) {
   const next = (raw ?? '').trim()
   const previous = maj.instructionLanguage ?? ''
@@ -1146,6 +1168,7 @@ async function permanentDeleteProgramme(prog) {
 .maj-row:hover { background: #f7f9fb; }
 .maj-arrow { font-size: 0.7rem; color: #888; width: 10px; flex-shrink: 0; }
 .maj-name  { font-size: 0.9rem; font-weight: 700; color: #1a2d4f; flex: 1; }
+.inp-speccode-inline { width: 130px; padding: 0.2rem 0.45rem; border: 1px solid #d5deea; border-radius: 4px; font-size: 0.76rem; font-family: monospace; text-transform: uppercase; }
 .maj-count { font-size: 0.78rem; color: #999; white-space: nowrap; margin-left: auto; }
 
 /* Subjects */

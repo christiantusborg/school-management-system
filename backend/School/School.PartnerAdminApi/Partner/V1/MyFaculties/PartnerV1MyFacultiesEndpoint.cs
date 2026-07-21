@@ -106,8 +106,19 @@ public sealed class PartnerV1MyFacultiesEndpoint : IEndpointMarker
         Guid teacherId, HttpContext httpContext,
         [FromBody] FacultyProfileLogic.SaveBody body, OdinDbContext db, CancellationToken ct)
     {
+        var (callerId, _, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
         var (_, owned) = await ResolveTeacherAsync(httpContext, teacherId, db, ct);
         if (!owned) return Results.NotFound();
+        // Teacher users may edit ONLY their own profile (the write-gate lets
+        // the PUT through; ownership is enforced here).
+        var callerIsTeacher = await db.Users.AnyAsync(u => u.Id == callerId && u.IsTeacher, ct);
+        if (callerIsTeacher)
+        {
+            var own = await db.Teachers.AnyAsync(t =>
+                t.TeacherId == teacherId && t.UserId == callerId && t.DeletedAt == null, ct);
+            if (!own) return Results.StatusCode(403);
+        }
         var ok = await FacultyProfileLogic.SaveProfileAsync(db, teacherId, body, partnerEditableOnly: true, ct);
         return ok ? Results.Ok(new { saved = true }) : Results.NotFound();
     }

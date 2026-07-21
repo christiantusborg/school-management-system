@@ -15,6 +15,7 @@ public sealed class AdminPartnerV1ListCommandResultToEndpointResponseMapper(IHtt
                 PartnerId  = x.PartnerId,
                 Name       = x.Name,
                 Slug       = x.Slug,
+                PartnerNumber = x.PartnerNumber,
                 UserCount  = x.UserCount,
                 StudentCount = x.StudentCount,
                 TeacherCount = x.TeacherCount,

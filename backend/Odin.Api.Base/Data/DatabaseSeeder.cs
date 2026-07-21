@@ -530,6 +530,7 @@ public static class DatabaseSeeder
                 Slug = slug,
                 Name = name,
                 Website = website,
+                PartnerNumber = $"PA-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}",
             });
             added++;
         }
@@ -2077,22 +2078,23 @@ public static class DatabaseSeeder
     {
         if (await context.CohortUploadFields.IgnoreQueryFilters().AnyAsync()) return;
 
-        var seeds = new (string Label, bool Multiple, bool Grading)[]
+        var seeds = new (string Label, bool Multiple, bool Grading, bool StudentVisible)[]
         {
-            ("Teaching / Study Plan", false, false),
-            ("Module Assessment Details", true, false),
-            ("Module Teaching Materials", true, false),
-            ("Grading Sheets & Rubrics", true, true),
-            ("Module Outline Given to Students", false, false),
+            ("Teaching / Study Plan", false, false, false),
+            ("Module Assessment Details", true, false, false),
+            ("Module Teaching Materials", true, false, false),
+            ("Grading Sheets & Rubrics", true, true, false),
+            ("Module Outline Given to Students", false, false, true),
         };
         var order = 0;
-        foreach (var (label, multiple, grading) in seeds)
+        foreach (var (label, multiple, grading, studentVisible) in seeds)
         {
             context.CohortUploadFields.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.CohortUploadField
             {
                 Label = label,
                 AllowMultiple = multiple,
                 IsGradingSheet = grading,
+                VisibleToStudents = studentVisible,
                 SortOrder = order++,
             });
         }

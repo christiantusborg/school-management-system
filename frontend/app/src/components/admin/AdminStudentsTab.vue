@@ -972,6 +972,12 @@
             </div>
 
             <!-- Activity tab -->
+            <div v-if="detailModal.activeTab === 'log'" class="tab-pane">
+              <StudentLogNotesPanel mode="admin"
+                :api-root="`/v1/admin/students/${detailModal.studentId}`"
+                :enrollments="detailEnrollments" />
+            </div>
+
             <div v-if="detailModal.activeTab === 'activity'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
               <EnrollmentActivityLog v-else
@@ -1136,6 +1142,7 @@
 import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue'
 import Fuse from 'fuse.js'
 import api from '../../api/client.js'
+import StudentLogNotesPanel from './StudentLogNotesPanel.vue'
 import { auth } from '../../store/auth.js'
 import AdminReviewWizard from './AdminReviewWizard.vue'
 import StudentReviewWizard from '../partner/StudentReviewWizard.vue'
@@ -1166,6 +1173,8 @@ const STATUS_FILTERS = [
   { id: 'admitted',                  label: 'Admitted',                    codes: ['ApplicationApprovedAdmission', 'AcceptAdmission'] },
   { id: 'awaiting-grades-submit',    label: 'Awaiting Grades Submit',      codes: ['AwaitingGradesSubmit'] },
   { id: 'graduated',                 label: 'Graduated',                   codes: ['GradesApproved'] },
+  { id: 'deferred',                  label: 'Deferred',                    codes: ['Deferred'] },
+  { id: 'dropped-out',               label: 'Dropped Out',                 codes: ['DroppedOut'] },
   // Not a status: any enrolment with an unpaid installment / additional
   // invoice past its due date (flag computed by the list endpoint).
   { id: 'payment-overdue',           label: 'Payment overdue',             codes: null, overdue: true },
@@ -1232,6 +1241,7 @@ const DETAIL_TABS = [
   { id: 'programs',    label: 'Programs' },
   { id: 'documents',   label: 'Documents' },
   { id: 'moodle',      label: 'Moodle' },
+  { id: 'log',         label: 'Log' },
   { id: 'activity',    label: 'Activity log' },
 ]
 const ALL_LETTER_TYPES = [

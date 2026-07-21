@@ -23,6 +23,7 @@
             <label>
               <input type="checkbox" :checked="isGranted(m.specializationId)" :disabled="busy.has(m.specializationId)" @change="onToggle(m, $event.target.checked)" />
               <span>{{ m.name }}</span>
+              <span v-if="m.code" class="spec-code-chip">{{ m.code }}</span>
             </label>
             <span v-if="partnerDisabled(m.specializationId)" class="pill pill-muted" title="Partner has disabled this specialization from their portal">Partner-disabled</span>
           </div>
@@ -152,4 +153,5 @@ async function toggleStudentCard(prog, checked) {
 .card-toggle { display: flex; align-items: center; gap: .4rem; font-size: .8rem; font-weight: 600; color: #1a4d8c; cursor: pointer; }
 .card-toggle-ok { color: #1c7a4a; font-size: .76rem; font-weight: 600; }
 .card-toggle-err { color: #b42318; font-size: .76rem; }
+.spec-code-chip { font-family: monospace; font-size: .7rem; background: #eef3fa; border: 1px solid #d5e0ee; color: #44536a; border-radius: 4px; padding: 0 .35rem; margin-left: .4rem; }
 </style>

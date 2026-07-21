@@ -29,6 +29,8 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
             .RequireAuthorization("PartnerOnly").DisableAntiforgery();
         app.MapDelete("/v1/partner/my/cohort-files/{fileId:guid}", DeleteFileAsync).RequireAuthorization("PartnerOnly");
         app.MapGet("/v1/partner/my/cohort-files/{fileId:guid}/file", DownloadFileAsync).RequireAuthorization("PartnerOnly");
+        app.MapGet("/v1/partner/my/cohorts/{cohortId:guid}/grades", GradesAsync).RequireAuthorization("PartnerOnly");
+        app.MapPost("/v1/partner/my/cohorts/{cohortId:guid}/grades/draft", SaveGradesDraftAsync).RequireAuthorization("PartnerOnly");
         app.MapGet("/v1/partner/my-students/{studentId:guid}/enrollments/{enrollmentId:guid}/cohorts", StudentCohortsAsync).RequireAuthorization("PartnerOnly");
         app.MapPut("/v1/partner/my-students/{studentId:guid}/enrollments/{enrollmentId:guid}/cohorts", SetStudentCohortAsync).RequireAuthorization("PartnerOnly");
         return app;
@@ -288,11 +290,13 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
         Guid cohortId, [FromQuery] Guid fieldId, IFormFileCollection files,
         HttpContext httpContext, OdinDbContext db, IFileStorage storage, CancellationToken ct)
     {
-        var (_, partnerId, _, fail) = await ResolveAsync(httpContext, db, ct);
+        var (_, partnerId, teacherId, fail) = await ResolveAsync(httpContext, db, ct);
         if (fail is not null) return fail;
         var cohort = await db.ModuleCohorts.FirstOrDefaultAsync(c =>
             c.ModuleCohortId == cohortId && c.PartnerId == partnerId && c.DeletedAt == null, ct);
         if (cohort is null) return Results.NotFound();
+        // Teachers may upload only on their OWN cohorts.
+        if (teacherId is not null && cohort.TeacherId != teacherId) return Results.NotFound();
         var field = await db.CohortUploadFields
             .FirstOrDefaultAsync(f => f.CohortUploadFieldId == fieldId && f.DeletedAt == null, ct);
         if (field is null) return Results.BadRequest(new { error = "Unknown upload field." });
@@ -336,12 +340,13 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
     private static async Task<IResult> DeleteFileAsync(
         Guid fileId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
     {
-        var (_, partnerId, _, fail) = await ResolveAsync(httpContext, db, ct);
+        var (_, partnerId, teacherId, fail) = await ResolveAsync(httpContext, db, ct);
         if (fail is not null) return fail;
         var file = await (
             from f in db.CohortUploadFiles
             join c in db.ModuleCohorts on f.ModuleCohortId equals c.ModuleCohortId
             where f.CohortUploadFileId == fileId && f.DeletedAt == null && c.PartnerId == partnerId
+                && (teacherId == null || c.TeacherId == teacherId)
             select f).FirstOrDefaultAsync(ct);
         if (file is null) return Results.NotFound();
         file.DeletedAt = DateTime.UtcNow;
@@ -366,6 +371,117 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
             return Results.File(stream, "application/octet-stream", file.FileName);
         }
         catch (FileNotFoundException) { return Results.NotFound(); }
+    }
+
+    public sealed class GradeItemDto
+    {
+        public Guid EnrollmentId { get; init; }
+        public int? Score { get; init; }
+    }
+
+    public sealed class GradesDraftBody
+    {
+        public List<GradeItemDto>? Items { get; init; }
+    }
+
+    /// <summary>The cohort's assigned students with their current mark for
+    /// THIS module (teachers grade here; scores land in the normal grade
+    /// sheet as drafts).</summary>
+    private static async Task<IResult> GradesAsync(
+        Guid cohortId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var (_, partnerId, teacherId, fail) = await ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+        var cohort = await db.ModuleCohorts
+            .Where(c => c.ModuleCohortId == cohortId && c.PartnerId == partnerId && c.DeletedAt == null
+                && (teacherId == null || c.TeacherId == teacherId))
+            .Select(c => new { c.SubjectId, c.CohortNumber })
+            .FirstOrDefaultAsync(ct);
+        if (cohort is null) return Results.NotFound();
+
+        var rows = await (
+            from mcs in db.ModuleCohortStudents
+            join e in db.Enrollments on mcs.StudentEnrollmentId equals e.StudentEnrollmentId
+            where mcs.ModuleCohortId == cohortId && mcs.DeletedAt == null && e.DeletedAt == null
+            select new
+            {
+                enrollmentId = e.StudentEnrollmentId,
+                statusName = e.Status.Name,
+                statusCode = e.Status.Code,
+                studentNumber = db.Students.Where(s => s.StudentId == e.StudentId).Select(s => s.StudentNumber).FirstOrDefault(),
+                firstName = db.Students.Where(s => s.StudentId == e.StudentId)
+                    .Select(s => db.UserProfiles.Where(p => p.UserId == s.UserId).Select(p => p.FirstName).FirstOrDefault()).FirstOrDefault(),
+                lastName = db.Students.Where(s => s.StudentId == e.StudentId)
+                    .Select(s => db.UserProfiles.Where(p => p.UserId == s.UserId).Select(p => p.LastName).FirstOrDefault()).FirstOrDefault(),
+                score = db.Set<SharedLibrary.Basics.Opaque.Domains.SubjectGrade>()
+                    .Where(g => g.StudentEnrollmentId == e.StudentEnrollmentId && g.SubjectId == cohort.SubjectId)
+                    .Select(g => (int?)g.Score).FirstOrDefault(),
+            }).ToListAsync(ct);
+
+        return Results.Ok(new
+        {
+            cohortNumber = cohort.CohortNumber,
+            students = rows.OrderBy(r => r.lastName).ThenBy(r => r.firstName).ToList(),
+        });
+    }
+
+    /// <summary>Draft-saves marks for the cohort's module into the normal
+    /// grade sheet (SubjectGrades). Never touches enrolment status — the
+    /// existing submit/approve flow is unchanged. Teacher-writable because
+    /// the path ends /grades/draft.</summary>
+    private static async Task<IResult> SaveGradesDraftAsync(
+        Guid cohortId, HttpContext httpContext, [FromBody] GradesDraftBody body,
+        OdinDbContext db, CancellationToken ct)
+    {
+        var (_, partnerId, teacherId, fail) = await ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+        var cohort = await db.ModuleCohorts
+            .Where(c => c.ModuleCohortId == cohortId && c.PartnerId == partnerId && c.DeletedAt == null
+                && (teacherId == null || c.TeacherId == teacherId))
+            .Select(c => new { c.SubjectId })
+            .FirstOrDefaultAsync(ct);
+        if (cohort is null) return Results.NotFound();
+
+        var assignedIds = (await db.ModuleCohortStudents
+            .Where(s => s.ModuleCohortId == cohortId && s.DeletedAt == null)
+            .Select(s => s.StudentEnrollmentId)
+            .ToListAsync(ct)).ToHashSet();
+
+        var items = (body.Items ?? []).Where(i => i.Score is not null).ToList();
+        foreach (var item in items)
+        {
+            if (!assignedIds.Contains(item.EnrollmentId))
+                return Results.BadRequest(new { error = "A student in the payload is not assigned to this cohort." });
+            if (item.Score is < 0 or > 100)
+                return Results.BadRequest(new { error = "Score must be between 0 and 100." });
+        }
+
+        var enrollmentIds = items.Select(i => i.EnrollmentId).ToList();
+        var existing = await db.Set<SharedLibrary.Basics.Opaque.Domains.SubjectGrade>()
+            .Where(g => enrollmentIds.Contains(g.StudentEnrollmentId) && g.SubjectId == cohort.SubjectId)
+            .ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        foreach (var item in items)
+        {
+            var row = existing.FirstOrDefault(g => g.StudentEnrollmentId == item.EnrollmentId);
+            if (row is not null)
+            {
+                row.Score = item.Score!.Value;
+                row.GradedAt = now;
+            }
+            else
+            {
+                db.Set<SharedLibrary.Basics.Opaque.Domains.SubjectGrade>().Add(new SharedLibrary.Basics.Opaque.Domains.SubjectGrade
+                {
+                    StudentEnrollmentId = item.EnrollmentId,
+                    SubjectId = cohort.SubjectId,
+                    Score = item.Score!.Value,
+                    GradedAt = now,
+                });
+            }
+        }
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { saved = items.Count });
     }
 
     private static async Task<IResult> StudentCohortsAsync(

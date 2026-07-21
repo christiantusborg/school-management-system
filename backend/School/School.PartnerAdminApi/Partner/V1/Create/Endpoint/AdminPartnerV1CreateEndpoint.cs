@@ -88,6 +88,7 @@ public sealed class AdminPartnerV1CreateEndpoint : IEndpointMarker
             PartnerId = Guid.NewGuid(),
             Name = name,
             Slug = slug,
+            PartnerNumber = await GenerateUniquePartnerNumberAsync(db, ct),
             Website = NullIfBlank(body.Website),
             RegistrationNumber = NullIfBlank(body.RegistrationNumber),
             TaxId = NullIfBlank(body.TaxId),
@@ -215,5 +216,21 @@ public sealed class AdminPartnerV1CreateEndpoint : IEndpointMarker
             candidate = $"{baseSlug}-{suffix}";
         }
         return candidate;
+    }
+
+    /// <summary>
+    /// PA-YYYYMMDD-RAND6, mirroring the student number format
+    /// (ST-YYYYMMDD-RAND6). Collision odds are negligible; the loop plus the
+    /// unique index guard them anyway.
+    /// </summary>
+    private static async Task<string> GenerateUniquePartnerNumberAsync(OdinDbContext db, CancellationToken ct)
+    {
+        while (true)
+        {
+            var rnd = Guid.NewGuid().ToString("N").ToUpperInvariant().Substring(0, 6);
+            var candidate = $"PA-{DateTime.UtcNow:yyyyMMdd}-{rnd}";
+            if (!await db.Partners.AnyAsync(p => p.PartnerNumber == candidate, ct))
+                return candidate;
+        }
     }
 }

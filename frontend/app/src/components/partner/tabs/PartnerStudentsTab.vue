@@ -295,7 +295,7 @@
             </div>
 
             <div class="detail-tabs">
-              <button v-for="t in DETAIL_TABS" :key="t.id"
+              <button v-for="t in visibleDetailTabs" :key="t.id"
                       :class="['tab-btn', { active: detailModal.activeTab === t.id }]"
                       @click="detailModal.activeTab = t.id">{{ t.label }}</button>
             </div>
@@ -507,6 +507,12 @@
               </template>
             </div>
 
+            <div v-if="detailModal.activeTab === 'log'" class="tab-pane">
+              <StudentLogNotesPanel mode="partner"
+                :api-root="`/v1/partner/my-students/${detailModal.studentId}`"
+                :enrollments="detailEnrollments" />
+            </div>
+
             <div v-if="detailModal.activeTab === 'activity'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
               <EnrollmentActivityLog v-else
@@ -534,6 +540,7 @@ import Fuse from 'fuse.js'
 import api from '../../../api/client.js'
 import { auth } from '../../../store/auth.js'
 import StudentReviewWizard from '../StudentReviewWizard.vue'
+import StudentLogNotesPanel from '../../admin/StudentLogNotesPanel.vue'
 import EnrollmentActivityLog from '../../letters/EnrollmentActivityLog.vue'
 import AdditionalDocumentUploadDialog from '../../letters/AdditionalDocumentUploadDialog.vue'
 import { ACCEPTED_DOC_ACCEPT_ATTR } from '../../../utils/uploadPolicy.js'
@@ -559,6 +566,8 @@ const STATUS_FILTERS = [
   { id: 'admitted-grading',          label: 'Admitted — Grading',          codes: ['AwaitingGradesSubmit'] },
   { id: 'awaiting-grades-approval',  label: 'Awaiting Grades Approval',    codes: ['AwaitingGradesApproval'] },
   { id: 'graduated',                 label: 'Graduated',                   codes: ['GradesApproved'] },
+  { id: 'deferred',                  label: 'Deferred',                    codes: ['Deferred'] },
+  { id: 'dropped-out',               label: 'Dropped Out',                 codes: ['DroppedOut'] },
   { id: '',                          label: 'All',                         codes: null },
 ]
 const MODES = [
@@ -774,8 +783,12 @@ const DETAIL_TABS = [
   { id: 'letters',     label: 'Letters' },
   { id: 'payment',     label: 'Payment' },
   { id: 'moodle',      label: 'Moodle' },
+  { id: 'log',         label: 'Log' },
   { id: 'activity',    label: 'Activity log' },
 ]
+// The note log is partner STAFF only: teacher logins don't get the tab.
+const visibleDetailTabs = computed(() =>
+  auth.user?.isTeacher ? DETAIL_TABS.filter(t => t.id !== 'log') : DETAIL_TABS)
 // Printable Cert (provisionalCertificate) is intentionally omitted: only the
 // Admission Office may download the printable certificate version.
 const LETTER_TYPES = [

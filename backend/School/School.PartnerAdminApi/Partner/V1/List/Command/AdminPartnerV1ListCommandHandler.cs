@@ -57,6 +57,7 @@ public sealed class AdminPartnerV1ListCommandHandler(OdinDbContext db)
             PartnerId  = p.PartnerId,
             Name       = p.Name,
             Slug       = p.Slug,
+            PartnerNumber = p.PartnerNumber,
             UserCount  = countMap.TryGetValue(p.PartnerId, out var c) ? c.Count : 0,
             StudentCount = studentCounts.GetValueOrDefault(p.PartnerId),
             TeacherCount = teacherCounts.GetValueOrDefault(p.PartnerId),

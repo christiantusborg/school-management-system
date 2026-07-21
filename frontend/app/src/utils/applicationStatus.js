@@ -16,6 +16,8 @@ const MAP = {
   AwaitingGradesSubmit:                 { label: 'Awaiting grades', tone: 'amber' },
   AwaitingGradesApproval:               { label: 'Awaiting grades', tone: 'amber' },
   GradesApproved:                       { label: 'Completed',      tone: 'green' },
+  Deferred:                             { label: 'Deferred',       tone: 'grey'  },
+  DroppedOut:                           { label: 'Dropped out',    tone: 'red'   },
 }
 
 export function statusBadge(code) {

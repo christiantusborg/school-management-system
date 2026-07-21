@@ -110,7 +110,15 @@ public sealed class RolePathGuardMiddleware
         || (path.Contains("/assignments/", StringComparison.OrdinalIgnoreCase)
             && path.EndsWith("/comments", StringComparison.OrdinalIgnoreCase))
         || (TeacherCanUploadAssignments
-            && path.EndsWith("/assignments", StringComparison.OrdinalIgnoreCase));
+            && path.EndsWith("/assignments", StringComparison.OrdinalIgnoreCase))
+        // Teacher portal: uploads on the teacher's OWN cohorts (endpoints
+        // verify ownership), and editing the partner-editable fields of the
+        // teacher's OWN faculty profile.
+        || (path.Contains("/partner/my/cohorts/", StringComparison.OrdinalIgnoreCase)
+            && path.EndsWith("/files", StringComparison.OrdinalIgnoreCase))
+        || path.Contains("/partner/my/cohort-files/", StringComparison.OrdinalIgnoreCase)
+        || path.Contains("/partner/my/teachers/", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith("/partner/my/faculty-files", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<bool> IsTeacherAsync(HttpContext context)
     {

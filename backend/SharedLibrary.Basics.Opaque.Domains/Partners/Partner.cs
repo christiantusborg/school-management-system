@@ -9,6 +9,21 @@ public class Partner : IDeletedAtEntity
     public string Name { get; set; } = default!;
     public string Slug { get; set; } = default!;
 
+    /// <summary>
+    /// Auto-generated portal identifier ("PA-YYYYMMDD-RAND6"), assigned when
+    /// the partner is created by the Admission office. Same shape as
+    /// Student.StudentNumber; uniqueness enforced by a unique index.
+    /// </summary>
+    public string PartnerNumber { get; set; } = default!;
+
+    /// <summary>
+    /// Controls where enrolments created by the admin CSV student import
+    /// land for this partner. True (default): directly admitted, skipping
+    /// the offer/admission review pipeline. False: they enter the normal
+    /// admission queue (Awaiting Review by Admission).
+    /// </summary>
+    public bool ImportDirectAdmission { get; set; } = true;
+
     // Organisation identity
     public string? Website { get; set; }
     public string? RegistrationNumber { get; set; }

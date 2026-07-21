@@ -66,6 +66,9 @@ public class CohortUploadField : IDeletedAtEntity
     public bool AllowMultiple { get; set; }
     /// <summary>Grading-sheet fields set GradingSheetUploadedDate on upload.</summary>
     public bool IsGradingSheet { get; set; }
+    /// <summary>Students may download this field's files on the cohorts they
+    /// are assigned to (e.g. "Module Outline Given to Students").</summary>
+    public bool VisibleToStudents { get; set; }
     public int SortOrder { get; set; }
     public DateTime? DeletedAt { get; set; }
 }

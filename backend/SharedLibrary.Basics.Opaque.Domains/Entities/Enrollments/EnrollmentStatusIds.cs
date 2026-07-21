@@ -21,6 +21,10 @@ public static class EnrollmentStatusIds
     public static readonly Guid AcceptOffer                          = Guid.Parse("22222222-2222-2222-2222-20000000000a");
     public static readonly Guid AwaitingGradesSubmit                 = Guid.Parse("22222222-2222-2222-2222-20000000000b");
     public static readonly Guid AwaitingGradesApproval               = Guid.Parse("22222222-2222-2222-2222-20000000000c");
+    // Parked/terminal states set manually by the Admission Office; no next
+    // action, no automatic flow out of them.
+    public static readonly Guid Deferred                             = Guid.Parse("22222222-2222-2222-2222-20000000000d");
+    public static readonly Guid DroppedOut                           = Guid.Parse("22222222-2222-2222-2222-20000000000e");
 
     public const string RoleStudent   = "Student";
     public const string RolePartner   = "Partner";
@@ -49,5 +53,7 @@ public static class EnrollmentStatusIds
         new(AwaitingGradesSubmit,                 "AwaitingGradesSubmit",                 "Awaiting Grades Submit",               400, 350, RolePartner,   AwaitingGradesApproval),
         new(AwaitingGradesApproval,               "AwaitingGradesApproval",               "Awaiting Grades Approval",             450, 400, RoleAdmission, GradesApproved),
         new(GradesApproved,                       "GradesApproved",                       "Grades Approved",                      500, 450, null,          null),
+        new(Deferred,                             "Deferred",                             "Deferred",                             550,   0, null,          null),
+        new(DroppedOut,                           "DroppedOut",                           "Dropped Out",                          560,   0, null,          null),
     };
 }

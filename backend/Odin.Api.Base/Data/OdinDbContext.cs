@@ -53,6 +53,9 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<CohortUploadField> CohortUploadFields => Set<CohortUploadField>();
     public DbSet<CohortUploadFile> CohortUploadFiles => Set<CohortUploadFile>();
     public DbSet<ModuleCohortSettings> ModuleCohortSettings => Set<ModuleCohortSettings>();
+    public DbSet<ModuleCohortQuestionnaire> ModuleCohortQuestionnaires => Set<ModuleCohortQuestionnaire>();
+    public DbSet<CohortQuestionnaireResponse> CohortQuestionnaireResponses => Set<CohortQuestionnaireResponse>();
+    public DbSet<CohortQuestionnaireCompletion> CohortQuestionnaireCompletions => Set<CohortQuestionnaireCompletion>();
     public DbSet<TeacherProfileRow> TeacherProfileRows => Set<TeacherProfileRow>();
     public DbSet<TeacherProfileValue> TeacherProfileValues => Set<TeacherProfileValue>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload> AssignmentUploads => Set<SharedLibrary.Basics.Opaque.Domains.Assignments.AssignmentUpload>();
@@ -130,6 +133,7 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<StudentDocumentNote> StudentDocumentNotes => Set<StudentDocumentNote>();
     public DbSet<DocumentStatus> DocumentStatuses => Set<DocumentStatus>();
     public DbSet<StudentNote> StudentNotes => Set<StudentNote>();
+    public DbSet<StudentLogNote> StudentLogNotes => Set<StudentLogNote>();
     public DbSet<UserLanguage> UserLanguages => Set<UserLanguage>();
 
     // ── Reference ─────────────────────────────────────────────────────────

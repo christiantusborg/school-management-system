@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Odin.Api.Base.Data;
@@ -11,9 +12,11 @@ using Odin.Api.Base.Data;
 namespace Odin.Api.Base.Data.Migrations
 {
     [DbContext(typeof(OdinDbContext))]
-    partial class OdinDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260721132744_AddCohortQuestionnaires")]
+    partial class AddCohortQuestionnaires
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -6174,57 +6177,6 @@ namespace Odin.Api.Base.Data.Migrations
                     b.HasIndex("StudentDocumentId");
 
                     b.ToTable("StudentDocumentNotes");
-                });
-
-            modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.StudentLogNote", b =>
-                {
-                    b.Property<Guid>("StudentLogNoteId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AuthorName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("AuthorRole")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<string>("AuthorUserId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<Guid?>("StudentEnrollmentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("StudentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<bool>("VisibleToPartner")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("VisibleToStudent")
-                        .HasColumnType("boolean");
-
-                    b.HasKey("StudentLogNoteId");
-
-                    b.HasIndex("StudentEnrollmentId");
-
-                    b.HasIndex("StudentId");
-
-                    b.ToTable("StudentLogNotes");
                 });
 
             modelBuilder.Entity("SharedLibrary.Basics.Opaque.Domains.StudentNote", b =>

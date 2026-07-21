@@ -36,6 +36,7 @@
       <AdminStudentsTab v-if="tab === 'students'" :key="adminStudentsRefreshKey" />
     </div>
 
+
     <!-- Add Student modal (admin) — step 1 pick a partner, step 2 run the wizard iframe -->
     <Teleport to="body">
       <div v-if="showAddStudentAdmin" class="add-student-backdrop" @click="closeAddStudentAdmin"></div>
@@ -324,6 +325,7 @@
           <thead>
             <tr>
               <th>Partner Name</th>
+              <th>Partner ID</th>
               <th>Users</th>
               <th>Students</th>
               <th>Teachers</th>
@@ -334,10 +336,11 @@
           </thead>
           <tbody>
             <tr v-if="partners.length === 0">
-              <td colspan="7" class="empty-row">No partners yet.</td>
+              <td colspan="8" class="empty-row">No partners yet.</td>
             </tr>
             <tr v-for="p in partners" :key="p.partnerId" class="data-row" :class="{ 'row-deleted': p.deletedAt }">
               <td><strong>{{ p.name }}</strong></td>
+              <td>{{ p.partnerNumber }}</td>
               <td>{{ p.userCount }} user{{ p.userCount !== 1 ? 's' : '' }}</td>
               <td>{{ p.studentCount ?? 0 }}</td>
               <td>{{ p.teacherCount ?? 0 }}</td>
@@ -495,6 +498,12 @@
 
         <div v-show="manageTab === 'cohorts'" class="manage-section">
           <ModuleCohortsTab v-if="manageTab === 'cohorts'" mode="admin" :partner-id="managingPartner.partnerId" />
+        </div>
+
+        <div v-show="manageTab === 'import'" class="manage-section">
+          <StudentImportTab v-if="manageTab === 'import' && managingPartner"
+            :partner-id="managingPartner.partnerId"
+            @imported="adminStudentsRefreshKey++" />
         </div>
 
         <div v-show="manageTab === 'students'" class="manage-section">
@@ -686,6 +695,7 @@ import FacultyTeachersTab from '../components/admin/FacultyTeachersTab.vue'
 import ModuleCohortsTab from '../components/admin/ModuleCohortsTab.vue'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
 import AdminStudentsTab from '../components/admin/AdminStudentsTab.vue'
+import StudentImportTab from '../components/admin/StudentImportTab.vue'
 import AdminUsersTab from '../components/admin/AdminUsersTab.vue'
 import { isGraded } from '../store/grades.js'
 import { announcements, nextAnnouncementId } from '../mock/announcements.js'
@@ -849,6 +859,7 @@ const showPartnerWizard = ref(false)
 const MANAGE_TABS = [
   { k: 'students', label: 'Students' },
   { k: 'cohorts',  label: 'Module Cohorts' },
+  { k: 'import',   label: 'Import' },
 ]
 const GEAR_TABS = [
   { k: 'profile',    label: 'Profile' },

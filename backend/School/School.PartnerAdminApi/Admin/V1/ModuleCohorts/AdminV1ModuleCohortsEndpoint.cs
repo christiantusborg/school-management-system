@@ -41,6 +41,7 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         public string? Label { get; init; }
         public bool AllowMultiple { get; init; }
         public bool IsGradingSheet { get; init; }
+        public bool VisibleToStudents { get; init; }
     }
 
     public sealed class SettingsBody
@@ -98,6 +99,7 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
                 label = f.Label,
                 allowMultiple = f.AllowMultiple,
                 isGradingSheet = f.IsGradingSheet,
+                visibleToStudents = f.VisibleToStudents,
             })
             .ToListAsync(ct);
         return Results.Ok(new { cohortNumberPattern = settings.CohortNumberPattern, fields });
@@ -130,6 +132,7 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
             field.Label = f.Label.Trim();
             field.AllowMultiple = f.AllowMultiple;
             field.IsGradingSheet = f.IsGradingSheet;
+            field.VisibleToStudents = f.VisibleToStudents;
             field.SortOrder = order++;
             field.DeletedAt = null;
             kept.Add(field.CohortUploadFieldId);

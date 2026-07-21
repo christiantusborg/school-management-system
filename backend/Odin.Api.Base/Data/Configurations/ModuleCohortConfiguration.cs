@@ -46,6 +46,36 @@ public class CohortUploadFileConfiguration : IEntityTypeConfiguration<CohortUplo
     }
 }
 
+public class ModuleCohortQuestionnaireConfiguration : IEntityTypeConfiguration<ModuleCohortQuestionnaire>
+{
+    public void Configure(EntityTypeBuilder<ModuleCohortQuestionnaire> builder)
+    {
+        builder.HasKey(e => e.ModuleCohortQuestionnaireId);
+        builder.HasIndex(e => e.ModuleCohortId);
+    }
+}
+
+public class CohortQuestionnaireResponseConfiguration : IEntityTypeConfiguration<CohortQuestionnaireResponse>
+{
+    public void Configure(EntityTypeBuilder<CohortQuestionnaireResponse> builder)
+    {
+        builder.HasKey(e => e.CohortQuestionnaireResponseId);
+        builder.Property(e => e.QuestionnaireVersionHash).HasMaxLength(64);
+        builder.HasIndex(e => e.ModuleCohortQuestionnaireId);
+    }
+}
+
+public class CohortQuestionnaireCompletionConfiguration : IEntityTypeConfiguration<CohortQuestionnaireCompletion>
+{
+    public void Configure(EntityTypeBuilder<CohortQuestionnaireCompletion> builder)
+    {
+        builder.HasKey(e => e.CohortQuestionnaireCompletionId);
+        // One completion per student per questionnaire; also the gate lookup.
+        builder.HasIndex(e => new { e.ModuleCohortQuestionnaireId, e.StudentEnrollmentId }).IsUnique();
+        builder.HasIndex(e => e.StudentEnrollmentId);
+    }
+}
+
 public class ModuleCohortSettingsConfiguration : IEntityTypeConfiguration<ModuleCohortSettings>
 {
     public void Configure(EntityTypeBuilder<ModuleCohortSettings> builder)

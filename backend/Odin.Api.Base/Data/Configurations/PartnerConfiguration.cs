@@ -14,6 +14,9 @@ public class PartnerConfiguration : IEntityTypeConfiguration<Partner>
         builder.HasIndex(e => e.Slug)
             .HasFilter("\"DeletedAt\" IS NULL")
             .IsUnique();
+        builder.Property(e => e.PartnerNumber).HasMaxLength(50).IsRequired();
+        builder.HasIndex(e => e.PartnerNumber).IsUnique();
+        builder.Property(e => e.ImportDirectAdmission).IsRequired().HasDefaultValue(true);
 
         builder.HasMany(e => e.Addresses)
             .WithOne(a => a.Partner)

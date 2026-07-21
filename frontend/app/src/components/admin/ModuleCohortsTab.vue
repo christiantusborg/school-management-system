@@ -105,6 +105,8 @@
             Assign students ({{ det.cohort?.studentCount ?? 0 }})</button>
           <button :class="['mc-tab', { active: detTab === 'assignments' }]" @click="detTab = 'assignments'; loadStudents()">
             Uploaded Assignments</button>
+          <button :class="['mc-tab', { active: detTab === 'questionnaires' }]" @click="detTab = 'questionnaires'">
+            Questionnaires</button>
         </div>
         <div class="mc-dialog-body">
           <template v-if="detTab === 'record'">
@@ -217,6 +219,19 @@
             <p v-else class="mc-sub">No students assigned to this cohort yet.</p>
           </template>
 
+          <template v-else-if="detTab === 'questionnaires'">
+            <p class="mc-sub" v-if="mode === 'admin'">
+              Questionnaires students must fill out before they can see this cohort's grade.
+              Results are anonymous; partner staff and teachers see them only once 3+ responses are in.
+            </p>
+            <p class="mc-sub" v-else>
+              Anonymous questionnaire results for this cohort. Each questionnaire unlocks once at
+              least 3 students have responded.
+            </p>
+            <CohortQuestionnairesPanel :key="det.cohort.moduleCohortId"
+              :mode="mode" :cohort-id="det.cohort.moduleCohortId" />
+          </template>
+
           <template v-else>
             <p class="mc-sub">Admitted / active students enrolled in {{ det.cohort.programmeName }} at this partner.
               Tick to assign to this cohort.</p>
@@ -253,6 +268,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import api from '../../api/client.js'
 import { auth } from '../../store/auth.js'
 import AssignmentsPanel from '../assignments/AssignmentsPanel.vue'
+import CohortQuestionnairesPanel from './CohortQuestionnairesPanel.vue'
 
 const props = defineProps({
   // 'admin' (MGW admin drawer, needs partnerId) or 'partner' (partner portal).
