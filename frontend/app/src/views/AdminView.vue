@@ -325,17 +325,23 @@
             <tr>
               <th>Partner Name</th>
               <th>Users</th>
+              <th>Students</th>
+              <th>Teachers</th>
+              <th>Module Cohorts</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="partners.length === 0">
-              <td colspan="4" class="empty-row">No partners yet.</td>
+              <td colspan="7" class="empty-row">No partners yet.</td>
             </tr>
             <tr v-for="p in partners" :key="p.partnerId" class="data-row" :class="{ 'row-deleted': p.deletedAt }">
               <td><strong>{{ p.name }}</strong></td>
               <td>{{ p.userCount }} user{{ p.userCount !== 1 ? 's' : '' }}</td>
+              <td>{{ p.studentCount ?? 0 }}</td>
+              <td>{{ p.teacherCount ?? 0 }}</td>
+              <td>{{ p.cohortCount ?? 0 }}</td>
               <td>
                 <span v-if="p.deletedAt" class="badge-deleted">Deleted</span>
                 <span v-else-if="p.isEnabled" class="badge-enabled">Active</span>

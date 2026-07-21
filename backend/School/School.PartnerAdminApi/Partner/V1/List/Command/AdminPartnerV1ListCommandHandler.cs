@@ -35,12 +35,32 @@ public sealed class AdminPartnerV1ListCommandHandler(OdinDbContext db)
 
         var countMap = userCounts.ToDictionary(x => x.PartnerId);
 
+        // Overview extras: students, teachers and module cohorts per partner.
+        var studentCounts = (await db.Students
+            .Where(s => s.DeletedAt == null && partnerIds.Contains(s.PartnerId))
+            .GroupBy(s => s.PartnerId)
+            .Select(g => new { PartnerId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken)).ToDictionary(x => x.PartnerId, x => x.Count);
+        var teacherCounts = (await db.Teachers
+            .Where(t => t.DeletedAt == null && partnerIds.Contains(t.PartnerId))
+            .GroupBy(t => t.PartnerId)
+            .Select(g => new { PartnerId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken)).ToDictionary(x => x.PartnerId, x => x.Count);
+        var cohortCounts = (await db.ModuleCohorts
+            .Where(c => c.DeletedAt == null && partnerIds.Contains(c.PartnerId))
+            .GroupBy(c => c.PartnerId)
+            .Select(g => new { PartnerId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken)).ToDictionary(x => x.PartnerId, x => x.Count);
+
         var items = partners.Select(p => new AdminPartnerV1ListCommandResultItem
         {
             PartnerId  = p.PartnerId,
             Name       = p.Name,
             Slug       = p.Slug,
             UserCount  = countMap.TryGetValue(p.PartnerId, out var c) ? c.Count : 0,
+            StudentCount = studentCounts.GetValueOrDefault(p.PartnerId),
+            TeacherCount = teacherCounts.GetValueOrDefault(p.PartnerId),
+            CohortCount = cohortCounts.GetValueOrDefault(p.PartnerId),
             // Enabled = not disabled AND not deleted.
             IsEnabled  = p.DisabledAt == null && p.DeletedAt == null,
             DisabledAt = p.DisabledAt,
