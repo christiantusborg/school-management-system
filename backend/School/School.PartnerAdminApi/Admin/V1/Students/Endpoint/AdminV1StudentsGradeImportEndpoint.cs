@@ -27,7 +27,7 @@ public sealed class AdminV1StudentsGradeImportEndpoint : IEndpointMarker
 {
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
-        app.MapGet("/v1/admin/students/import/grades/sample", Sample)
+        app.MapGet("/v1/admin/students/import/grades/sample", SampleAsync)
             .RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/students/import/grades/validate", ValidateAsync)
             .RequireAuthorization("AdminOnly").DisableAntiforgery();
@@ -37,6 +37,52 @@ public sealed class AdminV1StudentsGradeImportEndpoint : IEndpointMarker
     }
 
     private static readonly string[] Columns = { "StudentNumber", "ModuleCode", "Grade" };
+
+    private static async Task<IResult> SampleAsync(
+        OdinDbContext db, CancellationToken ct, [FromQuery] Guid? partnerId = null)
+    {
+        // With a partner known, generate a real grading sheet instead of the
+        // generic two-line example.
+        if (partnerId is not null)
+            return await PartnerSampleFileAsync(db, partnerId.Value, ct);
+        return Sample();
+    }
+
+    /// <summary>
+    /// Live grade sample for one partner: one row per (student, module of
+    /// their current specialization) for every admitted/active enrolment,
+    /// with the existing score pre-filled and a blank cell where no grade is
+    /// stored yet — fill in the blanks and import.
+    /// </summary>
+    internal static async Task<IResult> PartnerSampleFileAsync(
+        OdinDbContext db, Guid partnerId, CancellationToken ct)
+    {
+        var activeCodes = School.PartnerAdminApi.Admin.V1.ModuleCohorts.ModuleCohortLogic.AssignableStatusCodes;
+        var rows = await (
+            from e in db.Enrollments
+            join st in db.Students on e.StudentId equals st.StudentId
+            join sub in db.Subjects on e.SpecializationId equals sub.SpecializationId
+            where e.DeletedAt == null && e.PartnerId == partnerId
+                && st.DeletedAt == null && sub.DeletedAt == null
+                && activeCodes.Contains(e.Status.Code)
+            orderby st.StudentNumber, sub.Code
+            select new
+            {
+                st.StudentNumber,
+                ModuleCode = sub.Code,
+                Score = db.SubjectGrades
+                    .Where(g => g.StudentEnrollmentId == e.StudentEnrollmentId && g.SubjectId == sub.SubjectId)
+                    .Select(g => (int?)g.Score).FirstOrDefault(),
+            }).ToListAsync(ct);
+        if (rows.Count == 0) return Sample();
+
+        var sb = new StringBuilder();
+        sb.AppendLine(string.Join(',', Columns));
+        foreach (var r in rows)
+            sb.AppendLine($"{ImportCsvHelpers.CsvEscape(r.StudentNumber)},{ImportCsvHelpers.CsvEscape(r.ModuleCode)},{(r.Score?.ToString() ?? "")}");
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        return Results.File(bytes, "text/csv", "grade-import-sample.csv");
+    }
 
     internal static IResult Sample()
     {

@@ -84,7 +84,14 @@ public sealed class PartnerV1StudentsImportEndpoint : IEndpointMarker
             db, creator, httpContext.Request, partner, actorId, ct);
     }
 
-    private static IResult GradeSample() => AdminV1StudentsGradeImportEndpoint.Sample();
+    private static async Task<IResult> GradeSample(
+        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null || partnerId is null)
+            return AdminV1StudentsGradeImportEndpoint.Sample();
+        return await AdminV1StudentsGradeImportEndpoint.PartnerSampleFileAsync(db, partnerId.Value, ct);
+    }
 
     private static async Task<IResult> GradeValidateAsync(
         HttpContext httpContext, OdinDbContext db, CancellationToken ct)
