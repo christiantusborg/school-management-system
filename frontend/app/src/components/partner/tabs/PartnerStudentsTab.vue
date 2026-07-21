@@ -30,7 +30,7 @@
     <table v-else-if="!loading" class="data-table">
       <thead><tr><th>Student #</th><th>Name</th><th>Email</th><th>Enrolments</th><th>Status</th><th></th></tr></thead>
       <tbody>
-        <tr v-for="s in filtered" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
+        <tr v-for="s in pagedRows" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
           <td class="mono">{{ s.studentNumber }}</td>
           <td>
             <a class="s-name-link" @click.stop="openStudentDetail(s)">
@@ -75,6 +75,20 @@
         </tr>
       </tbody>
     </table>
+
+    <div v-if="pageCount > 1" class="pgn-bar">
+      <button class="pgn-btn" :disabled="page === 1" @click="page = 1">«</button>
+      <button class="pgn-btn" :disabled="page === 1" @click="page--">‹ Prev</button>
+      <span class="pgn-info">Page {{ page }} / {{ pageCount }} · {{ filtered.length }} students</span>
+      <button class="pgn-btn" :disabled="page === pageCount" @click="page++">Next ›</button>
+      <button class="pgn-btn" :disabled="page === pageCount" @click="page = pageCount">»</button>
+      <select v-model.number="pageSize" class="pgn-size">
+        <option :value="25">25 / page</option>
+        <option :value="50">50 / page</option>
+        <option :value="100">100 / page</option>
+        <option :value="250">250 / page</option>
+      </select>
+    </div>
 
     <!-- Detail drawer -->
     <template v-if="detail">
@@ -756,6 +770,16 @@ const filtered = computed(() => {
   }
   return rows
 })
+
+// ── Pagination (client-side, over the filtered rows) ─────────────────────────
+const page = ref(1)
+const pageSize = ref(50)
+const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))
+const pagedRows = computed(() =>
+  filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
+watch([search, filterProgrammeId, filterSpecializationId, filterStatusId, pageSize],
+  () => { page.value = 1 })
+watch(pageCount, n => { if (page.value > n) page.value = n })
 
 async function load() {
   loading.value = true
@@ -1849,4 +1873,11 @@ function confirmSubStatus() {
 <style scoped>
 .project-title-row { margin: .6rem 0; display: flex; flex-direction: column; gap: .3rem; }
 .project-title-row label { font-size: .82rem; font-weight: 600; color: #1a2d4f; }
+
+.pgn-bar { display: flex; align-items: center; gap: .4rem; padding: .6rem 0 .2rem; }
+.pgn-btn { background: #f2f5f9; border: 1px solid #cfd7e3; border-radius: 5px; padding: .3rem .7rem; font-size: .8rem; font-weight: 600; color: #2c3e50; cursor: pointer; }
+.pgn-btn:disabled { opacity: .4; cursor: default; }
+.pgn-btn:not(:disabled):hover { background: #e8eef6; }
+.pgn-info { font-size: .8rem; color: #5f6e85; margin: 0 .4rem; }
+.pgn-size { margin-left: auto; padding: .3rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .8rem; background: #fff; }
 </style>
