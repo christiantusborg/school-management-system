@@ -18,6 +18,8 @@ public sealed class PartnerV1StudentsImportEndpoint : IEndpointMarker
 {
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
+        app.MapGet("/v1/partner/students/import/help", HelpAsync)
+            .RequireAuthorization("PartnerOnly");
         app.MapGet("/v1/partner/students/import/sample", StudentSample)
             .RequireAuthorization("PartnerOnly");
         app.MapPost("/v1/partner/students/import/validate", StudentValidateAsync)
@@ -45,6 +47,16 @@ public sealed class PartnerV1StudentsImportEndpoint : IEndpointMarker
     }
 
     private static IResult StudentSample() => AdminV1StudentsImportEndpoint.SampleFile(scoped: true);
+
+    /// <summary>Import help .txt scoped to the caller's partner.</summary>
+    private static async Task<IResult> HelpAsync(
+        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+        var text = await ImportHelpText.BuildAsync(db, scoped: true, partnerId, ct);
+        return Results.File(System.Text.Encoding.UTF8.GetBytes(text), "text/plain", "import-help.txt");
+    }
 
     private static async Task<IResult> StudentValidateAsync(
         HttpContext httpContext, OdinDbContext db, CancellationToken ct)

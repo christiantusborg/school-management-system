@@ -16,6 +16,7 @@
           </p>
         </div>
         <button class="btn-outline" :disabled="students.busy" @click="downloadSample(students)">Download sample file</button>
+        <button class="btn-outline" @click="downloadHelp">⤓ Help file (.txt)</button>
       </div>
 
       <div class="upload-row">
@@ -186,6 +187,22 @@ function onFile(section, e) {
   section.report = null
   section.validated = false
   section.error = ''
+}
+
+// The help .txt explains every column and lists the live system values
+// (modes of study, programme/spec codes, …), scoped to the partner when known.
+async function downloadHelp() {
+  try {
+    const res = await api.get(`${props.apiPrefix}/help${qs.value}`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'import-help.txt'
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (err) {
+    students.error = err.response?.data?.error ?? err.message ?? 'Help download failed'
+  }
 }
 
 async function downloadSample(section) {

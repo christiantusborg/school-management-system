@@ -38,6 +38,8 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
     {
         app.MapGet("/v1/admin/students/import/sample", Sample)
             .RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/students/import/help", HelpAsync)
+            .RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/students/import/validate", ValidateAsync)
             .RequireAuthorization("AdminOnly").DisableAntiforgery();
         app.MapPost("/v1/admin/students/import", ImportAsync)
@@ -66,6 +68,16 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
 
     private static IResult Sample(HttpContext httpContext) =>
         SampleFile(IsTruthy(httpContext.Request.Query["scoped"].ToString()));
+
+    /// <summary>Downloadable .txt explaining every column + the live system
+    /// values. ?partnerId= scopes the programme list to one partner.</summary>
+    private static async Task<IResult> HelpAsync(
+        HttpContext httpContext, OdinDbContext db, CancellationToken ct,
+        [FromQuery] Guid? partnerId = null)
+    {
+        var text = await ImportHelpText.BuildAsync(db, scoped: partnerId is not null, partnerId, ct);
+        return Results.File(Encoding.UTF8.GetBytes(text), "text/plain", "import-help.txt");
+    }
 
     private static bool IsTruthy(string? v) => v is "1" or "true" or "True";
 
