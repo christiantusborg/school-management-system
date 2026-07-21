@@ -66,8 +66,93 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
         "WantsStudentCard",
     };
 
-    private static IResult Sample(HttpContext httpContext) =>
-        SampleFile(IsTruthy(httpContext.Request.Query["scoped"].ToString()));
+    private static async Task<IResult> Sample(
+        HttpContext httpContext, OdinDbContext db, CancellationToken ct,
+        [FromQuery] Guid? partnerId = null)
+    {
+        var scoped = IsTruthy(httpContext.Request.Query["scoped"].ToString());
+        // With a partner known, the sample is generated from THAT partner's
+        // real programmes — one row per programme/specialization combination.
+        if (partnerId is not null)
+            return await PartnerSampleFileAsync(db, scoped, partnerId.Value, ct);
+        return SampleFile(scoped);
+    }
+
+    /// <summary>
+    /// Live sample for one partner: a fully filled example row for EVERY
+    /// (programme, specialization) combination the partner can enrol into,
+    /// using the real codes plus each specialization's default duration and
+    /// instruction language — copy a row, replace the personal data, done.
+    /// </summary>
+    internal static async Task<IResult> PartnerSampleFileAsync(
+        OdinDbContext db, bool scoped, Guid partnerId, CancellationToken ct)
+    {
+        var partnerNumber = await db.Partners
+            .Where(p => p.PartnerId == partnerId)
+            .Select(p => p.PartnerNumber)
+            .FirstOrDefaultAsync(ct) ?? "";
+        var granted = await db.ProgrammePartners
+            .Where(pp => pp.PartnerId == partnerId && pp.IsActive != null)
+            .Select(pp => pp.ProgrammeId)
+            .ToListAsync(ct);
+        var programmes = await db.Programmes
+            .Where(p => p.DeletedAt == null && (granted.Contains(p.ProgrammeId) || p.OwnerId == partnerId))
+            .OrderBy(p => p.Code)
+            .Select(p => new { p.ProgrammeId, p.Code })
+            .ToListAsync(ct);
+        var programmeIds = programmes.Select(p => p.ProgrammeId).ToList();
+        var specs = await db.Specializations
+            .Where(s => s.DeletedAt == null && programmeIds.Contains(s.ProgrammeId))
+            .OrderBy(s => s.Code)
+            .Select(s => new { s.ProgrammeId, s.Code, s.DurationOfStudyMonths, s.InstructionLanguage })
+            .ToListAsync(ct);
+        var firstModeId = await db.ModesOfStudy
+            .OrderBy(m => m.ModeOfStudyId)
+            .Select(m => (int?)m.ModeOfStudyId)
+            .FirstOrDefaultAsync(ct) ?? 1;
+
+        // Next 1 September as a plausible commencement.
+        var now = DateTime.UtcNow;
+        var commencement = new DateTime(now.Month >= 9 ? now.Year + 1 : now.Year, 9, 1);
+
+        var columns = scoped ? Columns.Where(c => c != "PartnerNumber").ToArray() : Columns;
+        string Row(params (string Col, string Val)[] vals)
+        {
+            var map = vals.ToDictionary(v => v.Col, v => v.Val, StringComparer.OrdinalIgnoreCase);
+            return string.Join(',', columns.Select(c => CsvEscape(map.GetValueOrDefault(c, ""))));
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine(string.Join(',', columns));
+        var i = 0;
+        foreach (var p in programmes)
+        foreach (var s in specs.Where(s => s.ProgrammeId == p.ProgrammeId))
+        {
+            i++;
+            sb.AppendLine(Row(
+                ("PartnerNumber", partnerNumber),
+                ("FirstName", "Sample"), ("LastName", $"Student{i}"),
+                ("Email", $"sample.student{i}@example.com"),
+                ("ProgrammeCode", p.Code), ("SpecializationCode", s.Code),
+                ("ModeOfStudy", firstModeId.ToString()),
+                ("CommencementDate", commencement.ToString("yyyy-MM-dd")),
+                ("DurationOfStudyMonths", s.DurationOfStudyMonths > 0 ? s.DurationOfStudyMonths.ToString() : ""),
+                ("InstructionLanguage", string.IsNullOrWhiteSpace(s.InstructionLanguage) ? "English" : s.InstructionLanguage),
+                ("DateOfBirth", "1992-04-17"), ("PassportId", $"P12345{i:D2}"), ("NationalityCode", "DK"),
+                ("Gender", "Female"), ("DisabilityDisclosure", "No"),
+                ("AddressLine1", "Main Street 1"), ("City", "Copenhagen"),
+                ("PostalCode", "2100"), ("CountryCode", "DK"), ("Phone", "+45 12 34 56 78"),
+                ("HighestDegree", "Bachelor"), ("DegreeSpecialization", "Marketing"),
+                ("YearsWorkExperience", "4"),
+                ("MonthlySalaryAmount", "3500"), ("MonthlySalaryCurrency", "USD"),
+                ("WantsStudentCard", "true")));
+        }
+        if (i == 0)
+            return SampleFile(scoped); // partner has no programmes yet — generic sample
+
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        return Results.File(bytes, "text/csv", "student-import-sample.csv");
+    }
 
     /// <summary>Downloadable .txt explaining every column + the live system
     /// values. ?partnerId= scopes the programme list to one partner.</summary>

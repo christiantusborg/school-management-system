@@ -208,7 +208,10 @@ async function downloadHelp() {
 async function downloadSample(section) {
   section.error = ''
   try {
-    const res = await api.get(`${section.baseUrl}/sample${scoped.value ? '?scoped=1' : ''}`, { responseType: 'blob' })
+    const params = new URLSearchParams()
+    if (scoped.value) params.set('scoped', '1')
+    if (props.partnerId) params.set('partnerId', props.partnerId)
+    const res = await api.get(`${section.baseUrl}/sample${params.size ? `?${params}` : ''}`, { responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url

@@ -46,7 +46,14 @@ public sealed class PartnerV1StudentsImportEndpoint : IEndpointMarker
         return partner is null ? (null, null, Results.NotFound()) : (partner, userId, null);
     }
 
-    private static IResult StudentSample() => AdminV1StudentsImportEndpoint.SampleFile(scoped: true);
+    private static async Task<IResult> StudentSample(
+        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null || partnerId is null)
+            return AdminV1StudentsImportEndpoint.SampleFile(scoped: true);
+        return await AdminV1StudentsImportEndpoint.PartnerSampleFileAsync(db, scoped: true, partnerId.Value, ct);
+    }
 
     /// <summary>Import help .txt scoped to the caller's partner.</summary>
     private static async Task<IResult> HelpAsync(
