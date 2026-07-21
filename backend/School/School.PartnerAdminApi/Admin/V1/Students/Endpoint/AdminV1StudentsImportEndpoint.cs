@@ -87,10 +87,14 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
     internal static async Task<IResult> PartnerSampleFileAsync(
         OdinDbContext db, bool scoped, Guid partnerId, CancellationToken ct)
     {
-        var partnerNumber = await db.Partners
+        var partnerInfo = await db.Partners
             .Where(p => p.PartnerId == partnerId)
-            .Select(p => p.PartnerNumber)
-            .FirstOrDefaultAsync(ct) ?? "";
+            .Select(p => new { p.PartnerNumber, p.Slug })
+            .FirstOrDefaultAsync(ct);
+        var partnerNumber = partnerInfo?.PartnerNumber ?? "";
+        // Partner-specific sample emails so a sample row imported by mistake
+        // at one partner never collides with another partner's sample.
+        var emailSlug = string.IsNullOrWhiteSpace(partnerInfo?.Slug) ? "sample" : partnerInfo!.Slug;
         var granted = await db.ProgrammePartners
             .Where(pp => pp.PartnerId == partnerId && pp.IsActive != null)
             .Select(pp => pp.ProgrammeId)
@@ -132,7 +136,7 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             sb.AppendLine(Row(
                 ("PartnerNumber", partnerNumber),
                 ("FirstName", "Sample"), ("LastName", $"Student{i}"),
-                ("Email", $"sample.student{i}@example.com"),
+                ("Email", $"{emailSlug}.student{i}@example.com"),
                 ("ProgrammeCode", p.Code), ("SpecializationCode", s.Code),
                 ("ModeOfStudy", firstModeId.ToString()),
                 ("CommencementDate", commencement.ToString("yyyy-MM-dd")),
