@@ -27,6 +27,7 @@
             </button>
           </div>
           <div class="asg-upload-sub">
+            <template v-if="studentName"><strong>Student: {{ studentName }}</strong> · </template>
             {{ u.fileName }} · uploaded by {{ u.uploadedByName || u.uploadedByRole }}
             <span class="asg-role-pill">{{ u.uploadedByRole }}</span> · {{ fmtDate(u.uploadedAt) }}
           </div>
@@ -62,7 +63,7 @@
           <button class="asg-btn asg-btn-primary"
                   :disabled="!(newTitle[m.subjectId] || '').trim() || !newFile[m.subjectId] || uploadingSubject === m.subjectId"
                   @click="upload(m)">
-            {{ uploadingSubject === m.subjectId ? 'Uploading…' : '⇧ Upload assignment' }}
+            {{ uploadingSubject === m.subjectId ? 'Uploading…' : (studentName ? `⇧ Upload assignment for ${studentName}` : '⇧ Upload assignment') }}
           </button>
         </div>
       </div>
@@ -82,6 +83,9 @@ const props = defineProps({
   canComment: { type: Boolean, default: true },
   // When set, only this module is shown (cohort context: one module per cohort).
   subjectId: { type: String, default: '' },
+  // Shown on uploads and the upload button so it is unmistakable WHICH
+  // student a staff upload attaches to (cohort context).
+  studentName: { type: String, default: '' },
 })
 
 const allModules = ref([])
