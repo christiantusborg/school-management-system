@@ -560,7 +560,13 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             .Where(p => p.DeletedAt == null && programmeCodes.Contains(p.Code.ToLower()))
             .Select(p => new { p.ProgrammeId, p.Code, p.Name, p.OwnerId, p.MinDurationMonths, p.MaxDurationMonths })
             .ToListAsync(ct);
-        var programmesByCode = programmes.ToDictionary(p => p.Code, p => p, StringComparer.OrdinalIgnoreCase);
+        // Codes can collide case-insensitively ("MBA-La Xenia" vs
+        // "MBA-LA XENIA" are distinct programmes) — keep every candidate and
+        // resolve per row: exact-case match wins, otherwise a single
+        // case-insensitive hit; several hits become a row error.
+        var programmesByCode = programmes
+            .GroupBy(p => p.Code, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
         var programmeIds = programmes.Select(p => p.ProgrammeId).ToList();
 
         var specs = await db.Specializations
@@ -639,8 +645,14 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             if (specCode is null) plan.Errors.Add("SpecializationCode is required.");
             if (progCode is not null && specCode is not null)
             {
-                if (!programmesByCode.TryGetValue(progCode, out var prog))
+                programmesByCode.TryGetValue(progCode, out var progCandidates);
+                var prog = progCandidates?.Count == 1
+                    ? progCandidates[0]
+                    : progCandidates?.FirstOrDefault(p => string.Equals(p.Code, progCode, StringComparison.Ordinal));
+                if (progCandidates is null)
                     plan.Errors.Add($"Unknown ProgrammeCode '{progCode}'.");
+                else if (prog is null)
+                    plan.Errors.Add($"ProgrammeCode '{progCode}' is ambiguous — several programmes share it apart from letter casing ({string.Join(", ", progCandidates.Select(p => $"'{p.Code}'"))}); type it EXACTLY as shown.");
                 else
                 {
                     plan.ProgrammeName = prog.Name;
