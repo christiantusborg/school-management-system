@@ -518,14 +518,19 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
     };
 
     private static async Task<IResult> ExportTabAsync(
-        string tab, OdinDbContext db, CancellationToken ct,
+        string tab, OdinDbContext db, ILogger<AdminV1StatisticsExtraEndpoint> log, CancellationToken ct,
         [FromQuery] string? format = null,
         [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
         [FromQuery] string? granularity = null)
     {
+        log.LogInformation("[stats-dl] tab export requested: tab={Tab} format={Format} from={From} to={To}", tab, format, from, to);
         if (string.Equals(tab, "outcomes", StringComparison.OrdinalIgnoreCase))
             return await AdminV1StatisticsEndpoint.ExportAsync(db, ct, format, from, to);
-        if (!TabTitles.TryGetValue(tab, out var title)) return Results.NotFound();
+        if (!TabTitles.TryGetValue(tab, out var title))
+        {
+            log.LogWarning("[stats-dl] unknown tab {Tab}", tab);
+            return Results.NotFound();
+        }
         IResult inner = tab.ToLowerInvariant() switch
         {
             "grades" => await GradesAsync(db, ct, from, to),
@@ -807,12 +812,14 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> FullReportAsync(
-        OdinDbContext db, CancellationToken ct,
+        OdinDbContext db, ILogger<AdminV1StatisticsExtraEndpoint> log, CancellationToken ct,
         [FromQuery] string? format = null,
         [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
         [FromQuery] string? granularity = null)
     {
+        log.LogInformation("[stats-dl] full report requested: format={Format} from={From} to={To}", format, from, to);
         var chapters = await BuildAllAsync(db, from, to, granularity, ct);
+        log.LogInformation("[stats-dl] full report built: {Chapters} chapters", chapters.Count);
         var period = (from, to) switch
         {
             (null, null) => "all time",

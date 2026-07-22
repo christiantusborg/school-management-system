@@ -26,13 +26,26 @@ public class SessionTokenAuthenticationHandler(
             // File downloads navigate the browser directly (no way to attach a
             // header), so ONLY these statistics export paths may carry the
             // session token as a query parameter.
+        {
             rawToken = queryToken.ToString();
+            // Base64 session tokens contain '+', which query-string decoding
+            // turns into a space if any hop re-encodes the URL. Repair it.
+            if (rawToken.Contains(' ')) rawToken = rawToken.Replace(' ', '+');
+        }
+        if (!string.IsNullOrEmpty(rawToken) && IsBrowserDownloadPath(Request.Path))
+            Logger.LogInformation("[stats-dl] auth on download path {Path}: token via {Source}, len={Len}, fp={Head}..{Tail}",
+                Request.Path.Value, string.IsNullOrEmpty(authHeader) ? "query" : "header",
+                rawToken!.Length, rawToken[..Math.Min(4, rawToken.Length)], rawToken[Math.Max(0, rawToken.Length - 4)..]);
         if (string.IsNullOrEmpty(rawToken))
             return AuthenticateResult.NoResult();
 
         var session = await tokenService.ValidateTokenAsync(rawToken);
         if (session is null)
+        {
+            if (IsBrowserDownloadPath(Request.Path))
+                Logger.LogWarning("[stats-dl] token REJECTED on {Path} (len={Len})", Request.Path.Value, rawToken.Length);
             return AuthenticateResult.Fail("Invalid or expired token.");
+        }
 
         var user = session.User;
         if (!user.IsEnabled)

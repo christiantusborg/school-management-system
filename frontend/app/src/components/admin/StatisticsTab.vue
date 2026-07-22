@@ -8,10 +8,10 @@
           applications are excluded. Click a row to fold out its programmes and specializations.</p>
       </div>
       <div class="st-report-btns">
-        <button type="button" class="btn-report" :disabled="reporting" @click="downloadReport('pdf')">
-          {{ reporting === 'pdf' ? 'Preparing…' : '⤓ Full report (PDF)' }}</button>
-        <button type="button" class="btn-report" :disabled="reporting" @click="downloadReport('xlsx')">
-          {{ reporting === 'xlsx' ? 'Preparing…' : '⤓ Spreadsheet (Excel)' }}</button>
+        <a class="btn-report" :href="dlUrl('/v1/admin/overview/full/file', 'pdf')"
+           @click="logDl('full pdf')">⤓ Full report (PDF)</a>
+        <a class="btn-report" :href="dlUrl('/v1/admin/overview/full/file', 'xlsx')"
+           @click="logDl('full xlsx')">⤓ Spreadsheet (Excel)</a>
       </div>
     </div>
 
@@ -21,8 +21,8 @@
       <label class="st-lbl">End date</label>
       <input v-model="to" type="date" class="st-inp" @change="load" />
       <button type="button" class="btn-sm" @click="load">↻</button>
-      <button type="button" class="btn-sm" :disabled="exporting" @click="exportFile('csv')">⤓ Export CSV</button>
-      <button type="button" class="btn-sm" :disabled="exporting" @click="exportFile('pdf')">⤓ Export PDF</button>
+      <a class="btn-sm st-dl" :href="dlUrl(`/v1/admin/overview/${sub}/file`, 'csv')" @click="logDl(sub + ' csv')">⤓ Export CSV</a>
+      <a class="btn-sm st-dl" :href="dlUrl(`/v1/admin/overview/${sub}/file`, 'pdf')" @click="logDl(sub + ' pdf')">⤓ Export PDF</a>
       <span v-if="sub === 'outcomes' && data.overall" class="st-total">
         {{ data.overall.total }} enrolment{{ data.overall.total === 1 ? '' : 's' }} in period ·
         Passed {{ data.overall.passedPct }}% · Dropped {{ data.overall.droppedPct }}% ·
@@ -139,33 +139,20 @@ const exporting = ref(false)
 const reporting = ref('')
 const dlError = ref('')
 
-// Downloads navigate the browser straight to the backend URL (session token
-// as query parameter — allowed server-side ONLY for these export paths), so
-// the browser's own download manager handles the file. No blob juggling.
-function directDownload(path, params) {
-  const token = localStorage.getItem('adminToken')
-  if (!token) { dlError.value = 'Not logged in.'; return }
-  const qs = new URLSearchParams({ ...params, access_token: token })
-  window.location.assign(`${api.defaults.baseURL ?? ''}${path}?${qs}`)
-}
-
-// Full report: every tab in one document — PDF chapters or an XLSX workbook
-// (Open XML: Excel, LibreOffice and Google Sheets all read it) with one
-// worksheet per tab.
-function downloadReport(format) {
-  dlError.value = ''
-  const params = { format }
+// The download controls are REAL <a href> links to the backend (session
+// token as query parameter — allowed server-side only for these paths), so
+// the browser handles the download natively with no JS in the click path.
+// Full report = every tab in one PDF or one multi-sheet XLSX workbook.
+function dlUrl(path, format) {
+  const token = localStorage.getItem('adminToken') ?? ''
+  const params = { format, access_token: token }
   if (from.value) params.from = from.value
   if (to.value) params.to = to.value
-  directDownload('/v1/admin/overview/full/file', params)
+  return `${api.defaults.baseURL ?? ''}${path}?${new URLSearchParams(params)}`
 }
-
-function exportFile(format) {
-  dlError.value = ''
-  const params = { format }
-  if (from.value) params.from = from.value
-  if (to.value) params.to = to.value
-  directDownload(`/v1/admin/overview/${sub.value}/file`, params)
+function logDl(what) {
+  console.log('[stats-dl] link clicked:', what, 'base=', api.defaults.baseURL,
+    'token?', !!localStorage.getItem('adminToken'))
 }
 // Collapsed by default; keyed "partner|<label>" / "school|<label>".
 const open = reactive({})
@@ -201,7 +188,8 @@ onMounted(load)
 .st-title { margin: 0; font-size: 1.4rem; color: #003366; }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
 .st-report-btns { display: flex; gap: .5rem; flex-shrink: 0; }
-.btn-report { background: #003366; border: 1px solid #003366; color: #fff; border-radius: 6px; padding: .45rem .9rem; font-size: .82rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn-report { background: #003366; border: 1px solid #003366; color: #fff; border-radius: 6px; padding: .45rem .9rem; font-size: .82rem; font-weight: 600; cursor: pointer; white-space: nowrap; text-decoration: none; display: inline-block; }
+.st-dl { text-decoration: none; display: inline-block; }
 .btn-report:disabled { opacity: .6; cursor: default; }
 .st-subtabs { display: flex; gap: .15rem; border-bottom: 2px solid #e2e8f1; margin: .2rem 0 1rem; flex-wrap: wrap; }
 .st-subtab { background: none; border: none; padding: .5rem .9rem; font-size: .86rem; font-weight: 600; color: #6b7888; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
