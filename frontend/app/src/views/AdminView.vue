@@ -18,6 +18,7 @@
     <div class="tab-bar">
       <button :class="['tab-btn', { active: tab === 'students' }]" @click="tab = 'students'">Students</button>
       <button :class="['tab-btn', { active: tab === 'partners' }]" @click="tab = 'partners'">Partners</button>
+      <button :class="['tab-btn', { active: tab === 'statistics' }]" @click="tab = 'statistics'">Statistics</button>
       <button :class="['tab-btn', { active: tab === 'messages' }]" @click="tab = 'messages'">
         Messages
         <span v-if="pendingMsgCount" class="tab-badge">{{ pendingMsgCount }}</span>
@@ -512,6 +513,11 @@
       </div>
     </div>
 
+    <!-- ══════════════════════ STATISTICS TAB ══════════════════════ -->
+    <div v-show="tab === 'statistics'" class="container">
+      <StatisticsTab v-if="tab === 'statistics'" />
+    </div>
+
     <!-- ══════════════════════ ADMIN USERS TAB (SuperAdministrator only) ══════════════════════ -->
     <div v-show="tab === 'admin-users'" class="container">
       <AdminUsersTab v-if="tab === 'admin-users' && auth.isSuperAdmin" :key="adminUsersRefreshKey" />
@@ -692,6 +698,7 @@ import PartnerCoreProgrammesTab from '../components/partner/tabs/PartnerCoreProg
 import PartnerCustomProgrammesTab from '../components/partner/tabs/PartnerCustomProgrammesTab.vue'
 import PartnerCertificatesTab from '../components/admin/PartnerCertificatesTab.vue'
 import FacultyTeachersTab from '../components/admin/FacultyTeachersTab.vue'
+import StatisticsTab from '../components/admin/StatisticsTab.vue'
 import ModuleCohortsTab from '../components/admin/ModuleCohortsTab.vue'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
 import AdminStudentsTab from '../components/admin/AdminStudentsTab.vue'

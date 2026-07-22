@@ -288,9 +288,9 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     private static async Task<IResult> SaveGradesDraftAsync(
         Guid cohortId, [FromBody] ModuleCohortLogic.GradesDraftBody body, OdinDbContext db, CancellationToken ct)
     {
-        var (found, error, saved) = await ModuleCohortLogic.SaveGradesDraftAsync(db, cohortId, body, ct);
+        var (found, error, saved, skipped) = await ModuleCohortLogic.SaveGradesDraftAsync(db, cohortId, body, ct);
         if (!found) return Results.NotFound();
-        return error is null ? Results.Ok(new { saved }) : Results.BadRequest(new { error });
+        return error is null ? Results.Ok(new { saved, skipped }) : Results.BadRequest(new { error });
     }
 
     private static async Task<IResult> SubmitGradesAsync(

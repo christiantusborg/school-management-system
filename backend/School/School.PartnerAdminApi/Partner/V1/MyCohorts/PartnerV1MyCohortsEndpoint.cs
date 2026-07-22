@@ -374,115 +374,32 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
         catch (FileNotFoundException) { return Results.NotFound(); }
     }
 
-    public sealed class GradeItemDto
-    {
-        public Guid EnrollmentId { get; init; }
-        public int? Score { get; init; }
-    }
-
-    public sealed class GradesDraftBody
-    {
-        public List<GradeItemDto>? Items { get; init; }
-    }
-
-    /// <summary>The cohort's assigned students with their current mark for
-    /// THIS module (teachers grade here; scores land in the normal grade
-    /// sheet as drafts).</summary>
     private static async Task<IResult> GradesAsync(
         Guid cohortId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
     {
         var (_, partnerId, teacherId, fail) = await ResolveAsync(httpContext, db, ct);
         if (fail is not null) return fail;
-        var cohort = await db.ModuleCohorts
-            .Where(c => c.ModuleCohortId == cohortId && c.PartnerId == partnerId && c.DeletedAt == null
-                && (teacherId == null || c.TeacherId == teacherId))
-            .Select(c => new { c.SubjectId, c.CohortNumber })
-            .FirstOrDefaultAsync(ct);
-        if (cohort is null) return Results.NotFound();
-
-        var rows = await (
-            from mcs in db.ModuleCohortStudents
-            join e in db.Enrollments on mcs.StudentEnrollmentId equals e.StudentEnrollmentId
-            where mcs.ModuleCohortId == cohortId && mcs.DeletedAt == null && e.DeletedAt == null
-            select new
-            {
-                enrollmentId = e.StudentEnrollmentId,
-                statusName = e.Status.Name,
-                statusCode = e.Status.Code,
-                studentNumber = db.Students.Where(s => s.StudentId == e.StudentId).Select(s => s.StudentNumber).FirstOrDefault(),
-                firstName = db.Students.Where(s => s.StudentId == e.StudentId)
-                    .Select(s => db.UserProfiles.Where(p => p.UserId == s.UserId).Select(p => p.FirstName).FirstOrDefault()).FirstOrDefault(),
-                lastName = db.Students.Where(s => s.StudentId == e.StudentId)
-                    .Select(s => db.UserProfiles.Where(p => p.UserId == s.UserId).Select(p => p.LastName).FirstOrDefault()).FirstOrDefault(),
-                score = db.Set<SharedLibrary.Basics.Opaque.Domains.SubjectGrade>()
-                    .Where(g => g.StudentEnrollmentId == e.StudentEnrollmentId && g.SubjectId == cohort.SubjectId)
-                    .Select(g => (int?)g.Score).FirstOrDefault(),
-            }).ToListAsync(ct);
-
-        return Results.Ok(new
-        {
-            cohortNumber = cohort.CohortNumber,
-            students = rows.OrderBy(r => r.lastName).ThenBy(r => r.firstName).ToList(),
-        });
+        var owned = await db.ModuleCohorts.AnyAsync(c =>
+            c.ModuleCohortId == cohortId && c.PartnerId == partnerId && c.DeletedAt == null
+            && (teacherId == null || c.TeacherId == teacherId), ct);
+        if (!owned) return Results.NotFound();
+        var result = await ModuleCohortLogic.GradesAsync(db, cohortId, ct);
+        return result is null ? Results.NotFound() : Results.Ok(result);
     }
 
-    /// <summary>Draft-saves marks for the cohort's module into the normal
-    /// grade sheet (SubjectGrades). Never touches enrolment status — the
-    /// existing submit/approve flow is unchanged. Teacher-writable because
-    /// the path ends /grades/draft.</summary>
     private static async Task<IResult> SaveGradesDraftAsync(
-        Guid cohortId, HttpContext httpContext, [FromBody] GradesDraftBody body,
-        OdinDbContext db, CancellationToken ct)
+        Guid cohortId, HttpContext httpContext,
+        [FromBody] ModuleCohortLogic.GradesDraftBody body, OdinDbContext db, CancellationToken ct)
     {
         var (_, partnerId, teacherId, fail) = await ResolveAsync(httpContext, db, ct);
         if (fail is not null) return fail;
-        var cohort = await db.ModuleCohorts
-            .Where(c => c.ModuleCohortId == cohortId && c.PartnerId == partnerId && c.DeletedAt == null
-                && (teacherId == null || c.TeacherId == teacherId))
-            .Select(c => new { c.SubjectId })
-            .FirstOrDefaultAsync(ct);
-        if (cohort is null) return Results.NotFound();
-
-        var assignedIds = (await db.ModuleCohortStudents
-            .Where(s => s.ModuleCohortId == cohortId && s.DeletedAt == null)
-            .Select(s => s.StudentEnrollmentId)
-            .ToListAsync(ct)).ToHashSet();
-
-        var items = (body.Items ?? []).Where(i => i.Score is not null).ToList();
-        foreach (var item in items)
-        {
-            if (!assignedIds.Contains(item.EnrollmentId))
-                return Results.BadRequest(new { error = "A student in the payload is not assigned to this cohort." });
-            if (item.Score is < 0 or > 100)
-                return Results.BadRequest(new { error = "Score must be between 0 and 100." });
-        }
-
-        var enrollmentIds = items.Select(i => i.EnrollmentId).ToList();
-        var existing = await db.Set<SharedLibrary.Basics.Opaque.Domains.SubjectGrade>()
-            .Where(g => enrollmentIds.Contains(g.StudentEnrollmentId) && g.SubjectId == cohort.SubjectId)
-            .ToListAsync(ct);
-        var now = DateTime.UtcNow;
-        foreach (var item in items)
-        {
-            var row = existing.FirstOrDefault(g => g.StudentEnrollmentId == item.EnrollmentId);
-            if (row is not null)
-            {
-                row.Score = item.Score!.Value;
-                row.GradedAt = now;
-            }
-            else
-            {
-                db.Set<SharedLibrary.Basics.Opaque.Domains.SubjectGrade>().Add(new SharedLibrary.Basics.Opaque.Domains.SubjectGrade
-                {
-                    StudentEnrollmentId = item.EnrollmentId,
-                    SubjectId = cohort.SubjectId,
-                    Score = item.Score!.Value,
-                    GradedAt = now,
-                });
-            }
-        }
-        await db.SaveChangesAsync(ct);
-        return Results.Ok(new { saved = items.Count });
+        var owned = await db.ModuleCohorts.AnyAsync(c =>
+            c.ModuleCohortId == cohortId && c.PartnerId == partnerId && c.DeletedAt == null
+            && (teacherId == null || c.TeacherId == teacherId), ct);
+        if (!owned) return Results.NotFound();
+        var (found, error, saved, skipped) = await ModuleCohortLogic.SaveGradesDraftAsync(db, cohortId, body, ct);
+        if (!found) return Results.NotFound();
+        return error is null ? Results.Ok(new { saved, skipped }) : Results.BadRequest(new { error });
     }
 
     /// <summary>Partner-admin submit (teachers draft only — the write-gate

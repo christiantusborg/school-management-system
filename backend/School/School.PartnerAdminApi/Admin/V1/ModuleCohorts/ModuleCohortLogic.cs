@@ -90,10 +90,17 @@ public static class ModuleCohortLogic
     {
         var cohort = await db.ModuleCohorts
             .Where(c => c.ModuleCohortId == cohortId && c.DeletedAt == null)
-            .Select(c => new { c.SubjectId, c.CohortNumber })
+            .Select(c => new
+            {
+                c.CohortNumber,
+                ModuleCode = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.Code).FirstOrDefault(),
+            })
             .FirstOrDefaultAsync(ct);
         if (cohort is null) return null;
 
+        // The same module code exists as a DIFFERENT Subject row in every
+        // specialization — resolve the score via the code inside each
+        // enrolment's own specialization, exactly like the grade import.
         var rows = await (
             from mcs in db.ModuleCohortStudents
             join e in db.Enrollments on mcs.StudentEnrollmentId equals e.StudentEnrollmentId
@@ -105,12 +112,16 @@ public static class ModuleCohortLogic
                 statusCode = e.Status.Code,
                 studentNumber = db.Students.Where(s => s.StudentId == e.StudentId).Select(s => s.StudentNumber).FirstOrDefault(),
                 firstName = db.Students.Where(s => s.StudentId == e.StudentId)
-                    .Select(s => db.UserProfiles.Where(pr => pr.UserId == s.UserId).Select(pr => pr.FirstName).FirstOrDefault()).FirstOrDefault(),
+                    .Select(pr2 => db.UserProfiles.Where(pr => pr.UserId == pr2.UserId).Select(pr => pr.FirstName).FirstOrDefault()).FirstOrDefault(),
                 lastName = db.Students.Where(s => s.StudentId == e.StudentId)
-                    .Select(s => db.UserProfiles.Where(pr => pr.UserId == s.UserId).Select(pr => pr.LastName).FirstOrDefault()).FirstOrDefault(),
-                score = db.SubjectGrades
-                    .Where(g => g.StudentEnrollmentId == e.StudentEnrollmentId && g.SubjectId == cohort.SubjectId)
-                    .Select(g => (int?)g.Score).FirstOrDefault(),
+                    .Select(pr2 => db.UserProfiles.Where(pr => pr.UserId == pr2.UserId).Select(pr => pr.LastName).FirstOrDefault()).FirstOrDefault(),
+                score = (
+                    from g in db.SubjectGrades
+                    join sub in db.Subjects on g.SubjectId equals sub.SubjectId
+                    where g.StudentEnrollmentId == e.StudentEnrollmentId
+                        && sub.SpecializationId == e.SpecializationId
+                        && sub.Code == cohort.ModuleCode
+                    select (int?)g.Score).FirstOrDefault(),
             }).ToListAsync(ct);
 
         return new
@@ -120,16 +131,20 @@ public static class ModuleCohortLogic
         };
     }
 
-    /// <summary>Draft-saves marks for the cohort's module into the normal
-    /// grade sheet (SubjectGrades). Never touches enrolment status.</summary>
-    public static async Task<(bool Found, string? Error, int Saved)> SaveGradesDraftAsync(
+    /// <summary>Saves marks straight into each student's grade sheet: the
+    /// target Subject row is resolved by the cohort's module CODE within the
+    /// enrolment's own specialization. Never touches enrolment status.</summary>
+    public static async Task<(bool Found, string? Error, int Saved, List<object> Skipped)> SaveGradesDraftAsync(
         OdinDbContext db, Guid cohortId, GradesDraftBody body, CancellationToken ct)
     {
         var cohort = await db.ModuleCohorts
             .Where(c => c.ModuleCohortId == cohortId && c.DeletedAt == null)
-            .Select(c => new { c.SubjectId })
+            .Select(c => new
+            {
+                ModuleCode = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.Code).FirstOrDefault(),
+            })
             .FirstOrDefaultAsync(ct);
-        if (cohort is null) return (false, null, 0);
+        if (cohort is null) return (false, null, 0, []);
 
         var assignedIds = (await db.ModuleCohortStudents
             .Where(s => s.ModuleCohortId == cohortId && s.DeletedAt == null)
@@ -140,30 +155,55 @@ public static class ModuleCohortLogic
         foreach (var item in items)
         {
             if (!assignedIds.Contains(item.EnrollmentId))
-                return (true, "A student in the payload is not assigned to this cohort.", 0);
+                return (true, "A student in the payload is not assigned to this cohort.", 0, []);
             if (item.Score is < 0 or > 100)
-                return (true, "Score must be between 0 and 100.", 0);
+                return (true, "Score must be between 0 and 100.", 0, []);
         }
 
         var enrollmentIds = items.Select(i => i.EnrollmentId).ToList();
+        // Per enrolment: the Subject row of the cohort's module code inside
+        // that enrolment's current specialization.
+        var targets = await (
+            from e in db.Enrollments
+            join sub in db.Subjects on e.SpecializationId equals sub.SpecializationId
+            where enrollmentIds.Contains(e.StudentEnrollmentId)
+                && sub.DeletedAt == null && sub.Code == cohort.ModuleCode
+            select new { e.StudentEnrollmentId, sub.SubjectId }).ToListAsync(ct);
+        var targetByEnrollment = targets
+            .GroupBy(t => t.StudentEnrollmentId)
+            .ToDictionary(g => g.Key, g => g.First().SubjectId);
+
+        var targetSubjectIds = targetByEnrollment.Values.Distinct().ToList();
         var existing = await db.SubjectGrades
-            .Where(g => enrollmentIds.Contains(g.StudentEnrollmentId) && g.SubjectId == cohort.SubjectId)
+            .Where(g => enrollmentIds.Contains(g.StudentEnrollmentId) && targetSubjectIds.Contains(g.SubjectId))
             .ToListAsync(ct);
+
         var now = DateTime.UtcNow;
+        var saved = 0;
+        var skipped = new List<object>();
         foreach (var item in items)
         {
-            var row = existing.FirstOrDefault(g => g.StudentEnrollmentId == item.EnrollmentId);
+            if (!targetByEnrollment.TryGetValue(item.EnrollmentId, out var subjectId))
+            {
+                var num = await db.Enrollments.Where(e => e.StudentEnrollmentId == item.EnrollmentId)
+                    .Select(e => db.Students.Where(s => s.StudentId == e.StudentId).Select(s => s.StudentNumber).FirstOrDefault())
+                    .FirstOrDefaultAsync(ct) ?? "?";
+                skipped.Add(new { studentNumber = num, reason = $"Module {cohort.ModuleCode} is not part of their specialization." });
+                continue;
+            }
+            var row = existing.FirstOrDefault(g => g.StudentEnrollmentId == item.EnrollmentId && g.SubjectId == subjectId);
             if (row is not null) { row.Score = item.Score!.Value; row.GradedAt = now; }
             else db.SubjectGrades.Add(new SharedLibrary.Basics.Opaque.Domains.SubjectGrade
             {
                 StudentEnrollmentId = item.EnrollmentId,
-                SubjectId = cohort.SubjectId,
+                SubjectId = subjectId,
                 Score = item.Score!.Value,
                 GradedAt = now,
             });
+            saved++;
         }
         await db.SaveChangesAsync(ct);
-        return (true, null, items.Count);
+        return (true, null, saved, skipped);
     }
 
     /// <summary>

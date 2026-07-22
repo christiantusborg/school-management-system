@@ -42,6 +42,7 @@
               <button type="button" v-for="r in GRADE_RANGES" :key="r[0]" class="tb-range-item"
                       @click="addRangeTable(r[0], r[1])">Grades Table {{ r[0] }}-{{ r[1] }}</button>
               <button type="button" class="tb-range-item" @click="addTotalsField">Total / GPA section</button>
+              <button type="button" class="tb-range-item" @click="addGradeStandardField">Grade Standard table</button>
             </div>
           </span>
           <button class="tb-btn" :disabled="!selectedField" @click="removeSelected">Delete</button>
@@ -572,6 +573,23 @@ function addTotalsField() {
     fontSize: 9, color: '#000000', align: 'left',
     bold: false, italic: false, imageAssetId: null,
     width: 500, height: 60,
+  }
+  currentPage.value.fields.push(f)
+  selectedFieldId.value = f.id
+  rangeMenuOpen.value = false
+}
+
+// Grade standard legend (school/UK/US/ECTS scale). Content is fixed and
+// rendered by the PDF renderer; the editor only places the block.
+function addGradeStandardField() {
+  const f = {
+    id: uid(),
+    kind: 'gradeStandardTable',
+    tag: null, text: 'Grade Standard Table', prefix: '', suffix: '',
+    x: 50, y: 190,
+    fontSize: 9, color: '#000000', align: 'left',
+    bold: false, italic: false, imageAssetId: null,
+    width: 500, height: 470,
   }
   currentPage.value.fields.push(f)
   selectedFieldId.value = f.id
