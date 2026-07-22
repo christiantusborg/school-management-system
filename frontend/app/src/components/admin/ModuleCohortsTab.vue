@@ -253,16 +253,45 @@
             <p class="mc-sub">Marks for {{ det.cohort.moduleCode }} — Save writes them straight into each
               student's grade sheet (Programme → Specialization → Module). Enrolment status is never changed here;
               the usual submit/approve flow stays on the student.</p>
+            <p v-if="gradesRubric" class="mc-sub" style="margin:.2rem 0 .4rem">
+              This module uses <strong>rubric grading</strong>: open a student's rubric, score every criterion 1–100,
+              and the module grade is the weighted total — calculated, never typed directly.</p>
             <div v-if="gradesLoading" class="loading-row">Loading…</div>
             <table v-else-if="grades.length" class="data-table">
-              <thead><tr><th>Student</th><th>Student #</th><th>Status</th><th style="width:140px">Score (0–100)</th></tr></thead>
+              <thead><tr><th>Student</th><th>Student #</th><th>Status</th>
+                <th style="width:150px">{{ gradesRubric ? 'Grade (calculated)' : 'Score (0–100)' }}</th>
+                <th v-if="gradesRubric" style="width:110px"></th></tr></thead>
               <tbody>
-                <tr v-for="g in grades" :key="g.enrollmentId">
-                  <td>{{ g.firstName }} {{ g.lastName }}</td>
-                  <td>{{ g.studentNumber }}</td>
-                  <td>{{ g.statusName }}</td>
-                  <td><input v-model.number="g.score" type="number" min="0" max="100" class="mc-inp" style="width:110px" /></td>
-                </tr>
+                <template v-for="g in grades" :key="g.enrollmentId">
+                  <tr>
+                    <td>{{ g.firstName }} {{ g.lastName }}</td>
+                    <td>{{ g.studentNumber }}</td>
+                    <td>{{ g.statusName }}</td>
+                    <td v-if="!gradesRubric">
+                      <input v-model.number="g.score" type="number" min="0" max="100" class="mc-inp" style="width:110px" /></td>
+                    <td v-else><strong>{{ rubricTotal(g) ?? g.score ?? '—' }}</strong></td>
+                    <td v-if="gradesRubric">
+                      <button type="button" class="btn-sm" @click="rubOpen[g.enrollmentId] = !rubOpen[g.enrollmentId]">
+                        {{ rubOpen[g.enrollmentId] ? '▾' : '▸' }} Rubric</button></td>
+                  </tr>
+                  <tr v-if="gradesRubric && rubOpen[g.enrollmentId]">
+                    <td colspan="5" class="mc-rub-cell">
+                      <div class="mc-rub-grid mc-rub-head">
+                        <span>Section</span><span>Criteria</span><span>Max %</span><span>Score (1–100)</span><span>Weighted</span></div>
+                      <div v-for="r in gradesRubric.rows" :key="r.id" class="mc-rub-grid">
+                        <span style="font-weight:600">{{ r.section }}</span>
+                        <span class="mc-muted">{{ r.criteria }}</span>
+                        <span>{{ r.maxPercent }}%</span>
+                        <span><input v-model.number="g.rubricScores[r.id]" type="number" min="0" max="100" class="mc-inp" style="width:90px" /></span>
+                        <span>{{ weightedOf(g, r) }}</span>
+                      </div>
+                      <div class="mc-rub-grid mc-rub-total">
+                        <span>Final grade (calculated)</span><span></span><span>100%</span><span></span>
+                        <span>{{ rubricTotal(g) ?? '— fill all rows' }}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
             <p v-else class="mc-sub">No students assigned to this cohort yet.</p>
@@ -455,6 +484,8 @@ const studentsLoading = ref(false)
 // Grades tab: marks for the cohort's module, drafted into SubjectGrades;
 // optional submit flips fully-graded students to awaiting approval.
 const grades = ref([])
+const gradesRubric = ref(null)
+const rubOpen = reactive({})
 const gradesLoading = ref(false)
 const savingGrades = ref(false)
 const gradesOk = ref('')
@@ -465,12 +496,29 @@ async function loadGrades() {
   gradesSkipped.value = []
   try {
     const res = await api.get(P.value.grades(det.value.cohort.moduleCohortId))
-    grades.value = res.data.students ?? []
+    gradesRubric.value = res.data.rubric ?? null
+    grades.value = (res.data.students ?? []).map(g => ({ ...g, rubricScores: g.rubricScores ?? {} }))
   } catch (e) {
     detError.value = e.response?.data?.error ?? e.message ?? 'Failed to load grades'
   } finally {
     gradesLoading.value = false
   }
+}
+function hasRubricValue(g, rowId) {
+  const v = g.rubricScores?.[rowId]
+  return v !== null && v !== undefined && v !== ''
+}
+function weightedOf(g, r) {
+  return hasRubricValue(g, r.id) ? ((g.rubricScores[r.id] * r.maxPercent) / 100).toFixed(1) : '—'
+}
+function rubricTotal(g) {
+  if (!gradesRubric.value) return null
+  let sum = 0
+  for (const r of gradesRubric.value.rows) {
+    if (!hasRubricValue(g, r.id)) return null
+    sum += g.rubricScores[r.id] * r.maxPercent
+  }
+  return Math.round(sum / 100)
 }
 async function saveGradesDraft() {
   if (savingGrades.value) return
@@ -478,14 +526,24 @@ async function saveGradesDraft() {
   detError.value = ''
   gradesOk.value = ''
   try {
-    const res = await api.post(`${P.value.grades(det.value.cohort.moduleCohortId)}/draft`, {
-      items: grades.value
-        .filter(g => g.score !== null && g.score !== '' && g.score !== undefined)
-        .map(g => ({ enrollmentId: g.enrollmentId, score: g.score })),
-    })
+    const items = gradesRubric.value
+      ? grades.value
+          .filter(g => gradesRubric.value.rows.some(r => hasRubricValue(g, r.id)))
+          .map(g => ({
+            enrollmentId: g.enrollmentId,
+            rubric: gradesRubric.value.rows.map(r => ({
+              rowId: r.id,
+              score: hasRubricValue(g, r.id) ? g.rubricScores[r.id] : null,
+            })),
+          }))
+      : grades.value
+          .filter(g => g.score !== null && g.score !== '' && g.score !== undefined)
+          .map(g => ({ enrollmentId: g.enrollmentId, score: g.score }))
+    const res = await api.post(`${P.value.grades(det.value.cohort.moduleCohortId)}/draft`, { items })
     gradesSkipped.value = res.data.skipped ?? []
     gradesOk.value = `Saved: ${res.data.saved}`
     setTimeout(() => { gradesOk.value = '' }, 2500)
+    if (gradesRubric.value && res.data.saved > 0) await loadGrades()
   } catch (e) {
     detError.value = e.response?.data?.error ?? e.message ?? 'Save failed'
   } finally {
@@ -750,6 +808,10 @@ watch(() => props.partnerId, load, { immediate: true })
 .mc-section-title { font-weight: 700; color: #003366; font-size: .85rem; margin-bottom: .5rem; }
 .mc-system { padding: .4rem .55rem; background: #f2f5f9; border: 1px dashed #cfd7e3; border-radius: 5px; font-size: .82rem; color: #44536a; min-height: 1.9rem; }
 .mc-upl { margin-bottom: .6rem; }
+.mc-rub-cell { background: #f8fafd; padding: .6rem .9rem !important; }
+.mc-rub-grid { display: grid; grid-template-columns: 1.1fr 2.4fr 70px 110px 90px; gap: .5rem; align-items: center; padding: .25rem 0; }
+.mc-rub-head { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; color: #6b7888; font-weight: 700; border-bottom: 1px solid #e2e8f1; }
+.mc-rub-total { border-top: 1.5px solid #d5deea; font-weight: 700; margin-top: .2rem; }
 .mc-infotext { background: #f6f9fd; border-left: 3px solid #9db8d8; border-radius: 4px; padding: .5rem .7rem; font-size: .82rem; color: #44536a; white-space: pre-wrap; }
 .mc-fieldcheck { display: flex; align-items: center; gap: .35rem; font-size: .82rem; color: #2c3e50; padding-top: .4rem; }
 .mc-asg-stu { background: none; border: none; font-size: .88rem; font-weight: 700; color: #1a2d4f; cursor: pointer; padding: .2rem 0; }

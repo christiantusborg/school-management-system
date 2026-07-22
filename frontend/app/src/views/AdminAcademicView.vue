@@ -292,6 +292,9 @@
                 <label class="thesis-chk" title="Mark as thesis / dissertation module">
                   <input type="checkbox" :checked="s.isThesis" @change="toggleThesis(s, $event.target.checked)" /> Thesis
                 </label>
+                <button type="button" :class="['btn-rubric', { on: s.rubricTemplateId }]" @click.stop="openRubric(s)"
+                        title="Rubric-style grading for this module">
+                  ▦ {{ s.rubricName || 'Rubric' }}</button>
                 <span class="col-act"><button class="btn-x" @click="softDeleteSubject(s)">✕</button></span>
               </div>
               <div class="add-subj-row">
@@ -493,7 +496,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { auth } from '../store/auth.js'
 import api from '../api/client.js'
@@ -644,6 +647,57 @@ async function loadDeleted() {
 function toggleShowDeleted() {
   showDeleted.value = !showDeleted.value
   if (showDeleted.value) loadDeleted()
+}
+
+// Per-module rubric grading choice (none / shared template / custom rows).
+const rub = reactive({
+  open: false, subject: null, mode: 'none', templateId: null,
+  rows: [], sharedTemplates: [], error: '', saving: false,
+})
+const rubTotal = computed(() => rub.rows.reduce((t, r) => t + (Number(r.maxPercent) || 0), 0))
+const rubCanSave = computed(() => {
+  if (rub.mode === 'shared') return !!rub.templateId
+  if (rub.mode === 'custom') return rub.rows.length > 0 && rubTotal.value === 100 && rub.rows.every(r => r.section.trim())
+  return true
+})
+
+async function openRubric(subj) {
+  rub.subject = subj
+  rub.error = ''
+  rub.saving = false
+  try {
+    const res = await api.get(`/v1/school/subjects/${subj.subjectId}/rubric`)
+    rub.mode = res.data.mode ?? 'none'
+    rub.templateId = res.data.mode === 'shared' ? res.data.templateId : null
+    rub.sharedTemplates = res.data.sharedTemplates ?? []
+    rub.rows = res.data.mode === 'custom'
+      ? (res.data.rows ?? []).map(r => ({ id: r.id, section: r.section, criteria: r.criteria, maxPercent: r.maxPercent }))
+      : [{ section: '', criteria: '', maxPercent: null }]
+    rub.open = true
+  } catch (e) {
+    alert(e.response?.data?.error ?? e.message ?? 'Failed to load rubric')
+  }
+}
+
+async function saveRubric() {
+  if (rub.saving || !rubCanSave.value) return
+  rub.saving = true
+  rub.error = ''
+  try {
+    const body = { mode: rub.mode }
+    if (rub.mode === 'shared') body.templateId = rub.templateId
+    if (rub.mode === 'custom') body.rows = rub.rows.map(r => ({ id: r.id, section: r.section, criteria: r.criteria, maxPercent: r.maxPercent }))
+    const res = await api.put(`/v1/school/subjects/${rub.subject.subjectId}/rubric`, body)
+    rub.subject.rubricTemplateId = res.data.templateId ?? null
+    rub.subject.rubricName = rub.mode === 'none' ? null
+      : rub.mode === 'shared' ? (rub.sharedTemplates.find(t => t.id === rub.templateId)?.name ?? 'Rubric')
+      : `${rub.subject.code} rubric`
+    rub.open = false
+  } catch (e) {
+    rub.error = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    rub.saving = false
+  }
 }
 
 onMounted(loadAll)
@@ -1177,6 +1231,21 @@ async function permanentDeleteProgramme(prog) {
 .subj-col-header span { font-size: 0.69rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #aaa; }
 .subj-empty { font-size: 0.82rem; color: #bbb; font-style: italic; padding: 0.5rem 0; }
 .subj-row { display: flex; align-items: center; padding: 0.45rem 0; border-bottom: 1px solid #f3f5f8; font-size: 0.87rem; }
+.btn-rubric { background: #f2f5f9; border: 1px solid #cfd7e3; border-radius: 5px; padding: .2rem .55rem; font-size: .74rem; font-weight: 600; color: #44536a; cursor: pointer; margin-right: .5rem; white-space: nowrap; }
+.btn-rubric.on { background: #e7f0e9; border-color: #9dc4a8; color: #1d7a3e; }
+.rub-overlay { position: fixed; inset: 0; background: rgba(15, 30, 55, .45); display: flex; align-items: flex-start; justify-content: center; padding: 4rem 1rem; z-index: 60; overflow-y: auto; }
+.rub-dialog { background: #fff; border-radius: 10px; padding: 1.2rem 1.4rem 1.1rem; width: 100%; max-width: 760px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.rub-title { margin: 0 0 .3rem; font-size: 1.05rem; color: #003366; }
+.rub-sub { font-size: .8rem; color: #6b7888; margin: 0 0 .8rem; }
+.rub-choice { display: block; font-size: .87rem; color: #2c3e50; margin: .35rem 0; cursor: pointer; }
+.rub-inp { padding: .4rem .55rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .85rem; background: #fff; width: 100%; box-sizing: border-box; }
+.rub-rows-head, .rub-row { display: grid; grid-template-columns: 1fr 2fr 90px 36px; gap: .5rem; align-items: start; margin-top: .45rem; }
+.rub-rows-head { font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; color: #6b7888; font-weight: 700; margin-top: .8rem; }
+.rub-total { font-size: .82rem; font-weight: 700; }
+.rub-total.ok { color: #1d7a3e; }
+.rub-total.bad { color: #b3261e; }
+.rub-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1rem; }
+.btn-sm-plain { background: #f2f5f9; border: 1px solid #cfd7e3; border-radius: 5px; padding: .3rem .6rem; font-size: .78rem; font-weight: 600; color: #2c3e50; cursor: pointer; }
 .subj-row:last-of-type { border-bottom: none; }
 .col-code { width: 110px; flex-shrink: 0; padding-right: 0.75rem; }
 .col-name { flex: 1; padding-right: 0.75rem; }

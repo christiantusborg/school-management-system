@@ -109,10 +109,19 @@ public static class ModuleCohortLogic
             .Replace("{n}", (max + 1).ToString("D3"), StringComparison.OrdinalIgnoreCase);
     }
 
+    public sealed class RubricScoreDto
+    {
+        public Guid RowId { get; init; }
+        public int? Score { get; init; }
+    }
+
     public sealed class GradeItemDto
     {
         public Guid EnrollmentId { get; init; }
         public int? Score { get; init; }
+        /// <summary>Rubric mode: one 1-100 score per rubric row; the final
+        /// module grade is always the weighted total, never sent directly.</summary>
+        public List<RubricScoreDto>? Rubric { get; init; }
     }
 
     public sealed class GradesDraftBody
@@ -130,6 +139,7 @@ public static class ModuleCohortLogic
             {
                 c.CohortNumber,
                 ModuleCode = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.Code).FirstOrDefault(),
+                RubricTemplateId = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.RubricTemplateId).FirstOrDefault(),
             })
             .FirstOrDefaultAsync(ct);
         if (cohort is null) return null;
@@ -158,12 +168,50 @@ public static class ModuleCohortLogic
                         && sub.SpecializationId == e.SpecializationId
                         && sub.Code == cohort.ModuleCode
                     select (int?)g.Score).FirstOrDefault(),
+                gradeId = (
+                    from g in db.SubjectGrades
+                    join sub in db.Subjects on g.SubjectId equals sub.SubjectId
+                    where g.StudentEnrollmentId == e.StudentEnrollmentId
+                        && sub.SpecializationId == e.SpecializationId
+                        && sub.Code == cohort.ModuleCode
+                    select (Guid?)g.SubjectGradeId).FirstOrDefault(),
             }).ToListAsync(ct);
+
+        // Rubric mode: ship the row definitions plus each student's saved
+        // per-row scores (the extra dimension behind the single grade).
+        object? rubric = null;
+        var scoresByGrade = new Dictionary<Guid, Dictionary<Guid, int>>();
+        if (cohort.RubricTemplateId is { } rubricTemplateId)
+        {
+            var rubricRows = await db.RubricRows
+                .Where(r => r.RubricTemplateId == rubricTemplateId && r.DeletedAt == null)
+                .OrderBy(r => r.SortOrder)
+                .Select(r => new { id = r.RubricRowId, section = r.Section, criteria = r.Criteria, maxPercent = r.MaxPercent })
+                .ToListAsync(ct);
+            rubric = new { templateId = rubricTemplateId, rows = rubricRows };
+
+            var gradeIds = rows.Where(r => r.gradeId != null).Select(r => r.gradeId!.Value).ToList();
+            var saved = await db.SubjectGradeRubricScores
+                .Where(x => gradeIds.Contains(x.SubjectGradeId))
+                .ToListAsync(ct);
+            scoresByGrade = saved
+                .GroupBy(x => x.SubjectGradeId)
+                .ToDictionary(g => g.Key, g => g
+                    .GroupBy(x => x.RubricRowId)
+                    .ToDictionary(x => x.Key, x => x.First().Score));
+        }
 
         return new
         {
             cohortNumber = cohort.CohortNumber,
-            students = rows.OrderBy(r => r.lastName).ThenBy(r => r.firstName).ToList(),
+            rubric,
+            students = rows.OrderBy(r => r.lastName).ThenBy(r => r.firstName)
+                .Select(r => new
+                {
+                    r.enrollmentId, r.statusName, r.statusCode, r.studentNumber, r.firstName, r.lastName, r.score,
+                    rubricScores = r.gradeId is { } gid && scoresByGrade.TryGetValue(gid, out var byRow)
+                        ? byRow : new Dictionary<Guid, int>(),
+                }).ToList(),
         };
     }
 
@@ -178,22 +226,39 @@ public static class ModuleCohortLogic
             .Select(c => new
             {
                 ModuleCode = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.Code).FirstOrDefault(),
+                RubricTemplateId = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.RubricTemplateId).FirstOrDefault(),
             })
             .FirstOrDefaultAsync(ct);
         if (cohort is null) return (false, null, 0, []);
+
+        // Rubric mode: the module grade is ALWAYS calculated from the row
+        // scores (weighted by Max %), never taken from the payload directly.
+        List<(Guid RowId, int MaxPercent)>? rubricRows = null;
+        if (cohort.RubricTemplateId is { } rubricTemplateId)
+            rubricRows = (await db.RubricRows
+                .Where(r => r.RubricTemplateId == rubricTemplateId && r.DeletedAt == null)
+                .Select(r => new { r.RubricRowId, r.MaxPercent })
+                .ToListAsync(ct))
+                .Select(r => (r.RubricRowId, r.MaxPercent)).ToList();
 
         var assignedIds = (await db.ModuleCohortStudents
             .Where(s => s.ModuleCohortId == cohortId && s.DeletedAt == null)
             .Select(s => s.StudentEnrollmentId)
             .ToListAsync(ct)).ToHashSet();
 
-        var items = (body.Items ?? []).Where(i => i.Score is not null).ToList();
+        var items = (body.Items ?? [])
+            .Where(i => rubricRows is null
+                ? i.Score is not null
+                : i.Rubric is not null && i.Rubric.Any(rs => rs.Score is not null))
+            .ToList();
         foreach (var item in items)
         {
             if (!assignedIds.Contains(item.EnrollmentId))
                 return (true, "A student in the payload is not assigned to this cohort.", 0, []);
-            if (item.Score is < 0 or > 100)
+            if (rubricRows is null && item.Score is < 0 or > 100)
                 return (true, "Score must be between 0 and 100.", 0, []);
+            if (rubricRows is not null && (item.Rubric ?? []).Any(rs => rs.Score is < 0 or > 100))
+                return (true, "Rubric scores must be between 0 and 100.", 0, []);
         }
 
         var enrollmentIds = items.Select(i => i.EnrollmentId).ToList();
@@ -217,27 +282,81 @@ public static class ModuleCohortLogic
         var now = DateTime.UtcNow;
         var saved = 0;
         var skipped = new List<object>();
+        var pendingRubric = new List<(Guid GradeId, List<(Guid RowId, int Score)> Scores)>();
+
+        async Task<string> NumberOfAsync(Guid enrollmentId) =>
+            await db.Enrollments.Where(e => e.StudentEnrollmentId == enrollmentId)
+                .Select(e => db.Students.Where(s => s.StudentId == e.StudentId).Select(s => s.StudentNumber).FirstOrDefault())
+                .FirstOrDefaultAsync(ct) ?? "?";
+
         foreach (var item in items)
         {
             if (!targetByEnrollment.TryGetValue(item.EnrollmentId, out var subjectId))
             {
-                var num = await db.Enrollments.Where(e => e.StudentEnrollmentId == item.EnrollmentId)
-                    .Select(e => db.Students.Where(s => s.StudentId == e.StudentId).Select(s => s.StudentNumber).FirstOrDefault())
-                    .FirstOrDefaultAsync(ct) ?? "?";
-                skipped.Add(new { studentNumber = num, reason = $"Module {cohort.ModuleCode} is not part of their specialization." });
+                skipped.Add(new { studentNumber = await NumberOfAsync(item.EnrollmentId), reason = $"Module {cohort.ModuleCode} is not part of their specialization." });
                 continue;
             }
-            var row = existing.FirstOrDefault(g => g.StudentEnrollmentId == item.EnrollmentId && g.SubjectId == subjectId);
-            if (row is not null) { row.Score = item.Score!.Value; row.GradedAt = now; }
-            else db.SubjectGrades.Add(new SharedLibrary.Basics.Opaque.Domains.SubjectGrade
+
+            int finalScore;
+            List<(Guid RowId, int Score)>? rowScores = null;
+            if (rubricRows is not null)
             {
-                StudentEnrollmentId = item.EnrollmentId,
-                SubjectId = subjectId,
-                Score = item.Score!.Value,
-                GradedAt = now,
-            });
+                var provided = (item.Rubric ?? [])
+                    .Where(rs => rs.Score is not null)
+                    .GroupBy(rs => rs.RowId)
+                    .ToDictionary(g => g.Key, g => g.First().Score!.Value);
+                if (rubricRows.Any(r => !provided.ContainsKey(r.RowId)))
+                {
+                    skipped.Add(new { studentNumber = await NumberOfAsync(item.EnrollmentId), reason = "All rubric criteria must be scored before the grade can be calculated." });
+                    continue;
+                }
+                finalScore = (int)Math.Round(
+                    rubricRows.Sum(r => provided[r.RowId] * (double)r.MaxPercent) / 100.0,
+                    MidpointRounding.AwayFromZero);
+                rowScores = rubricRows.Select(r => (r.RowId, provided[r.RowId])).ToList();
+            }
+            else finalScore = item.Score!.Value;
+
+            var row = existing.FirstOrDefault(g => g.StudentEnrollmentId == item.EnrollmentId && g.SubjectId == subjectId);
+            if (row is not null) { row.Score = finalScore; row.GradedAt = now; }
+            else
+            {
+                row = new SharedLibrary.Basics.Opaque.Domains.SubjectGrade
+                {
+                    StudentEnrollmentId = item.EnrollmentId,
+                    SubjectId = subjectId,
+                    Score = finalScore,
+                    GradedAt = now,
+                };
+                db.SubjectGrades.Add(row);
+                existing.Add(row);
+            }
+            if (rowScores is not null) pendingRubric.Add((row.SubjectGradeId, rowScores));
             saved++;
         }
+
+        // Persist the rubric dimension behind each saved grade (upsert per row).
+        if (pendingRubric.Count > 0)
+        {
+            var gradeIds = pendingRubric.Select(x => x.GradeId).Distinct().ToList();
+            var existingScores = await db.SubjectGradeRubricScores
+                .Where(x => gradeIds.Contains(x.SubjectGradeId))
+                .ToListAsync(ct);
+            foreach (var (gradeId, scores) in pendingRubric)
+                foreach (var (rowId, score) in scores)
+                {
+                    var match = existingScores.FirstOrDefault(x => x.SubjectGradeId == gradeId && x.RubricRowId == rowId);
+                    if (match is not null) { match.Score = score; match.UpdatedAt = now; }
+                    else db.SubjectGradeRubricScores.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.SubjectGradeRubricScore
+                    {
+                        SubjectGradeId = gradeId,
+                        RubricRowId = rowId,
+                        Score = score,
+                        UpdatedAt = now,
+                    });
+                }
+        }
+
         await db.SaveChangesAsync(ct);
         return (true, null, saved, skipped);
     }

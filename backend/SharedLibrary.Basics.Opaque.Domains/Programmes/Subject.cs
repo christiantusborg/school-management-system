@@ -20,6 +20,11 @@ public class Subject : IDeletedAtEntity
     /// </summary>
     public bool IsThesis { get; set; }
 
+    /// <summary>Rubric-style grading: when set, this module is graded via
+    /// the rubric's weighted rows (cohort Grades tab) instead of one direct
+    /// mark. Null = simple single grade.</summary>
+    public Guid? RubricTemplateId { get; set; }
+
     /// Applies automatically to every student unless the Admission Office
     /// sets a per-student override. Null = module starts at commencement.</summary>
 

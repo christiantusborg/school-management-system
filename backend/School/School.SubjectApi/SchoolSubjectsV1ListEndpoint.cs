@@ -34,6 +34,10 @@ public sealed class SchoolSubjectsV1ListEndpoint : IEndpointMarker
                 description = s.Description,
                 ects = s.Ects,
                 isThesis = s.IsThesis,
+                rubricTemplateId = s.RubricTemplateId,
+                rubricName = db.RubricTemplates
+                    .Where(t => t.RubricTemplateId == s.RubricTemplateId)
+                    .Select(t => t.Name).FirstOrDefault(),
                 deletedAt = s.DeletedAt,
             })
             .ToListAsync(cancellationToken);
