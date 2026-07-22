@@ -291,6 +291,7 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     [
         CohortTypeField.TypeText, CohortTypeField.TypeNumber, CohortTypeField.TypeDate,
         CohortTypeField.TypeSelect, CohortTypeField.TypeBool, CohortTypeField.TypeFile,
+        CohortTypeField.TypeInfo,
     ];
 
     public sealed class TypeFieldDto
@@ -425,7 +426,7 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
             }
             field.Label = f.Label!.Trim();
             field.Type = f.Type!;
-            field.OptionsText = f.Type == CohortTypeField.TypeSelect ? f.OptionsText : null;
+            field.OptionsText = f.Type is CohortTypeField.TypeSelect or CohortTypeField.TypeInfo ? f.OptionsText : null;
             field.IsRequired = f.IsRequired;
             field.SortOrder = order++;
             field.DeletedAt = null;

@@ -152,9 +152,10 @@
             <div v-if="det.cohortType?.fields?.length" class="mc-section">
               <div class="mc-section-title">{{ det.cohort.cohortTypeName || 'Cohort type' }} — additional data</div>
               <div class="mc-grid2">
-                <div v-for="f in det.cohortType.fields" :key="f.id">
+                <div v-for="f in det.cohortType.fields" :key="f.id" :style="f.type === 'info' ? 'grid-column: 1 / -1' : ''">
                   <label class="mc-lbl">{{ f.label }}<span v-if="f.isRequired" style="color:#b3261e"> *</span></label>
-                  <template v-if="readOnly">
+                  <div v-if="f.type === 'info'" class="mc-infotext">{{ f.infoText }}</div>
+                  <template v-else-if="readOnly">
                     <div class="mc-system">{{ fieldDisplay(f) }}</div>
                   </template>
                   <template v-else>
@@ -749,6 +750,7 @@ watch(() => props.partnerId, load, { immediate: true })
 .mc-section-title { font-weight: 700; color: #003366; font-size: .85rem; margin-bottom: .5rem; }
 .mc-system { padding: .4rem .55rem; background: #f2f5f9; border: 1px dashed #cfd7e3; border-radius: 5px; font-size: .82rem; color: #44536a; min-height: 1.9rem; }
 .mc-upl { margin-bottom: .6rem; }
+.mc-infotext { background: #f6f9fd; border-left: 3px solid #9db8d8; border-radius: 4px; padding: .5rem .7rem; font-size: .82rem; color: #44536a; white-space: pre-wrap; }
 .mc-fieldcheck { display: flex; align-items: center; gap: .35rem; font-size: .82rem; color: #2c3e50; padding-top: .4rem; }
 .mc-asg-stu { background: none; border: none; font-size: .88rem; font-weight: 700; color: #1a2d4f; cursor: pointer; padding: .2rem 0; }
 .mc-file-row { display: flex; align-items: center; gap: .4rem; font-size: .82rem; margin: .2rem 0; }

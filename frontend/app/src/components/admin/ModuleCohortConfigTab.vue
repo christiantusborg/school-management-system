@@ -93,11 +93,14 @@
                 <option value="select">Dropdown</option>
                 <option value="bool">Yes / No</option>
                 <option value="file">File upload</option>
+                <option value="info">Read-only text (edited here only)</option>
               </select>
               <label class="mcc-check"><input type="checkbox" v-model="f.isRequired" :disabled="typeLocked" /> req.</label>
               <button v-if="!typeLocked" type="button" class="btn-sm btn-danger" @click="typeFields.splice(i, 1)">✕</button>
               <textarea v-if="f.type === 'select'" v-model="f.optionsText" class="mcc-inp" style="flex-basis:100%" rows="2"
                         placeholder="Dropdown options — one per line" :disabled="typeLocked"></textarea>
+              <textarea v-else-if="f.type === 'info'" v-model="f.optionsText" class="mcc-inp" style="flex-basis:100%" rows="3"
+                        placeholder="Text shown read-only on every cohort of this type" :disabled="typeLocked"></textarea>
             </div>
             <div v-if="typeError" class="err-banner" style="margin-top:.5rem">{{ typeError }}</div>
           </div>
@@ -182,7 +185,7 @@ async function saveType() {
     await api.put(`/v1/admin/cohort-types/${id}/structure`, {
       fields: typeFields.value.filter(f => f.label.trim()).map(f => ({
         id: f.id, label: f.label.trim(), type: f.type,
-        optionsText: f.type === 'select' ? f.optionsText : null,
+        optionsText: ['select', 'info'].includes(f.type) ? f.optionsText : null,
         isRequired: !!f.isRequired,
       })),
       uploadFields: typeUploads.value.filter(f => f.label.trim()).map(f => ({

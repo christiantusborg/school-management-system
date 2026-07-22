@@ -122,6 +122,9 @@ public class CohortTypeField : IDeletedAtEntity
     public const string TypeSelect = "select";
     public const string TypeBool = "bool";
     public const string TypeFile = "file";
+    /// <summary>Static text written in the TEMPLATE only; cohorts show it
+    /// read-only (instructions, notes). Content lives in OptionsText.</summary>
+    public const string TypeInfo = "info";
 
     public Guid CohortTypeFieldId { get; set; } = Guid.NewGuid();
     public Guid CohortTypeId { get; set; }

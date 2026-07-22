@@ -426,6 +426,7 @@ public static class ModuleCohortLogic
                     id = f.CohortTypeFieldId,
                     label = f.Label,
                     type = f.Type,
+                    infoText = f.Type == CohortTypeField.TypeInfo ? (f.OptionsText ?? "") : null,
                     options = f.Type == CohortTypeField.TypeSelect
                         ? (f.OptionsText ?? string.Empty)
                             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
