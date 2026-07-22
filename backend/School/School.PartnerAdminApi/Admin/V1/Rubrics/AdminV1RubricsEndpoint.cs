@@ -1,4 +1,5 @@
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
+using School.PartnerAdminApi.Partner.V1.MyUsers;
 
 namespace School.PartnerAdminApi.Admin.V1.Rubrics;
 
@@ -24,6 +25,12 @@ public sealed class AdminV1RubricsEndpoint : IEndpointMarker
         // guarded like the other /v1/school academic routes).
         app.MapGet("/v1/school/subjects/{subjectId:guid}/rubric", GetSubjectRubricAsync).RequireAuthorization();
         app.MapPut("/v1/school/subjects/{subjectId:guid}/rubric", SetSubjectRubricAsync).RequireAuthorization();
+
+        // Partner mirror: partners set rubrics on modules of their OWN custom
+        // programmes (ownership checked; teachers stay read-only via the
+        // partner write gate). Shared templates remain admin-managed.
+        app.MapGet("/v1/partner/my/subjects/{subjectId:guid}/rubric", PartnerGetSubjectRubricAsync).RequireAuthorization("PartnerOnly");
+        app.MapPut("/v1/partner/my/subjects/{subjectId:guid}/rubric", PartnerSetSubjectRubricAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
@@ -161,6 +168,30 @@ public sealed class AdminV1RubricsEndpoint : IEndpointMarker
     }
 
     // ── Per-module rubric choice ────────────────────────────────────────────
+
+    private static async Task<IResult?> PartnerOwnsSubjectAsync(
+        HttpContext httpContext, OdinDbContext db, Guid subjectId, CancellationToken ct)
+    {
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null || partnerId is null) return fail ?? Results.StatusCode(403);
+        var owned = await (
+            from sub in db.Subjects
+            join spec in db.Specializations on sub.SpecializationId equals spec.SpecializationId
+            join prog in db.Programmes on spec.ProgrammeId equals prog.ProgrammeId
+            where sub.SubjectId == subjectId && sub.DeletedAt == null && prog.OwnerId == partnerId
+            select sub.SubjectId).AnyAsync(ct);
+        return owned ? null : Results.NotFound();
+    }
+
+    private static async Task<IResult> PartnerGetSubjectRubricAsync(
+        HttpContext httpContext, OdinDbContext db, Guid subjectId, CancellationToken ct) =>
+        await PartnerOwnsSubjectAsync(httpContext, db, subjectId, ct)
+            ?? await GetSubjectRubricAsync(db, subjectId, ct);
+
+    private static async Task<IResult> PartnerSetSubjectRubricAsync(
+        HttpContext httpContext, OdinDbContext db, Guid subjectId, [FromBody] SubjectRubricBody body, CancellationToken ct) =>
+        await PartnerOwnsSubjectAsync(httpContext, db, subjectId, ct)
+            ?? await SetSubjectRubricAsync(db, subjectId, body, ct);
 
     private static async Task<IResult> GetSubjectRubricAsync(OdinDbContext db, Guid subjectId, CancellationToken ct)
     {

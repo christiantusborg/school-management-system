@@ -115,6 +115,7 @@
               <div class="subj-header">
                 <span class="col-code">Code</span>
                 <span class="col-name">Subject</span>
+                <span class="col-rubric">Grading</span>
                 <span class="col-thesis">Thesis</span>
                 <span class="col-ects">ECTS</span>
               </div>
@@ -122,6 +123,7 @@
               <div v-for="sub in subjectsFor(s.specializationId)" :key="sub.subjectId" class="subj-row">
                 <span class="col-code mono-code">{{ sub.code || '—' }}</span>
                 <span class="col-name">{{ sub.name }}</span>
+                <span class="col-rubric"><SubjectRubricButton :subject="sub" /></span>
                 <span class="col-thesis">
                   <input type="radio" :name="`thesis-${s.specializationId}`"
                          :checked="sub.isThesis" :disabled="thesisBusy.has(s.specializationId)"
@@ -155,6 +157,7 @@
 import { reactive, ref, computed, watch, onMounted } from 'vue'
 import apiClient from '../../../api/client.js'
 import LetterButtonsRow from '../../letters/LetterButtonsRow.vue'
+import SubjectRubricButton from '../../admin/SubjectRubricButton.vue'
 
 const props = defineProps({
   partnerId: { type: String, default: '' },
@@ -453,6 +456,7 @@ async function toggleStudentCard(prog, checked) {
 .subj-table { padding: .35rem .9rem .65rem; }
 .subj-header, .subj-row { display: flex; align-items: center; padding: .25rem 0; font-size: .82rem; }
 .subj-header { color: #6b7888; font-weight: 700; text-transform: uppercase; font-size: .68rem; letter-spacing: .04em; border-bottom: 1px solid #e8edf3; }
+.col-rubric { width: 150px; flex-shrink: 0; }
 .col-code { width: 110px; flex-shrink: 0; }
 .col-name { flex: 1; }
 .col-ects { width: 50px; text-align: right; flex-shrink: 0; }

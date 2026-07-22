@@ -61,6 +61,10 @@ public sealed class PartnerV1MyProgramsDetailEndpoint : IEndpointMarker
                         name = sub.Name,
                         ects = sub.Ects,
                         isThesis = sub.IsThesis,
+                        rubricTemplateId = sub.RubricTemplateId,
+                        rubricName = db.RubricTemplates
+                            .Where(t => t.RubricTemplateId == sub.RubricTemplateId)
+                            .Select(t => t.Name).FirstOrDefault(),
                     })
                     .ToList(),
             })

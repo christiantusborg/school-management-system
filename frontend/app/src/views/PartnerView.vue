@@ -483,6 +483,7 @@
                     <input v-model="s.name" class="inp-s-name" placeholder="Module name" />
                     <input v-model.number="s.ects" class="inp-s-cr" type="number" min="1" placeholder="15" />
                     <label class="thesis-chk-p" title="Thesis / dissertation module"><input type="checkbox" v-model="s.isThesis" /> Thesis</label>
+                    <SubjectRubricButton v-if="isServerId(s.id)" :subject="s" base="/v1/partner/my/subjects" />
                     <button class="btn-x-s" @click="removeSubjFromMaj(maj, s.id)">✕</button>
                   </div>
                   <div class="prog-add-subj-row">
@@ -539,6 +540,7 @@
                     <span class="ro-subj-code">{{ s.code || '—' }}</span>
                     <span class="ro-subj-name">{{ s.name }}</span>
                     <span class="ro-subj-cr">{{ s.ects }}</span>
+                    <SubjectRubricButton v-if="isServerId(s.id)" :subject="s" base="/v1/partner/my/subjects" />
                   </div>
                   <p v-if="!maj.subjects.length" class="ro-empty">No subjects.</p>
                 </div>
@@ -1270,6 +1272,7 @@
 
 <script setup>
 import { ref, computed, reactive, watch, onMounted } from 'vue'
+import SubjectRubricButton from '../components/admin/SubjectRubricButton.vue'
 import { useRouter } from 'vue-router'
 import { auth } from '../store/auth.js'
 import apiClient from '../api/client.js'
@@ -1524,6 +1527,8 @@ async function loadProgDetail(clone) {
       name: s.name,
       ects: s.ects,
       isThesis: !!s.isThesis,
+      rubricTemplateId: s.rubricTemplateId ?? null,
+      rubricName: s.rubricName ?? null,
     })),
   }))
   clone._detailLoaded = true
