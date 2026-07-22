@@ -204,9 +204,9 @@
           </template>
 
           <template v-else-if="detTab === 'grades'">
-            <p class="mc-sub">Marks for {{ det.cohort.moduleCode }} — saved into each student's normal grade sheet
-              (Programme → Specialization → Module). Draft never changes status; “Submit for approval” moves
-              fully-graded students to Grades — Awaiting Approval.</p>
+            <p class="mc-sub">Marks for {{ det.cohort.moduleCode }} — Save writes them straight into each
+              student's grade sheet (Programme → Specialization → Module). Enrolment status is never changed here;
+              the usual submit/approve flow stays on the student.</p>
             <div v-if="gradesLoading" class="loading-row">Loading…</div>
             <table v-else-if="grades.length" class="data-table">
               <thead><tr><th>Student</th><th>Student #</th><th>Status</th><th style="width:140px">Score (0–100)</th></tr></thead>
@@ -222,14 +222,11 @@
             <p v-else class="mc-sub">No students assigned to this cohort yet.</p>
             <div v-if="grades.length" style="margin-top:.6rem; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;">
               <button type="button" class="btn-primary-sm" :disabled="savingGrades" @click="saveGradesDraft">
-                {{ savingGrades ? 'Saving…' : 'Save marks (draft)' }}</button>
-              <button v-if="!readOnly" type="button" class="btn-sm" :disabled="savingGrades" @click="submitGrades"
-                      title="Moves each fully-graded student to Grades — Awaiting Approval.">
-                ✓ Submit for approval</button>
+                {{ savingGrades ? 'Saving…' : 'Save marks' }}</button>
               <span v-if="gradesOk" class="mc-chip mc-ok">{{ gradesOk }}</span>
             </div>
             <div v-if="gradesSkipped.length" class="mc-section" style="margin-top:.6rem;">
-              <div class="mc-section-title">Not submitted</div>
+              <div class="mc-section-title">Not saved</div>
               <p v-for="(sk, i) in gradesSkipped" :key="i" class="mc-sub" style="margin:.15rem 0;">
                 {{ sk.studentNumber }} — {{ sk.reason }}</p>
             </div>
@@ -385,44 +382,19 @@ async function saveGradesDraft() {
   detError.value = ''
   gradesOk.value = ''
   try {
-    await api.post(`${P.value.grades(det.value.cohort.moduleCohortId)}/draft`, {
+    const res = await api.post(`${P.value.grades(det.value.cohort.moduleCohortId)}/draft`, {
       items: grades.value
         .filter(g => g.score !== null && g.score !== '' && g.score !== undefined)
         .map(g => ({ enrollmentId: g.enrollmentId, score: g.score })),
     })
-    gradesOk.value = 'Draft saved'
+    gradesSkipped.value = res.data.skipped ?? []
+    gradesOk.value = `Saved: ${res.data.saved}`
     setTimeout(() => { gradesOk.value = '' }, 2500)
   } catch (e) {
     detError.value = e.response?.data?.error ?? e.message ?? 'Save failed'
   } finally {
     savingGrades.value = false
   }
-}
-async function submitGrades() {
-  if (savingGrades.value) return
-  if (!confirm('Submit grades for approval? Fully-graded students move to “Grades — Awaiting Approval”.')) return
-  savingGrades.value = true
-  detError.value = ''
-  gradesOk.value = ''
-  try {
-    await saveGradesDraftInternal()
-    const res = await api.post(`${P.value.grades(det.value.cohort.moduleCohortId)}/submit`)
-    gradesSkipped.value = res.data.skipped ?? []
-    gradesOk.value = `Submitted: ${res.data.submitted}`
-    await loadGrades()
-    await load()
-  } catch (e) {
-    detError.value = e.response?.data?.error ?? e.message ?? 'Submit failed'
-  } finally {
-    savingGrades.value = false
-  }
-}
-async function saveGradesDraftInternal() {
-  await api.post(`${P.value.grades(det.value.cohort.moduleCohortId)}/draft`, {
-    items: grades.value
-      .filter(g => g.score !== null && g.score !== '' && g.score !== undefined)
-      .map(g => ({ enrollmentId: g.enrollmentId, score: g.score })),
-  })
 }
 // Uploaded Assignments tab: per-student fold-outs within this cohort.
 const asgOpen = reactive({})
