@@ -8,10 +8,10 @@
           applications are excluded. Click a row to fold out its programmes and specializations.</p>
       </div>
       <div class="st-report-btns">
-        <a class="btn-report" :href="dlUrl('/v1/admin/overview/full/file', 'pdf')"
-           @click="logDl('full pdf')">⤓ Full report (PDF)</a>
-        <a class="btn-report" :href="dlUrl('/v1/admin/overview/full/file', 'xlsx')"
-           @click="logDl('full xlsx')">⤓ Spreadsheet (Excel)</a>
+        <button type="button" class="btn-report" :disabled="!!busyDl" @click="download('/v1/admin/overview/full/file', 'pdf', 'mgw-statistics-report.pdf')">
+          {{ busyDl === 'mgw-statistics-report.pdf' ? 'Preparing…' : '⤓ Full report (PDF)' }}</button>
+        <button type="button" class="btn-report" :disabled="!!busyDl" @click="download('/v1/admin/overview/full/file', 'xlsx', 'mgw-statistics.xlsx')">
+          {{ busyDl === 'mgw-statistics.xlsx' ? 'Preparing…' : '⤓ Spreadsheet (Excel)' }}</button>
       </div>
     </div>
 
@@ -21,8 +21,8 @@
       <label class="st-lbl">End date</label>
       <input v-model="to" type="date" class="st-inp" @change="load" />
       <button type="button" class="btn-sm" @click="load">↻</button>
-      <a class="btn-sm st-dl" :href="dlUrl(`/v1/admin/overview/${sub}/file`, 'csv')" @click="logDl(sub + ' csv')">⤓ Export CSV</a>
-      <a class="btn-sm st-dl" :href="dlUrl(`/v1/admin/overview/${sub}/file`, 'pdf')" @click="logDl(sub + ' pdf')">⤓ Export PDF</a>
+      <button type="button" class="btn-sm" :disabled="!!busyDl" @click="download(`/v1/admin/overview/${sub}/file`, 'csv', `statistics-${sub}.csv`)">⤓ Export CSV</button>
+      <button type="button" class="btn-sm" :disabled="!!busyDl" @click="download(`/v1/admin/overview/${sub}/file`, 'pdf', `statistics-${sub}.pdf`)">⤓ Export PDF</button>
       <span v-if="sub === 'outcomes' && data.overall" class="st-total">
         {{ data.overall.total }} enrolment{{ data.overall.total === 1 ? '' : 's' }} in period ·
         Passed {{ data.overall.passedPct }}% · Dropped {{ data.overall.droppedPct }}% ·
@@ -139,20 +139,40 @@ const exporting = ref(false)
 const reporting = ref('')
 const dlError = ref('')
 
-// The download controls are REAL <a href> links to the backend (session
-// token as query parameter — allowed server-side only for these paths), so
-// the browser handles the download natively with no JS in the click path.
-// Full report = every tab in one PDF or one multi-sheet XLSX workbook.
-function dlUrl(path, format) {
-  const token = localStorage.getItem('adminToken') ?? ''
-  const params = { format, access_token: token }
-  if (from.value) params.from = from.value
-  if (to.value) params.to = to.value
-  return `${api.defaults.baseURL ?? ''}${path}?${new URLSearchParams(params)}`
-}
-function logDl(what) {
-  console.log('[stats-dl] link clicked:', what, 'base=', api.defaults.baseURL,
-    'token?', !!localStorage.getItem('adminToken'))
+// Downloads authenticate with the Authorization header like EVERY other
+// call (no token in the URL): fetch the file as a blob, then hand it to the
+// browser via a DOM-attached anchor. Full report = every tab in one PDF or
+// one multi-sheet XLSX workbook.
+const busyDl = ref('')
+async function download(path, format, filename) {
+  if (busyDl.value) return
+  busyDl.value = filename
+  dlError.value = ''
+  console.log('[stats-dl] downloading', filename, 'from', path)
+  try {
+    const params = { format }
+    if (from.value) params.from = from.value
+    if (to.value) params.to = to.value
+    const res = await api.get(path, { params, responseType: 'blob' })
+    console.log('[stats-dl] received', res.data?.size, 'bytes,', res.data?.type)
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url) }, 120_000)
+  } catch (e) {
+    let msg = e.message
+    try {
+      if (e.response?.data instanceof Blob) msg = JSON.parse(await e.response.data.text()).error ?? msg
+    } catch { /* keep msg */ }
+    console.error('[stats-dl] failed:', msg, e)
+    dlError.value = `Download failed: ${msg}`
+  } finally {
+    busyDl.value = ''
+  }
 }
 // Collapsed by default; keyed "partner|<label>" / "school|<label>".
 const open = reactive({})
