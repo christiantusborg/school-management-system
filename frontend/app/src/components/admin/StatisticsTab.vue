@@ -139,65 +139,35 @@ const exporting = ref(false)
 const reporting = ref('')
 const dlError = ref('')
 
-// Firefox is picky about programmatic downloads: the anchor must be in the
-// DOM, and revoking the object URL too early kills the save dialog.
-function saveBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.style.display = 'none'
-  document.body.appendChild(a)
-  a.click()
-  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url) }, 120_000)
-}
-
-async function blobError(e) {
-  // Axios wraps error bodies in a Blob when responseType is blob — decode it.
-  try {
-    if (e.response?.data instanceof Blob) {
-      const text = await e.response.data.text()
-      try { return JSON.parse(text).error ?? text.slice(0, 200) } catch { return text.slice(0, 200) || e.message }
-    }
-  } catch { /* fall through */ }
-  return e.response?.data?.error ?? e.message ?? 'Download failed'
+// Downloads navigate the browser straight to the backend URL (session token
+// as query parameter — allowed server-side ONLY for these export paths), so
+// the browser's own download manager handles the file. No blob juggling.
+function directDownload(path, params) {
+  const token = localStorage.getItem('adminToken')
+  if (!token) { dlError.value = 'Not logged in.'; return }
+  const qs = new URLSearchParams({ ...params, access_token: token })
+  window.location.assign(`${api.defaults.baseURL ?? ''}${path}?${qs}`)
 }
 
 // Full report: every tab in one document — PDF chapters or an XLSX workbook
 // (Open XML: Excel, LibreOffice and Google Sheets all read it) with one
 // worksheet per tab.
-async function downloadReport(format) {
-  if (reporting.value) return
-  reporting.value = format
+function downloadReport(format) {
   dlError.value = ''
-  try {
-    const params = { format }
-    if (from.value) params.from = from.value
-    if (to.value) params.to = to.value
-    const res = await api.get('/v1/admin/statistics/full-report', { params, responseType: 'blob' })
-    saveBlob(res.data, format === 'xlsx' ? 'mgw-statistics.xlsx' : 'mgw-statistics-report.pdf')
-  } catch (e) {
-    dlError.value = 'Full report failed: ' + await blobError(e)
-  } finally {
-    reporting.value = ''
-  }
+  const params = { format }
+  if (from.value) params.from = from.value
+  if (to.value) params.to = to.value
+  directDownload('/v1/admin/statistics/full-report', params)
 }
 
-async function exportFile(format) {
-  if (exporting.value) return
-  exporting.value = true
+function exportFile(format) {
   dlError.value = ''
-  try {
-    const params = { format }
-    if (from.value) params.from = from.value
-    if (to.value) params.to = to.value
-    const res = await api.get(`/v1/admin/statistics/${sub.value}/export`, { params, responseType: 'blob' })
-    saveBlob(res.data, `statistics-${sub.value}.${format}`)
-  } catch (e) {
-    dlError.value = 'Export failed: ' + await blobError(e)
-  } finally {
-    exporting.value = false
-  }
+  const params = { format }
+  if (from.value) params.from = from.value
+  if (to.value) params.to = to.value
+  directDownload(sub.value === 'outcomes'
+    ? '/v1/admin/statistics/outcomes/export'
+    : `/v1/admin/statistics/${sub.value}/export`, params)
 }
 // Collapsed by default; keyed "partner|<label>" / "school|<label>".
 const open = reactive({})

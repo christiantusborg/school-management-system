@@ -18,10 +18,15 @@ public class SessionTokenAuthenticationHandler(
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var authHeader = Request.Headers.Authorization.ToString();
-        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return AuthenticateResult.NoResult();
-
-        var rawToken = authHeader["Bearer ".Length..].Trim();
+        string? rawToken = null;
+        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            rawToken = authHeader["Bearer ".Length..].Trim();
+        else if (HttpMethods.IsGet(Request.Method) && IsBrowserDownloadPath(Request.Path)
+            && Request.Query.TryGetValue("access_token", out var queryToken))
+            // File downloads navigate the browser directly (no way to attach a
+            // header), so ONLY these statistics export paths may carry the
+            // session token as a query parameter.
+            rawToken = queryToken.ToString();
         if (string.IsNullOrEmpty(rawToken))
             return AuthenticateResult.NoResult();
 
@@ -49,4 +54,9 @@ public class SessionTokenAuthenticationHandler(
         var ticket = new AuthenticationTicket(principal, Scheme.Name);
         return AuthenticateResult.Success(ticket);
     }
+
+    private static bool IsBrowserDownloadPath(PathString path) =>
+        path.StartsWithSegments("/v1/admin/statistics", StringComparison.OrdinalIgnoreCase)
+        && (path.Value!.EndsWith("/export", StringComparison.OrdinalIgnoreCase)
+            || path.Value.EndsWith("/full-report", StringComparison.OrdinalIgnoreCase));
 }
