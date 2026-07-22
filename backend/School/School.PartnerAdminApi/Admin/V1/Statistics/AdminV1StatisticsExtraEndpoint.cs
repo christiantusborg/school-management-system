@@ -35,6 +35,11 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
         app.MapGet("/v1/admin/statistics/trends", TrendsAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/full-report", FullReportAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/{tab}/export", ExportTabAsync).RequireAuthorization("AdminOnly");
+        // Ad-blocker-safe aliases: filter lists (EasyPrivacy etc.) block URLs
+        // containing "statistics", killing browser download navigations. Same
+        // handlers, neutral wording.
+        app.MapGet("/v1/admin/overview/full/file", FullReportAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/overview/{tab}/file", ExportTabAsync).RequireAuthorization("AdminOnly");
         return app;
     }
 
@@ -518,6 +523,8 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
         [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
         [FromQuery] string? granularity = null)
     {
+        if (string.Equals(tab, "outcomes", StringComparison.OrdinalIgnoreCase))
+            return await AdminV1StatisticsEndpoint.ExportAsync(db, ct, format, from, to);
         if (!TabTitles.TryGetValue(tab, out var title)) return Results.NotFound();
         IResult inner = tab.ToLowerInvariant() switch
         {

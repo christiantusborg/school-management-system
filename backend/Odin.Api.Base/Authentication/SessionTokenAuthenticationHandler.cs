@@ -56,7 +56,9 @@ public class SessionTokenAuthenticationHandler(
     }
 
     private static bool IsBrowserDownloadPath(PathString path) =>
-        path.StartsWithSegments("/v1/admin/statistics", StringComparison.OrdinalIgnoreCase)
-        && (path.Value!.EndsWith("/export", StringComparison.OrdinalIgnoreCase)
-            || path.Value.EndsWith("/full-report", StringComparison.OrdinalIgnoreCase));
+        (path.StartsWithSegments("/v1/admin/statistics", StringComparison.OrdinalIgnoreCase)
+            && (path.Value!.EndsWith("/export", StringComparison.OrdinalIgnoreCase)
+                || path.Value.EndsWith("/full-report", StringComparison.OrdinalIgnoreCase)))
+        || (path.StartsWithSegments("/v1/admin/overview", StringComparison.OrdinalIgnoreCase)
+            && path.Value!.EndsWith("/file", StringComparison.OrdinalIgnoreCase));
 }

@@ -148,7 +148,7 @@ public sealed class AdminV1StatisticsEndpoint : IEndpointMarker
 
     // ── Exports ────────────────────────────────────────────────────────────
 
-    private static async Task<IResult> ExportAsync(
+    internal static async Task<IResult> ExportAsync(
         OdinDbContext db, CancellationToken ct,
         [FromQuery] string? format = null,
         [FromQuery] DateTime? from = null,

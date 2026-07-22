@@ -157,7 +157,7 @@ function downloadReport(format) {
   const params = { format }
   if (from.value) params.from = from.value
   if (to.value) params.to = to.value
-  directDownload('/v1/admin/statistics/full-report', params)
+  directDownload('/v1/admin/overview/full/file', params)
 }
 
 function exportFile(format) {
@@ -165,9 +165,7 @@ function exportFile(format) {
   const params = { format }
   if (from.value) params.from = from.value
   if (to.value) params.to = to.value
-  directDownload(sub.value === 'outcomes'
-    ? '/v1/admin/statistics/outcomes/export'
-    : `/v1/admin/statistics/${sub.value}/export`, params)
+  directDownload(`/v1/admin/overview/${sub.value}/file`, params)
 }
 // Collapsed by default; keyed "partner|<label>" / "school|<label>".
 const open = reactive({})
