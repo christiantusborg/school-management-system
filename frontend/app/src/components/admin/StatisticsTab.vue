@@ -5,7 +5,7 @@
         <h1 class="st-title">Statistics</h1>
         <p class="st-sub">Outcomes for enrolments whose commencement date falls in the period —
           passed (grades approved), dropped out, deferred, still active. Drafts and rejected
-          applications are excluded.</p>
+          applications are excluded. Click a row to fold out its programmes and specializations.</p>
       </div>
     </div>
 
@@ -25,90 +25,81 @@
     <div v-if="loading" class="loading-row">Loading…</div>
 
     <template v-else>
-      <h2 class="st-section">Per partner</h2>
-      <table v-if="data.byPartner?.length" class="data-table">
-        <thead><tr>
-          <th>Partner</th><th>Students</th><th>Passed</th><th>Dropped Out</th><th>Deferred</th><th>Still active</th>
-        </tr></thead>
-        <tbody>
-          <tr v-for="r in data.byPartner" :key="r.label" class="data-row">
-            <td style="font-weight:600">{{ r.label }}</td>
-            <td>{{ r.total }}</td>
-            <td><strong>{{ r.passedPct }}%</strong> <span class="st-muted">({{ r.passed }})</span></td>
-            <td><strong>{{ r.droppedPct }}%</strong> <span class="st-muted">({{ r.dropped }})</span></td>
-            <td><strong>{{ r.deferredPct }}%</strong> <span class="st-muted">({{ r.deferred }})</span></td>
-            <td><strong>{{ r.activePct }}%</strong> <span class="st-muted">({{ r.active }})</span></td>
-          </tr>
-          <tr v-if="data.overall" class="st-total-row">
-            <td>All partners</td>
-            <td>{{ data.overall.total }}</td>
-            <td><strong>{{ data.overall.passedPct }}%</strong> <span class="st-muted">({{ data.overall.passed }})</span></td>
-            <td><strong>{{ data.overall.droppedPct }}%</strong> <span class="st-muted">({{ data.overall.dropped }})</span></td>
-            <td><strong>{{ data.overall.deferredPct }}%</strong> <span class="st-muted">({{ data.overall.deferred }})</span></td>
-            <td><strong>{{ data.overall.activePct }}%</strong> <span class="st-muted">({{ data.overall.active }})</span></td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-else class="st-sub">No enrolments commenced in this period.</p>
-
-      <h2 class="st-section" style="margin-top:1.5rem">Per school</h2>
-      <table v-if="data.bySchool?.length" class="data-table">
-        <thead><tr>
-          <th>School</th><th>Students</th><th>Passed</th><th>Dropped Out</th><th>Deferred</th><th>Still active</th>
-        </tr></thead>
-        <tbody>
-          <tr v-for="r in data.bySchool" :key="r.label" class="data-row">
-            <td style="font-weight:600">{{ r.label }}</td>
-            <td>{{ r.total }}</td>
-            <td><strong>{{ r.passedPct }}%</strong> <span class="st-muted">({{ r.passed }})</span></td>
-            <td><strong>{{ r.droppedPct }}%</strong> <span class="st-muted">({{ r.dropped }})</span></td>
-            <td><strong>{{ r.deferredPct }}%</strong> <span class="st-muted">({{ r.deferred }})</span></td>
-            <td><strong>{{ r.activePct }}%</strong> <span class="st-muted">({{ r.active }})</span></td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-else class="st-sub">No enrolments commenced in this period.</p>
-
-      <h2 class="st-section" style="margin-top:1.5rem">Per programme</h2>
-      <table v-if="data.byProgramme?.length" class="data-table">
-        <thead><tr>
-          <th>Programme / Specialization</th><th>Students</th><th>Passed</th><th>Dropped Out</th><th>Deferred</th><th>Still active</th>
-        </tr></thead>
-        <tbody>
-          <template v-for="pg in data.byProgramme" :key="pg.programme.label">
-            <tr class="data-row st-prog-row">
-              <td style="font-weight:700">{{ pg.programme.label }}</td>
-              <td>{{ pg.programme.total }}</td>
-              <td><strong>{{ pg.programme.passedPct }}%</strong> <span class="st-muted">({{ pg.programme.passed }})</span></td>
-              <td><strong>{{ pg.programme.droppedPct }}%</strong> <span class="st-muted">({{ pg.programme.dropped }})</span></td>
-              <td><strong>{{ pg.programme.deferredPct }}%</strong> <span class="st-muted">({{ pg.programme.deferred }})</span></td>
-              <td><strong>{{ pg.programme.activePct }}%</strong> <span class="st-muted">({{ pg.programme.active }})</span></td>
+      <section v-for="sec in sections" :key="sec.key">
+        <h2 class="st-section" :style="sec.key === 'school' ? 'margin-top:1.5rem' : ''">{{ sec.title }}</h2>
+        <table v-if="sec.rows.length" class="data-table">
+          <thead><tr>
+            <th>{{ sec.head }}</th><th>Students</th><th>Passed</th><th>Dropped Out</th><th>Deferred</th><th>Still active</th>
+          </tr></thead>
+          <tbody>
+            <template v-for="r in sec.rows" :key="r.bucket.label">
+              <tr class="data-row st-top-row" @click="toggle(sec.key, r.bucket.label)">
+                <td style="font-weight:700">
+                  <span class="st-caret">{{ isOpen(sec.key, r.bucket.label) ? '▾' : '▸' }}</span>
+                  {{ r.bucket.label }}
+                </td>
+                <td>{{ r.bucket.total }}</td>
+                <td><strong>{{ r.bucket.passedPct }}%</strong> <span class="st-muted">({{ r.bucket.passed }})</span></td>
+                <td><strong>{{ r.bucket.droppedPct }}%</strong> <span class="st-muted">({{ r.bucket.dropped }})</span></td>
+                <td><strong>{{ r.bucket.deferredPct }}%</strong> <span class="st-muted">({{ r.bucket.deferred }})</span></td>
+                <td><strong>{{ r.bucket.activePct }}%</strong> <span class="st-muted">({{ r.bucket.active }})</span></td>
+              </tr>
+              <template v-if="isOpen(sec.key, r.bucket.label)">
+                <template v-for="pg in r.programmes" :key="r.bucket.label + pg.programme.label">
+                  <tr class="data-row st-prog-row">
+                    <td class="st-prog">{{ pg.programme.label }}</td>
+                    <td>{{ pg.programme.total }}</td>
+                    <td>{{ pg.programme.passedPct }}% <span class="st-muted">({{ pg.programme.passed }})</span></td>
+                    <td>{{ pg.programme.droppedPct }}% <span class="st-muted">({{ pg.programme.dropped }})</span></td>
+                    <td>{{ pg.programme.deferredPct }}% <span class="st-muted">({{ pg.programme.deferred }})</span></td>
+                    <td>{{ pg.programme.activePct }}% <span class="st-muted">({{ pg.programme.active }})</span></td>
+                  </tr>
+                  <tr v-for="sp in pg.specializations" :key="r.bucket.label + pg.programme.label + sp.label" class="data-row">
+                    <td class="st-spec">└ {{ sp.label }}</td>
+                    <td>{{ sp.total }}</td>
+                    <td>{{ sp.passedPct }}% <span class="st-muted">({{ sp.passed }})</span></td>
+                    <td>{{ sp.droppedPct }}% <span class="st-muted">({{ sp.dropped }})</span></td>
+                    <td>{{ sp.deferredPct }}% <span class="st-muted">({{ sp.deferred }})</span></td>
+                    <td>{{ sp.activePct }}% <span class="st-muted">({{ sp.active }})</span></td>
+                  </tr>
+                </template>
+              </template>
+            </template>
+            <tr v-if="sec.key === 'partner' && data.overall" class="st-total-row">
+              <td>All partners</td>
+              <td>{{ data.overall.total }}</td>
+              <td><strong>{{ data.overall.passedPct }}%</strong> <span class="st-muted">({{ data.overall.passed }})</span></td>
+              <td><strong>{{ data.overall.droppedPct }}%</strong> <span class="st-muted">({{ data.overall.dropped }})</span></td>
+              <td><strong>{{ data.overall.deferredPct }}%</strong> <span class="st-muted">({{ data.overall.deferred }})</span></td>
+              <td><strong>{{ data.overall.activePct }}%</strong> <span class="st-muted">({{ data.overall.active }})</span></td>
             </tr>
-            <tr v-for="sp in pg.specializations" :key="pg.programme.label + sp.label" class="data-row">
-              <td class="st-spec">└ {{ sp.label }}</td>
-              <td>{{ sp.total }}</td>
-              <td>{{ sp.passedPct }}% <span class="st-muted">({{ sp.passed }})</span></td>
-              <td>{{ sp.droppedPct }}% <span class="st-muted">({{ sp.dropped }})</span></td>
-              <td>{{ sp.deferredPct }}% <span class="st-muted">({{ sp.deferred }})</span></td>
-              <td>{{ sp.activePct }}% <span class="st-muted">({{ sp.active }})</span></td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-      <p v-else class="st-sub">No enrolments commenced in this period.</p>
+          </tbody>
+        </table>
+        <p v-else class="st-sub">No enrolments commenced in this period.</p>
+      </section>
     </template>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import api from '../../api/client.js'
 
 const from = ref('')
 const to = ref('')
-const data = ref({ byPartner: [], bySchool: [], byProgramme: [], overall: null })
+const data = ref({ byPartner: [], bySchool: [], overall: null })
 const loading = ref(false)
 const error = ref('')
+// Collapsed by default; keyed "partner|<label>" / "school|<label>".
+const open = reactive({})
+
+const sections = computed(() => [
+  { key: 'partner', title: 'Per partner', head: 'Partner / Programme / Specialization', rows: data.value.byPartner ?? [] },
+  { key: 'school', title: 'Per school', head: 'School / Programme / Specialization', rows: data.value.bySchool ?? [] },
+])
+
+function isOpen(sec, label) { return !!open[`${sec}|${label}`] }
+function toggle(sec, label) { open[`${sec}|${label}`] = !open[`${sec}|${label}`] }
 
 async function load() {
   loading.value = true
@@ -138,9 +129,13 @@ onMounted(load)
 .st-total { font-size: .8rem; color: #1a2d4f; font-weight: 600; margin-left: .5rem; }
 .st-section { font-size: 1rem; color: #003366; margin: .4rem 0 .5rem; }
 .st-muted { color: #8a97a8; font-size: .78rem; }
+.st-caret { color: #8a97a8; margin-right: .3rem; }
+.st-top-row { cursor: pointer; }
+.st-top-row:hover td { background: #f0f4fa; }
+.st-prog-row td { background: #f6f9fd; }
+.st-prog { padding-left: 1.8rem !important; font-weight: 600; color: #1a2d4f; }
+.st-spec { padding-left: 3.2rem !important; color: #44536a; }
 .st-total-row td { font-weight: 700; border-top: 2px solid #d5deea; background: #fafbfd; }
-.st-prog-row td { background: #f6f9fd; border-top: 2px solid #e2eaf4; }
-.st-spec { padding-left: 1.6rem !important; color: #44536a; }
 .data-table { width: 100%; border-collapse: collapse; font-size: .85rem; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 .data-table th { text-align: left; padding: .5rem .7rem; color: #6b7888; font-size: .74rem; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1.5px solid #e8edf4; background: #fafbfd; }
 .data-table td { padding: .5rem .7rem; border-bottom: 1px solid #eef1f5; }

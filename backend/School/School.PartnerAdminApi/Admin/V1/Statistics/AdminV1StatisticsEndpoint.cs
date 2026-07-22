@@ -68,32 +68,40 @@ public sealed class AdminV1StatisticsEndpoint : IEndpointMarker
             };
         }
 
+        List<object> ProgrammeTree(IEnumerable<dynamic> subset) => subset
+            .GroupBy(r => (string)r.ProgrammeLabel)
+            .OrderBy(g => g.Key)
+            .Select(g => (object)new
+            {
+                programme = Bucket(g.Key, g.Select(x => (string)x.StatusCode).ToList()),
+                specializations = g
+                    .GroupBy(x => (string?)x.SpecializationName ?? "(no specialization)")
+                    .OrderBy(sg => sg.Key)
+                    .Select(sg => Bucket(sg.Key, sg.Select(x => (string)x.StatusCode).ToList()))
+                    .ToList(),
+            })
+            .ToList();
+
         var byPartner = rows
             .GroupBy(r => r.PartnerName ?? "(no partner)")
             .OrderBy(g => g.Key)
-            .Select(g => Bucket(g.Key, g.Select(x => x.StatusCode).ToList()))
+            .Select(g => new
+            {
+                bucket = Bucket(g.Key, g.Select(x => x.StatusCode).ToList()),
+                programmes = ProgrammeTree(g),
+            })
             .ToList();
         var bySchool = rows
             .GroupBy(r => r.SchoolName ?? "(no school)")
             .OrderBy(g => g.Key)
-            .Select(g => Bucket(g.Key, g.Select(x => x.StatusCode).ToList()))
-            .ToList();
-        // Programme aggregate + one nested bucket per specialization.
-        var byProgramme = rows
-            .GroupBy(r => r.ProgrammeLabel)
-            .OrderBy(g => g.Key)
             .Select(g => new
             {
-                programme = Bucket(g.Key, g.Select(x => x.StatusCode).ToList()),
-                specializations = g
-                    .GroupBy(x => x.SpecializationName ?? "(no specialization)")
-                    .OrderBy(sg => sg.Key)
-                    .Select(sg => Bucket(sg.Key, sg.Select(x => x.StatusCode).ToList()))
-                    .ToList(),
+                bucket = Bucket(g.Key, g.Select(x => x.StatusCode).ToList()),
+                programmes = ProgrammeTree(g),
             })
             .ToList();
         var overall = Bucket("All", rows.Select(x => x.StatusCode).ToList());
 
-        return Results.Ok(new { byPartner, bySchool, byProgramme, overall });
+        return Results.Ok(new { byPartner, bySchool, overall });
     }
 }
