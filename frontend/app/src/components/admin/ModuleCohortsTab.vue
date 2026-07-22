@@ -295,10 +295,8 @@
               </tbody>
             </table>
             <p v-else class="mc-sub">No students assigned to this cohort yet.</p>
-            <div v-if="grades.length" style="margin-top:.6rem; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;">
-              <button type="button" class="btn-primary-sm" :disabled="savingGrades" @click="saveGradesDraft">
-                {{ savingGrades ? 'Saving…' : 'Save marks' }}</button>
-              <span v-if="gradesOk" class="mc-chip mc-ok">{{ gradesOk }}</span>
+            <div v-if="gradesOk" style="margin-top:.6rem;">
+              <span class="mc-chip mc-ok">{{ gradesOk }}</span>
             </div>
             <div v-if="gradesSkipped.length" class="mc-section" style="margin-top:.6rem;">
               <div class="mc-section-title">Not saved</div>
@@ -361,7 +359,10 @@
         </div>
         <div class="mc-dialog-foot">
           <button type="button" class="btn-sm" @click="detOpen = false">Close</button>
-          <button v-if="!readOnly" type="button" class="btn-primary-sm" :disabled="savingDet || uploading" @click="saveDetail">
+          <button v-if="detTab === 'grades'" type="button" class="btn-primary-sm"
+                  :disabled="savingGrades || !grades.length" @click="saveGradesDraft">
+            {{ savingGrades ? 'Saving…' : 'Save grades' }}</button>
+          <button v-else-if="!readOnly" type="button" class="btn-primary-sm" :disabled="savingDet || uploading" @click="saveDetail">
             {{ savingDet ? 'Saving…' : 'Save' }}
           </button>
         </div>
