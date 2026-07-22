@@ -15,14 +15,29 @@
       <label class="st-lbl">End date</label>
       <input v-model="to" type="date" class="st-inp" @change="load" />
       <button type="button" class="btn-sm" @click="load">↻</button>
+      <template v-if="sub === 'outcomes'">
       <button type="button" class="btn-sm" :disabled="exporting" @click="exportFile('csv')">⤓ Export CSV</button>
       <button type="button" class="btn-sm" :disabled="exporting" @click="exportFile('pdf')">⤓ Export PDF</button>
-      <span v-if="data.overall" class="st-total">
+      </template>
+      <span v-if="sub === 'outcomes' && data.overall" class="st-total">
         {{ data.overall.total }} enrolment{{ data.overall.total === 1 ? '' : 's' }} in period ·
         Passed {{ data.overall.passedPct }}% · Dropped {{ data.overall.droppedPct }}% ·
         Deferred {{ data.overall.deferredPct }}%</span>
     </div>
 
+    <div class="st-subtabs">
+      <button v-for="t in SUB_TABS" :key="t.key" type="button"
+              :class="['st-subtab', { on: sub === t.key }]" @click="openSub(t.key)">{{ t.label }}</button>
+    </div>
+
+    <GradesStats v-if="visited.has('grades')" v-show="sub === 'grades'" :from="from" :to="to" />
+    <TeacherStats v-if="visited.has('teachers')" v-show="sub === 'teachers'" :from="from" :to="to" />
+    <DemographicsStats v-if="visited.has('demographics')" v-show="sub === 'demographics'" :from="from" :to="to" />
+    <OperationsStats v-if="visited.has('operations')" v-show="sub === 'operations'" :from="from" :to="to" />
+    <FinanceStats v-if="visited.has('finance')" v-show="sub === 'finance'" :from="from" :to="to" />
+    <TrendsStats v-if="visited.has('trends')" v-show="sub === 'trends'" :from="from" :to="to" />
+
+    <template v-if="sub === 'outcomes'">
     <div v-if="error" class="err-banner">{{ error }}</div>
     <div v-if="loading" class="loading-row">Loading…</div>
 
@@ -80,12 +95,35 @@
         <p v-else class="st-sub">No enrolments commenced in this period.</p>
       </section>
     </template>
+    </template>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import api from '../../api/client.js'
+import GradesStats from './stats/GradesStats.vue'
+import TeacherStats from './stats/TeacherStats.vue'
+import DemographicsStats from './stats/DemographicsStats.vue'
+import OperationsStats from './stats/OperationsStats.vue'
+import FinanceStats from './stats/FinanceStats.vue'
+import TrendsStats from './stats/TrendsStats.vue'
+
+const SUB_TABS = [
+  { key: 'outcomes', label: 'Outcomes' },
+  { key: 'grades', label: 'Grades' },
+  { key: 'teachers', label: 'Teachers' },
+  { key: 'demographics', label: 'Demographics' },
+  { key: 'operations', label: 'Operations & QA' },
+  { key: 'finance', label: 'Finance' },
+  { key: 'trends', label: 'Trends' },
+]
+const sub = ref('outcomes')
+const visited = reactive(new Set())
+function openSub(key) {
+  sub.value = key
+  if (key !== 'outcomes') visited.add(key)
+}
 
 const from = ref('')
 const to = ref('')
@@ -147,6 +185,10 @@ onMounted(load)
 
 <style scoped>
 .st-title { margin: 0; font-size: 1.4rem; color: #003366; }
+.st-subtabs { display: flex; gap: .15rem; border-bottom: 2px solid #e2e8f1; margin: .2rem 0 1rem; flex-wrap: wrap; }
+.st-subtab { background: none; border: none; padding: .5rem .9rem; font-size: .86rem; font-weight: 600; color: #6b7888; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.st-subtab.on { color: #003366; border-bottom-color: #003366; }
+.st-subtab:hover:not(.on) { color: #333; }
 .st-sub { font-size: .8rem; color: #6b7888; margin: .25rem 0 .75rem; }
 .st-filters { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .9rem; }
 .st-lbl { font-size: .78rem; color: #44536a; font-weight: 600; }

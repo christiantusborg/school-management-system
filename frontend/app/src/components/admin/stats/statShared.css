@@ -1,0 +1,32 @@
+.ss-sub { font-size: .8rem; color: #6b7888; margin: .2rem 0 .6rem; }
+.ss-total { font-size: .88rem; color: #1a2d4f; margin: .2rem 0 .4rem; }
+.ss-section { font-size: 1rem; color: #003366; margin: 1.2rem 0 .5rem; }
+.ss-muted { color: #8a97a8; font-size: .78rem; font-weight: 400; }
+.ss-mono { font-family: ui-monospace, monospace; font-size: .82rem; color: #1a2d4f; font-weight: 700; }
+.ss-good { color: #1d7a3e; }
+.ss-mid { color: #b07a1e; }
+.ss-bad { color: #b3261e; }
+.ss-barcell { display: flex; align-items: center; gap: .45rem; }
+.ss-barcell > span { font-size: .8rem; min-width: 44px; }
+.ss-bar { background: #edf1f7; border-radius: 4px; height: 10px; width: 110px; overflow: hidden; }
+.ss-fill { background: #3b6ea5; height: 100%; border-radius: 4px; }
+.ss-fill-bad { background: #c4554b; }
+.ss-bands { display: flex; height: 12px; border-radius: 4px; overflow: hidden; background: #edf1f7; }
+.ss-bands span { display: block; height: 100%; }
+.ss-bands .b0, .ss-leg .b0 { background: #c4554b; }
+.ss-bands .b1, .ss-leg .b1 { background: #e0a24a; }
+.ss-bands .b2, .ss-leg .b2 { background: #8fbc7f; }
+.ss-bands .b3, .ss-leg .b3 { background: #3e8e58; }
+.ss-leg { font-size: .72rem; color: #6b7888; margin-right: .7rem; }
+.ss-leg i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: .25rem; vertical-align: -1px; }
+.ss-card { background: #fff; border: 1px solid #e8edf4; border-radius: 8px; padding: .6rem .9rem; margin-bottom: .6rem; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+.ss-card-title { margin-bottom: .35rem; }
+.ss-critrow { display: flex; align-items: center; gap: .6rem; padding: .18rem 0; font-size: .82rem; }
+.ss-critname { width: 220px; font-weight: 600; color: #2c3e50; }
+.data-table { width: 100%; border-collapse: collapse; font-size: .85rem; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.data-table th { text-align: left; padding: .5rem .7rem; color: #6b7888; font-size: .74rem; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1.5px solid #e8edf4; background: #fafbfd; }
+.data-table td { padding: .45rem .7rem; border-bottom: 1px solid #eef1f5; }
+.err-banner { background: #fdf3f2; border: 1px solid #e2b8b5; color: #b3261e; padding: .45rem .7rem; border-radius: 6px; font-size: .8rem; margin-bottom: .5rem; }
+.loading-row { color: #6b7888; font-size: .85rem; padding: .5rem 0; }
+.ss-chip { display: inline-block; background: #eef2f8; border-radius: 10px; padding: .1rem .5rem; font-size: .72rem; color: #44536a; font-weight: 600; }
+.ss-chip-warn { background: #fdf3e5; color: #b07a1e; }
