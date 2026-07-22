@@ -51,6 +51,8 @@ public sealed class PartnerV1MyStudentsSubjectsEndpoint : IEndpointMarker
             })
             .ToListAsync(ct);
 
+        var rubrics = await School.PartnerAdminApi.Admin.V1.Rubrics.RubricGradeLogic.BuildViewAsync(
+            db, enrollmentId, subjects.Select(s => s.subjectId).ToList(), ct);
         var items = subjects.Select(s => new
         {
             s.subjectId,
@@ -59,6 +61,7 @@ public sealed class PartnerV1MyStudentsSubjectsEndpoint : IEndpointMarker
             s.ects,
             s.isThesis,
             score = existingGrades.TryGetValue(s.subjectId, out var sc) ? (int?)sc : null,
+            rubric = rubrics.GetValueOrDefault(s.subjectId),
         }).ToList();
 
         // If admin recently rejected the partner's grade submission, the

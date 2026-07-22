@@ -143,9 +143,12 @@
                 <span class="gr-code mono">{{ row.code }}</span>
                 <span class="gr-name">{{ row.name }}</span>
                 <span class="gr-ects">{{ row.ects }} ects</span>
-                <input v-if="gradeModal.mode === 'submit'" type="number" min="0" max="100"
-                       v-model.number="row.score" class="grade-input gr-input" />
-                <strong v-else :class="['grade-score', scoreClass(row.score)]">{{ row.score ?? '—' }}</strong>
+                <RubricGradeCell v-if="row.rubric" :row="row" :editable="gradeModal.mode === 'submit'" />
+                <template v-else>
+                  <input v-if="gradeModal.mode === 'submit'" type="number" min="0" max="100"
+                         v-model.number="row.score" class="grade-input gr-input" />
+                  <strong v-else :class="['grade-score', scoreClass(row.score)]">{{ row.score ?? '—' }}</strong>
+                </template>
                 <span class="gr-letter" :title="`School grade for ${row.score ?? '—'}`">{{ scoreToLetter(row.score) }}</span>
               </div>
             </div>
@@ -1154,6 +1157,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue'
+import RubricGradeCell from './RubricGradeCell.vue'
 import Fuse from 'fuse.js'
 import api from '../../api/client.js'
 import StudentLogNotesPanel from './StudentLogNotesPanel.vue'
@@ -2549,7 +2553,7 @@ async function openGradeReview(s, e) {
   })
   try {
     const res = await api.get(`/v1/admin/students/${s.studentId}/enrollments/${e.studentEnrollmentId}/subjects`)
-    gradeModal.value.subjects = res.data.items ?? []
+    gradeModal.value.subjects = (res.data.items ?? []).map(withRubricScores)
   } catch (err) {
     gradeModal.value.error = err.response?.data?.error ?? err.message ?? 'Failed to load grades'
   } finally {
@@ -2579,7 +2583,7 @@ async function openGradeSubmit(s, e) {
   })
   try {
     const res = await api.get(`/v1/admin/students/${s.studentId}/enrollments/${e.studentEnrollmentId}/subjects`)
-    gradeModal.value.subjects = (res.data.items ?? []).map(r => ({ ...r, score: r.score ?? null }))
+    gradeModal.value.subjects = (res.data.items ?? []).map(withRubricScores)
     gradeModal.value.requiredEcts = res.data.requiredEcts ?? null
     gradeModal.value.projectTitle = res.data.projectTitle ?? ''
   } catch (err) {
@@ -2589,6 +2593,21 @@ async function openGradeSubmit(s, e) {
   }
 }
 
+// Rubric-graded modules send their per-criterion scores; the backend always
+// calculates the final grade from them. Simple modules send the plain score.
+function rubricAwareEntry(r) {
+  if (r.rubric) {
+    const complete = r.rubric.rows.every(rr => Number.isInteger(r.rubricScores?.[rr.id]))
+    if (!complete) return null
+    return { subjectId: r.subjectId, rubric: r.rubric.rows.map(rr => ({ rowId: rr.id, score: r.rubricScores[rr.id] })) }
+  }
+  return Number.isFinite(r.score) ? { subjectId: r.subjectId, score: r.score } : null
+}
+function withRubricScores(r) {
+  return r.rubric
+    ? { ...r, score: r.score ?? null, rubricScores: Object.fromEntries(r.rubric.rows.map(rr => [rr.id, rr.score])) }
+    : { ...r, score: r.score ?? null }
+}
 // A subject counts as completed once any score (0-100) is entered.
 function scoredRows(m) {
   return (m?.subjects ?? []).filter(r => Number.isInteger(r.score) && r.score >= 0 && r.score <= 100)
@@ -2624,7 +2643,7 @@ async function saveAdminGradesDraft() {
   if (!m || m.savingDraft) return
   m.savingDraft = true; m.error = ''
   try {
-    const items = m.subjects.filter(r => Number.isFinite(r.score)).map(r => ({ subjectId: r.subjectId, score: r.score }))
+    const items = m.subjects.map(rubricAwareEntry).filter(Boolean)
     await api.post(`/v1/admin/students/${m.studentId}/enrollments/${m.enrollmentId}/grades/draft`, { items, projectTitle: m.projectTitle })
     reviewToast.value = `Saved ${items.length} grade(s). Provisional transcript updated.`
     setTimeout(() => { reviewToast.value = '' }, 3000)
@@ -2665,7 +2684,7 @@ async function confirmGradeSubmission() {
   try {
     await api.post(
       `/v1/admin/students/${m.studentId}/enrollments/${m.enrollmentId}/grades`,
-      { items: scoredRows(m).map(r => ({ subjectId: r.subjectId, score: r.score })), projectTitle: m.projectTitle })
+      { items: scoredRows(m).map(rubricAwareEntry).filter(Boolean), projectTitle: m.projectTitle })
     reviewToast.value = 'Grades submitted.'
     setTimeout(() => { reviewToast.value = '' }, 3000)
     gradeModal.value = null

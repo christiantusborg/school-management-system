@@ -32,7 +32,10 @@ public sealed class AdminV1StudentsSubmitGradesEndpoint : IEndpointMarker
     public sealed class GradeEntry
     {
         public Guid SubjectId { get; init; }
-        public int Score { get; init; }
+        public int? Score { get; init; }
+        /// <summary>Rubric-graded modules: one 1-100 score per rubric row;
+        /// the module grade is always the weighted total, never Score.</summary>
+        public List<School.PartnerAdminApi.Admin.V1.Rubrics.RubricGradeLogic.RubricEntryDto>? Rubric { get; init; }
     }
 
     public sealed class SubmitGradesRequest
@@ -68,12 +71,32 @@ public sealed class AdminV1StudentsSubmitGradesEndpoint : IEndpointMarker
         var validSet = specSubjects.Select(s => s.SubjectId).ToHashSet();
         var ectsBySubject = specSubjects.ToDictionary(s => s.SubjectId, s => s.Ects);
 
+        // Rubric-graded modules: the final mark is ALWAYS the weighted total
+        // of the row scores; simple modules keep the direct 0-100 mark.
+        var rubricRowsBySubject = await School.PartnerAdminApi.Admin.V1.Rubrics.RubricGradeLogic.LoadRowsAsync(
+            db, entries.Select(x => x.SubjectId), ct);
+        var finalScores = new Dictionary<Guid, int>();
+        var rubricScores = new Dictionary<Guid, List<(Guid RowId, int Score)>>();
         foreach (var entry in entries)
         {
             if (!validSet.Contains(entry.SubjectId))
                 return Results.BadRequest(new { error = $"Subject {entry.SubjectId} doesn't belong to this enrolment." });
-            if (entry.Score < 0 || entry.Score > 100)
-                return Results.BadRequest(new { error = "Score must be between 0 and 100." });
+            if (rubricRowsBySubject.TryGetValue(entry.SubjectId, out var rubricRows) && rubricRows.Count > 0)
+            {
+                var (final, error) = School.PartnerAdminApi.Admin.V1.Rubrics.RubricGradeLogic.Compute(rubricRows, entry.Rubric);
+                if (error is not null) return Results.BadRequest(new { error });
+                finalScores[entry.SubjectId] = final;
+                rubricScores[entry.SubjectId] = rubricRows
+                    .Select(r => (r.RowId, entry.Rubric!.First(rs => rs.RowId == r.RowId).Score!.Value)).ToList();
+            }
+            else
+            {
+                if (entry.Score is null)
+                    return Results.BadRequest(new { error = "Score is required." });
+                if (entry.Score is < 0 or > 100)
+                    return Results.BadRequest(new { error = "Score must be between 0 and 100." });
+                finalScores[entry.SubjectId] = entry.Score.Value;
+            }
         }
 
         var existing = await db.Set<SubjectGrade>()
@@ -103,25 +126,26 @@ public sealed class AdminV1StudentsSubmitGradesEndpoint : IEndpointMarker
         }
 
         var now = DateTime.UtcNow;
+        var pendingRubric = new List<(Guid GradeId, List<(Guid RowId, int Score)> Scores)>();
         foreach (var entry in entries)
         {
-            if (byId.TryGetValue(entry.SubjectId, out var row))
+            if (!byId.TryGetValue(entry.SubjectId, out var row))
             {
-                row.Score = entry.Score;
-                row.GradedAt = now;
-            }
-            else
-            {
-                db.Set<SubjectGrade>().Add(new SubjectGrade
+                row = new SubjectGrade
                 {
                     SubjectGradeId = Guid.NewGuid(),
                     StudentEnrollmentId = enrollmentId,
                     SubjectId = entry.SubjectId,
-                    Score = entry.Score,
-                    GradedAt = now,
-                });
+                };
+                db.Set<SubjectGrade>().Add(row);
+                byId[entry.SubjectId] = row;
             }
+            row.Score = finalScores[entry.SubjectId];
+            row.GradedAt = now;
+            if (rubricScores.TryGetValue(entry.SubjectId, out var perRow))
+                pendingRubric.Add((row.SubjectGradeId, perRow));
         }
+        await School.PartnerAdminApi.Admin.V1.Rubrics.RubricGradeLogic.UpsertScoresAsync(db, pendingRubric, now, ct);
 
         enrolment.ProjectTitle = string.IsNullOrWhiteSpace(body.ProjectTitle) ? null : body.ProjectTitle.Trim();
         enrolment.StatusId = EnrollmentStatusIds.AwaitingGradesApproval;

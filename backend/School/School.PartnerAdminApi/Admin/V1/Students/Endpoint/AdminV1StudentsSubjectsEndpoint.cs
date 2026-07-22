@@ -45,6 +45,8 @@ public sealed class AdminV1StudentsSubjectsEndpoint : IEndpointMarker
             })
             .ToListAsync(ct);
 
+        var rubrics = await School.PartnerAdminApi.Admin.V1.Rubrics.RubricGradeLogic.BuildViewAsync(
+            db, enrollmentId, subjects.Select(s => s.subjectId).ToList(), ct);
         var items = subjects.Select(s => new
         {
             s.subjectId,
@@ -53,6 +55,7 @@ public sealed class AdminV1StudentsSubjectsEndpoint : IEndpointMarker
             s.ects,
             s.isThesis,
             score = existingGrades.TryGetValue(s.subjectId, out var sc) ? (int?)sc : null,
+            rubric = rubrics.GetValueOrDefault(s.subjectId),
         }).ToList();
 
         return Results.Ok(new
