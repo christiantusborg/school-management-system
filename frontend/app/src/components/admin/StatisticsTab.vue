@@ -15,6 +15,8 @@
       <label class="st-lbl">End date</label>
       <input v-model="to" type="date" class="st-inp" @change="load" />
       <button type="button" class="btn-sm" @click="load">↻</button>
+      <button type="button" class="btn-sm" :disabled="exporting" @click="exportFile('csv')">⤓ Export CSV</button>
+      <button type="button" class="btn-sm" :disabled="exporting" @click="exportFile('pdf')">⤓ Export PDF</button>
       <span v-if="data.overall" class="st-total">
         {{ data.overall.total }} enrolment{{ data.overall.total === 1 ? '' : 's' }} in period ·
         Passed {{ data.overall.passedPct }}% · Dropped {{ data.overall.droppedPct }}% ·
@@ -90,6 +92,29 @@ const to = ref('')
 const data = ref({ byPartner: [], bySchool: [], overall: null })
 const loading = ref(false)
 const error = ref('')
+const exporting = ref(false)
+
+async function exportFile(format) {
+  if (exporting.value) return
+  exporting.value = true
+  error.value = ''
+  try {
+    const params = { format }
+    if (from.value) params.from = from.value
+    if (to.value) params.to = to.value
+    const res = await api.get('/v1/admin/statistics/outcomes/export', { params, responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `statistics.${format}`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (e) {
+    error.value = e.response?.data?.error ?? e.message ?? 'Export failed'
+  } finally {
+    exporting.value = false
+  }
+}
 // Collapsed by default; keyed "partner|<label>" / "school|<label>".
 const open = reactive({})
 
