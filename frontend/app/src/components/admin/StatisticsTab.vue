@@ -15,10 +15,8 @@
       <label class="st-lbl">End date</label>
       <input v-model="to" type="date" class="st-inp" @change="load" />
       <button type="button" class="btn-sm" @click="load">↻</button>
-      <template v-if="sub === 'outcomes'">
       <button type="button" class="btn-sm" :disabled="exporting" @click="exportFile('csv')">⤓ Export CSV</button>
       <button type="button" class="btn-sm" :disabled="exporting" @click="exportFile('pdf')">⤓ Export PDF</button>
-      </template>
       <span v-if="sub === 'outcomes' && data.overall" class="st-total">
         {{ data.overall.total }} enrolment{{ data.overall.total === 1 ? '' : 's' }} in period ·
         Passed {{ data.overall.passedPct }}% · Dropped {{ data.overall.droppedPct }}% ·
@@ -140,11 +138,11 @@ async function exportFile(format) {
     const params = { format }
     if (from.value) params.from = from.value
     if (to.value) params.to = to.value
-    const res = await api.get('/v1/admin/statistics/outcomes/export', { params, responseType: 'blob' })
+    const res = await api.get(`/v1/admin/statistics/${sub.value}/export`, { params, responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url
-    a.download = `statistics.${format}`
+    a.download = `statistics-${sub.value}.${format}`
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   } catch (e) {

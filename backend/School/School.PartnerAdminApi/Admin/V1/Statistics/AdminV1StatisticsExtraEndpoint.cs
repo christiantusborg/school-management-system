@@ -1,3 +1,8 @@
+using System.Text;
+using System.Text.Json;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 using SharedLibrary.Basics.Opaque.Domains;
 
 namespace School.PartnerAdminApi.Admin.V1.Statistics;
@@ -27,6 +32,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
         app.MapGet("/v1/admin/statistics/operations", OperationsAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/finance", FinanceAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/trends", TrendsAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/statistics/{tab}/export", ExportTabAsync).RequireAuthorization("AdminOnly");
         return app;
     }
 
@@ -489,5 +495,245 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                 avgGrade = gradesByPeriod.TryGetValue(p, out var g2) ? (double?)g2.Avg : null,
             }).ToList(),
         });
+    }
+
+    // ── Generic CSV / PDF export for the analytics tabs ─────────────────────
+    // Reuses each tab's JSON payload (via IValueHttpResult), flattens it to
+    // titled tables, and renders them as CSV sections or a QuestPDF document.
+
+    private sealed record ExportTable(string Title, string[] Headers, List<string[]> Rows);
+
+    private static readonly Dictionary<string, string> TabTitles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["grades"] = "Grades", ["teachers"] = "Teacher grading behaviour",
+        ["demographics"] = "Demographics", ["operations"] = "Operations & QA",
+        ["finance"] = "Finance", ["trends"] = "Trends",
+    };
+
+    private static async Task<IResult> ExportTabAsync(
+        string tab, OdinDbContext db, CancellationToken ct,
+        [FromQuery] string? format = null,
+        [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
+        [FromQuery] string? granularity = null)
+    {
+        if (!TabTitles.TryGetValue(tab, out var title)) return Results.NotFound();
+        IResult inner = tab.ToLowerInvariant() switch
+        {
+            "grades" => await GradesAsync(db, ct, from, to),
+            "teachers" => await TeachersAsync(db, ct, from, to),
+            "demographics" => await DemographicsAsync(db, ct, from, to),
+            "operations" => await OperationsAsync(db, ct, from, to),
+            "finance" => await FinanceAsync(db, ct, from, to),
+            _ => await TrendsAsync(db, ct, from, to, granularity),
+        };
+        if (inner is not IValueHttpResult { Value: { } payload }) return Results.NotFound();
+        var root = JsonSerializer.SerializeToElement(payload);
+        var tables = TablesFor(tab.ToLowerInvariant(), root);
+
+        var period = (from, to) switch
+        {
+            (null, null) => "all time",
+            ({ } f, null) => $"from {f:yyyy-MM-dd}",
+            (null, { } t) => $"until {t:yyyy-MM-dd}",
+            ({ } f, { } t) => $"{f:yyyy-MM-dd} to {t:yyyy-MM-dd}",
+        };
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
+        return string.Equals(format, "pdf", StringComparison.OrdinalIgnoreCase)
+            ? Results.File(TablesPdf(title, period, tables), "application/pdf", $"statistics-{tab}-{stamp}.pdf")
+            : Results.File(TablesCsv(tables), "text/csv", $"statistics-{tab}-{stamp}.csv");
+    }
+
+    private static string S(JsonElement e, string prop)
+    {
+        if (!e.TryGetProperty(prop, out var v)) return "";
+        return v.ValueKind switch
+        {
+            JsonValueKind.Null or JsonValueKind.Undefined => "",
+            JsonValueKind.True => "yes",
+            JsonValueKind.False => "no",
+            JsonValueKind.String => v.GetString() ?? "",
+            _ => v.ToString(),
+        };
+    }
+
+    private static List<ExportTable> TablesFor(string tab, JsonElement root)
+    {
+        var tables = new List<ExportTable>();
+
+        void GradeTable(string title, string nameHead, JsonElement arr)
+        {
+            var rows = arr.EnumerateArray().Select(r =>
+            {
+                var bands = r.GetProperty("bands").EnumerateArray().Select(b => b.ToString()).ToArray();
+                return new[] { S(r, "label"), S(r, "sub"), S(r, "count"), S(r, "avg"), S(r, "passPct"), S(r, "failPct"),
+                    bands[0], bands[1], bands[2], bands[3] };
+            }).ToList();
+            tables.Add(new ExportTable(title,
+                [nameHead, "Name", "Grades", "Average", "Pass %", "Fail %", "0-39 %", "40-59 %", "60-79 %", "80-100 %"], rows));
+        }
+
+        switch (tab)
+        {
+            case "grades":
+                var overallWrap = JsonSerializer.SerializeToElement(new[] { JsonSerializer.Deserialize<object>(root.GetProperty("overall").GetRawText()) });
+                GradeTable("Overall", "", overallWrap);
+                GradeTable("By partner", "Partner", root.GetProperty("byPartner"));
+                GradeTable("By school", "School", root.GetProperty("bySchool"));
+                GradeTable("By programme", "Programme", root.GetProperty("byProgramme"));
+                GradeTable("Module difficulty ranking (hardest first)", "Module", root.GetProperty("byModule"));
+                tables.Add(new ExportTable("Rubric criterion averages",
+                    ["Module", "Section", "Scores", "Average"],
+                    root.GetProperty("rubricCriteria").EnumerateArray()
+                        .SelectMany(m => m.GetProperty("criteria").EnumerateArray()
+                            .Select(c => new[] { S(m, "module"), S(c, "section"), S(c, "count"), S(c, "avg") }))
+                        .ToList()));
+                break;
+
+            case "teachers":
+                tables.Add(new ExportTable("Teachers",
+                    ["Teacher", "Partner", "Cohorts", "Students", "Graded", "Average", "Vs module avg", "Small sample"],
+                    root.GetProperty("teachers").EnumerateArray().Select(t => new[]
+                    {
+                        S(t, "teacher"), S(t, "partner"), S(t, "cohorts"), S(t, "students"),
+                        S(t, "graded"), S(t, "avg"), S(t, "deviation"), S(t, "smallSample"),
+                    }).ToList()));
+                break;
+
+            case "demographics":
+                foreach (var d in root.GetProperty("dimensions").EnumerateArray())
+                {
+                    var label = S(d, "label");
+                    var cats = d.GetProperty("cats").EnumerateArray().Select(c => S(c, "label")).ToArray();
+                    tables.Add(new ExportTable($"{label} — overall", ["Category", "Count"],
+                        d.GetProperty("cats").EnumerateArray().Select(c => new[] { S(c, "label"), S(c, "count") }).ToList()));
+                    foreach (var (prop, head) in new[] { ("byPartner", "Partner"), ("byProgramme", "Programme") })
+                        tables.Add(new ExportTable($"{label} — per {head.ToLowerInvariant()}",
+                            new[] { head, "Total" }.Concat(cats).ToArray(),
+                            d.GetProperty(prop).EnumerateArray().Select(row =>
+                            {
+                                var catCounts = row.GetProperty("cats");
+                                return new[] { S(row, "group"), S(row, "total") }
+                                    .Concat(cats.Select(c => S(catCounts, c) is { Length: > 0 } v ? v : "0")).ToArray();
+                            }).ToList()));
+                }
+                break;
+
+            case "operations":
+                tables.Add(new ExportTable("Summary", ["Metric", "Value"],
+                [
+                    ["Cohort end → grading sheet uploaded, avg days", S(root, "uploadLeadAvgDays")],
+                    ["Sheets measured", S(root, "uploadLeadCount")],
+                    ["Partner submit → admission approval, avg days", S(root, "approvalLeadAvgDays")],
+                    ["Approvals measured", S(root, "approvalLeadCount")],
+                ]));
+                tables.Add(new ExportTable("Per partner",
+                    ["Partner", "Cohorts", "On time", "Late", "Missing", "Not due yet", "Doc QA %", "Grade QA %", "No teacher"],
+                    root.GetProperty("perPartner").EnumerateArray().Select(p => new[]
+                    {
+                        S(p, "partner"), S(p, "cohorts"), S(p, "onTime"), S(p, "late"), S(p, "missing"),
+                        S(p, "notDueYet"), S(p, "docQaPct"), S(p, "gradeQaPct"), S(p, "withoutTeacher"),
+                    }).ToList()));
+                tables.Add(new ExportTable($"Stalled students ({S(root, "stalledMonths")}+ months, no grades)",
+                    ["Partner", "Student #", "Name", "Programme", "Commencement"],
+                    root.GetProperty("stalled").EnumerateArray().Select(x => new[]
+                    {
+                        S(x, "partner"), S(x, "studentNumber"), S(x, "name"), S(x, "programme"),
+                        S(x, "commencement") is { Length: >= 10 } c ? c[..10] : S(x, "commencement"),
+                    }).ToList()));
+                break;
+
+            case "finance":
+                string[] FinRow(JsonElement p) =>
+                [
+                    S(p, "partner"), S(p, "paidCount"), S(p, "paidAmount"), S(p, "overdueCount"),
+                    S(p, "overdueAmount"), S(p, "upcomingCount"), S(p, "upcomingAmount"), S(p, "studentsWithOverdue"),
+                ];
+                var finRows = root.GetProperty("perPartner").EnumerateArray().Select(FinRow).ToList();
+                finRows.Add(FinRow(root.GetProperty("overall")));
+                tables.Add(new ExportTable("Payments per partner",
+                    ["Partner", "Paid", "Paid amount", "Overdue", "Overdue amount", "Upcoming", "Upcoming amount", "Students overdue"],
+                    finRows));
+                break;
+
+            case "trends":
+                tables.Add(new ExportTable($"Trends ({S(root, "granularity")})",
+                    ["Period", "Enrolments", "Grades saved", "Avg grade"],
+                    root.GetProperty("series").EnumerateArray().Select(r => new[]
+                    {
+                        S(r, "period"), S(r, "enrolments"), S(r, "gradedCount"), S(r, "avgGrade"),
+                    }).ToList()));
+                break;
+        }
+        return tables;
+    }
+
+    private static byte[] TablesCsv(List<ExportTable> tables)
+    {
+        var sb = new StringBuilder();
+        string E(string v) => v.Contains(',') || v.Contains('"') || v.Contains('\n')
+            ? $"\"{v.Replace("\"", "\"\"")}\"" : v;
+        foreach (var t in tables)
+        {
+            sb.AppendLine(E(t.Title));
+            sb.AppendLine(string.Join(',', t.Headers.Select(E)));
+            foreach (var row in t.Rows) sb.AppendLine(string.Join(',', row.Select(E)));
+            sb.AppendLine();
+        }
+        return Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+    }
+
+    private static byte[] TablesPdf(string title, string period, List<ExportTable> tables)
+    {
+        return Document.Create(doc =>
+        {
+            doc.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(28);
+                page.DefaultTextStyle(x => x.FontSize(8));
+
+                page.Header().Column(col =>
+                {
+                    col.Item().Text($"MGW — {title} Statistics").FontSize(16).Bold().FontColor("#003366");
+                    col.Item().Text($"Period: {period} · generated {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC")
+                        .FontSize(9).FontColor("#555555");
+                    col.Item().PaddingTop(6);
+                });
+
+                page.Content().Column(col =>
+                {
+                    foreach (var t in tables)
+                    {
+                        if (t.Rows.Count == 0) continue;
+                        col.Item().PaddingTop(8).Text(t.Title).FontSize(11).Bold().FontColor("#003366");
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(c =>
+                            {
+                                for (var i = 0; i < t.Headers.Length; i++)
+                                    c.RelativeColumn(i == 0 ? 3 : 1.2f);
+                            });
+                            foreach (var h in t.Headers)
+                                table.Cell().Background("#f0f3f7").Padding(3).Text(h).Bold().FontSize(7);
+                            var odd = false;
+                            foreach (var row in t.Rows)
+                            {
+                                odd = !odd;
+                                foreach (var cell in row)
+                                    table.Cell().Background(odd ? "#ffffff" : "#f8fafc").Padding(3).Text(cell).FontSize(7);
+                            }
+                        });
+                    }
+                });
+
+                page.Footer().AlignRight().Text(x =>
+                {
+                    x.Span("Page ").FontSize(7);
+                    x.CurrentPageNumber().FontSize(7);
+                    x.Span(" of ").FontSize(7);
+                    x.TotalPages().FontSize(7);
+                });
+            });
+        }).GeneratePdf();
     }
 }
