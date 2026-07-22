@@ -76,6 +76,36 @@ public class CohortQuestionnaireCompletionConfiguration : IEntityTypeConfigurati
     }
 }
 
+public class CohortTypeConfiguration : IEntityTypeConfiguration<CohortType>
+{
+    public void Configure(EntityTypeBuilder<CohortType> builder)
+    {
+        builder.HasKey(e => e.CohortTypeId);
+        builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
+    }
+}
+
+public class CohortTypeFieldConfiguration : IEntityTypeConfiguration<CohortTypeField>
+{
+    public void Configure(EntityTypeBuilder<CohortTypeField> builder)
+    {
+        builder.HasKey(e => e.CohortTypeFieldId);
+        builder.Property(e => e.Label).HasMaxLength(300).IsRequired();
+        builder.Property(e => e.Type).HasMaxLength(20).IsRequired();
+        builder.HasIndex(e => e.CohortTypeId);
+    }
+}
+
+public class CohortFieldValueConfiguration : IEntityTypeConfiguration<CohortFieldValue>
+{
+    public void Configure(EntityTypeBuilder<CohortFieldValue> builder)
+    {
+        builder.HasKey(e => e.CohortFieldValueId);
+        builder.Property(e => e.FileName).HasMaxLength(300);
+        builder.HasIndex(e => new { e.ModuleCohortId, e.CohortTypeFieldId }).IsUnique();
+    }
+}
+
 public class ModuleCohortSettingsConfiguration : IEntityTypeConfiguration<ModuleCohortSettings>
 {
     public void Configure(EntityTypeBuilder<ModuleCohortSettings> builder)

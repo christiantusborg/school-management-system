@@ -70,6 +70,11 @@
             <option v-for="m in modulesFor(addProgrammeId)" :key="m.subjectId" :value="m.subjectId">
               {{ m.code }} — {{ m.name }} ({{ m.specializationName }})</option>
           </select>
+          <label class="mc-lbl" style="margin-top:.6rem">Cohort type *</label>
+          <select v-model="addTypeId" class="mc-inp">
+            <option value="">— pick a cohort type —</option>
+            <option v-for="t in sources.cohortTypes ?? []" :key="t.cohortTypeId" :value="t.cohortTypeId">{{ t.name }}</option>
+          </select>
           <label class="mc-lbl" style="margin-top:.6rem">Faculty (teacher)</label>
           <select v-model="addTeacherId" class="mc-inp">
             <option value="">—</option>
@@ -85,7 +90,7 @@
         </div>
         <div class="mc-dialog-foot">
           <button type="button" class="btn-sm" @click="addOpen = false">Cancel</button>
-          <button type="button" class="btn-primary-sm" :disabled="adding || !addProgrammeId || !addSubjectId" @click="addCohort">
+          <button type="button" class="btn-primary-sm" :disabled="adding || !addProgrammeId || !addSubjectId || !addTypeId" @click="addCohort">
             {{ adding ? 'Creating…' : 'Create cohort' }}
           </button>
         </div>
@@ -120,6 +125,13 @@
                 <div><label class="mc-lbl">Programme</label><div class="mc-system">{{ det.cohort.programmeName }}</div></div>
                 <div><label class="mc-lbl">Module</label><div class="mc-system">{{ det.cohort.moduleCode }} — {{ det.cohort.moduleName }}</div></div>
                 <div>
+                  <label class="mc-lbl">Cohort type</label>
+                  <select v-if="!readOnly" v-model="form.cohortTypeId" class="mc-inp">
+                    <option v-for="t in sources.cohortTypes ?? []" :key="t.cohortTypeId" :value="t.cohortTypeId">{{ t.name }}</option>
+                  </select>
+                  <div v-else class="mc-system">{{ det.cohort.cohortTypeName || '—' }}</div>
+                </div>
+                <div>
                   <label class="mc-lbl">Faculty (teacher)</label>
                   <select v-if="!readOnly" v-model="form.teacherId" class="mc-inp">
                     <option value="">—</option>
@@ -134,6 +146,39 @@
                 <div><label class="mc-lbl">End Date of Module</label>
                   <input v-if="!readOnly" v-model="form.endDate" type="date" class="mc-inp" />
                   <div v-else class="mc-system">{{ fmtDate(det.cohort.endDate) }}</div></div>
+              </div>
+            </div>
+
+            <div v-if="det.cohortType?.fields?.length" class="mc-section">
+              <div class="mc-section-title">{{ det.cohort.cohortTypeName || 'Cohort type' }} — additional data</div>
+              <div class="mc-grid2">
+                <div v-for="f in det.cohortType.fields" :key="f.id">
+                  <label class="mc-lbl">{{ f.label }}<span v-if="f.isRequired" style="color:#b3261e"> *</span></label>
+                  <template v-if="readOnly">
+                    <div class="mc-system">{{ fieldDisplay(f) }}</div>
+                  </template>
+                  <template v-else>
+                    <input v-if="f.type === 'text'" v-model="fieldCell(f.id).value" class="mc-inp" />
+                    <input v-else-if="f.type === 'number'" v-model="fieldCell(f.id).value" type="number" class="mc-inp" />
+                    <input v-else-if="f.type === 'date'" v-model="fieldCell(f.id).value" type="date" class="mc-inp" />
+                    <select v-else-if="f.type === 'select'" v-model="fieldCell(f.id).value" class="mc-inp">
+                      <option value="">—</option>
+                      <option v-for="o in f.options" :key="o" :value="o">{{ o }}</option>
+                    </select>
+                    <label v-else-if="f.type === 'bool'" class="mc-fieldcheck">
+                      <input type="checkbox" :checked="fieldCell(f.id).value === 'true'"
+                             @change="fieldCell(f.id).value = $event.target.checked ? 'true' : ''" /> Yes
+                    </label>
+                    <div v-else-if="f.type === 'file'" class="mc-file-row" style="flex-wrap:wrap">
+                      <template v-if="fieldCell(f.id).value">
+                        <span>📄 {{ fieldCell(f.id).fileName || 'file' }}</span>
+                        <button v-if="fieldCell(f.id).valueId" type="button" class="btn-sm" @click="downloadFieldFile(fieldCell(f.id))">⤓</button>
+                        <button type="button" class="btn-sm btn-danger" @click="clearFieldCell(f.id)">✕</button>
+                      </template>
+                      <input v-else type="file" @change="uploadFieldFile(f.id, $event)" />
+                    </div>
+                  </template>
+                </div>
               </div>
             </div>
 
@@ -317,6 +362,8 @@ const P = computed(() => props.mode === 'admin'
       files: id => `/v1/admin/cohorts/${id}/files`,
       file: id => `/v1/admin/cohort-files/${id}`,
       grades: id => `/v1/admin/cohorts/${id}/grades`,
+      fieldFiles: '/v1/admin/cohort-field-files',
+      fieldValue: id => `/v1/admin/cohort-field-values/${id}`,
     }
   : {
       list: '/v1/partner/my/cohorts',
@@ -326,6 +373,8 @@ const P = computed(() => props.mode === 'admin'
       files: id => `/v1/partner/my/cohorts/${id}/files`,
       file: id => `/v1/partner/my/cohort-files/${id}`,
       grades: id => `/v1/partner/my/cohorts/${id}/grades`,
+      fieldFiles: '/v1/partner/my/cohort-field-files',
+      fieldValue: id => `/v1/partner/my/cohort-field-values/${id}`,
     })
 
 // Teacher partner-users are read-only.
@@ -339,6 +388,7 @@ const error = ref('')
 const addOpen = ref(false)
 const addProgrammeId = ref('')
 const addSubjectId = ref('')
+const addTypeId = ref('')
 const addTeacherId = ref('')
 const addStart = ref('')
 const addEnd = ref('')
@@ -348,6 +398,51 @@ const addError = ref('')
 const detOpen = ref(false)
 const detTab = ref('record')
 const det = ref({ cohort: null, uploadFields: [] })
+// Cohort-type extra-data values, keyed by field id.
+const fieldVals = ref({})
+function fieldCell(fieldId) {
+  if (!fieldVals.value[fieldId]) fieldVals.value[fieldId] = { value: '', fileName: '', valueId: '' }
+  return fieldVals.value[fieldId]
+}
+function clearFieldCell(fieldId) {
+  fieldVals.value[fieldId] = { value: '', fileName: '', valueId: '' }
+}
+function fieldDisplay(f) {
+  const c = fieldCell(f.id)
+  if (f.type === 'bool') return c.value === 'true' ? 'Yes' : 'No'
+  if (f.type === 'file') return c.fileName || (c.value ? 'file' : '—')
+  return c.value || '—'
+}
+async function uploadFieldFile(fieldId, ev) {
+  const file = ev.target.files?.[0]
+  if (!file) return
+  uploading.value = true
+  detError.value = ''
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await api.post(P.value.fieldFiles, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    fieldVals.value[fieldId] = { value: res.data.token, fileName: res.data.fileName, valueId: '' }
+  } catch (e) {
+    detError.value = e.response?.data?.error ?? e.message ?? 'Upload failed'
+  } finally {
+    uploading.value = false
+    ev.target.value = ''
+  }
+}
+async function downloadFieldFile(c) {
+  try {
+    const res = await api.get(`${P.value.fieldValue(c.valueId)}/file`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = c.fileName || 'cohort-file'
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch {
+    detError.value = 'Download failed'
+  }
+}
 const form = ref({})
 const detError = ref('')
 const savingDet = ref(false)
@@ -446,6 +541,7 @@ async function load() {
 function openAdd() {
   addProgrammeId.value = ''
   addSubjectId.value = ''
+  addTypeId.value = (sources.value.cohortTypes ?? [])[0]?.cohortTypeId ?? ''
   addTeacherId.value = ''
   addStart.value = ''
   addEnd.value = ''
@@ -461,6 +557,7 @@ async function addCohort() {
     const res = await api.post(P.value.list, {
       programmeId: addProgrammeId.value,
       subjectId: addSubjectId.value,
+      cohortTypeId: addTypeId.value,
       teacherId: addTeacherId.value || null,
       startDate: addStart.value || null,
       endDate: addEnd.value || null,
@@ -494,7 +591,10 @@ async function openDetail(c) {
     const res = await api.get(P.value.item(c.moduleCohortId))
     det.value = res.data
     const k = res.data.cohort
+    fieldVals.value = Object.fromEntries(Object.entries(res.data.cohortType?.values ?? {}).map(([fid, c]) =>
+      [fid, { value: c.value ?? '', fileName: c.fileName ?? '', valueId: c.valueId ?? '' }]))
     form.value = {
+      cohortTypeId: k.cohortTypeId ?? '',
       teacherId: k.teacherId ?? '',
       startDate: iso(k.startDate),
       endDate: iso(k.endDate),
@@ -518,6 +618,9 @@ async function saveDetail() {
   detError.value = ''
   try {
     await api.put(P.value.item(det.value.cohort.moduleCohortId), {
+      cohortTypeId: form.value.cohortTypeId || null,
+      fieldValues: Object.fromEntries(Object.entries(fieldVals.value).map(([fid, c]) =>
+        [fid, { value: c.value, fileName: c.fileName || null }])),
       teacherId: form.value.teacherId || null,
       startDate: form.value.startDate || null,
       endDate: form.value.endDate || null,
@@ -646,6 +749,7 @@ watch(() => props.partnerId, load, { immediate: true })
 .mc-section-title { font-weight: 700; color: #003366; font-size: .85rem; margin-bottom: .5rem; }
 .mc-system { padding: .4rem .55rem; background: #f2f5f9; border: 1px dashed #cfd7e3; border-radius: 5px; font-size: .82rem; color: #44536a; min-height: 1.9rem; }
 .mc-upl { margin-bottom: .6rem; }
+.mc-fieldcheck { display: flex; align-items: center; gap: .35rem; font-size: .82rem; color: #2c3e50; padding-top: .4rem; }
 .mc-asg-stu { background: none; border: none; font-size: .88rem; font-weight: 700; color: #1a2d4f; cursor: pointer; padding: .2rem 0; }
 .mc-file-row { display: flex; align-items: center; gap: .4rem; font-size: .82rem; margin: .2rem 0; }
 </style>

@@ -20,6 +20,42 @@ public static class ModuleCohortLogic
         "AwaitingGradesSubmit", "AwaitingGradesApproval", "GradesApproved",
     ];
 
+    /// <summary>Upserts cohort-type field values; empty value deletes the
+    /// cell. Values for fields of OTHER types are kept untouched, so
+    /// switching the type back restores what was entered.</summary>
+    public static async Task SaveFieldValuesAsync(
+        OdinDbContext db, Guid cohortId,
+        Dictionary<string, (string? Value, string? FileName)>? values, CancellationToken ct)
+    {
+        if (values is null || values.Count == 0) return;
+        var validFieldIds = (await db.CohortTypeFields
+            .Where(f => f.DeletedAt == null)
+            .Select(f => f.CohortTypeFieldId)
+            .ToListAsync(ct)).ToHashSet();
+        var existing = await db.CohortFieldValues
+            .Where(v => v.ModuleCohortId == cohortId)
+            .ToListAsync(ct);
+        foreach (var (raw, cell) in values)
+        {
+            if (!Guid.TryParse(raw, out var fieldId) || !validFieldIds.Contains(fieldId)) continue;
+            var row = existing.FirstOrDefault(v => v.CohortTypeFieldId == fieldId);
+            if (string.IsNullOrWhiteSpace(cell.Value))
+            {
+                if (row is not null) db.CohortFieldValues.Remove(row);
+                continue;
+            }
+            if (row is null)
+            {
+                row = new CohortFieldValue { ModuleCohortId = cohortId, CohortTypeFieldId = fieldId };
+                db.CohortFieldValues.Add(row);
+                existing.Add(row);
+            }
+            row.Value = cell.Value.Trim();
+            row.FileName = string.IsNullOrWhiteSpace(cell.FileName) ? null : cell.FileName.Trim();
+            row.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
     public static DateTime? EffectiveDueDate(ModuleCohort c) =>
         c.GradingSheetDueOverride ?? c.EndDate?.AddMonths(1);
 
@@ -308,6 +344,8 @@ public static class ModuleCohortLogic
                 ModuleName = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.Name).FirstOrDefault(),
                 c.TeacherId,
                 TeacherName = db.Teachers.Where(t => t.TeacherId == c.TeacherId).Select(t => t.DisplayName).FirstOrDefault(),
+                c.CohortTypeId,
+                CohortTypeName = db.CohortTypes.Where(t => t.CohortTypeId == c.CohortTypeId).Select(t => t.Name).FirstOrDefault(),
                 c.StartDate,
                 c.EndDate,
                 c.GradingSheetDueOverride,
@@ -333,6 +371,8 @@ public static class ModuleCohortLogic
             moduleName = c.ModuleName,
             teacherId = c.TeacherId,
             teacherName = c.TeacherName,
+            cohortTypeId = c.CohortTypeId,
+            cohortTypeName = c.CohortTypeName,
             startDate = c.StartDate,
             endDate = c.EndDate,
             gradingSheetDueDate = c.GradingSheetDueOverride ?? c.EndDate?.AddMonths(1),
@@ -361,9 +401,40 @@ public static class ModuleCohortLogic
             .OrderBy(f => f.UploadedAt)
             .ToListAsync(ct);
 
+        // Cohort type extra-data form + this cohort's values.
+        var typeId = await db.ModuleCohorts
+            .Where(c => c.ModuleCohortId == cohortId)
+            .Select(c => c.CohortTypeId)
+            .FirstOrDefaultAsync(ct);
+        var typeFields = typeId is null ? [] : await db.CohortTypeFields
+            .Where(f => f.CohortTypeId == typeId && f.DeletedAt == null)
+            .OrderBy(f => f.SortOrder)
+            .ToListAsync(ct);
+        var typeFieldIds = typeFields.Select(f => f.CohortTypeFieldId).ToList();
+        var fieldValues = await db.CohortFieldValues
+            .Where(v => v.ModuleCohortId == cohortId && typeFieldIds.Contains(v.CohortTypeFieldId))
+            .ToListAsync(ct);
+
         return new
         {
             cohort = row,
+            cohortType = typeId is null ? null : new
+            {
+                fields = typeFields.Select(f => new
+                {
+                    id = f.CohortTypeFieldId,
+                    label = f.Label,
+                    type = f.Type,
+                    options = f.Type == CohortTypeField.TypeSelect
+                        ? (f.OptionsText ?? string.Empty)
+                            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        : [],
+                    isRequired = f.IsRequired,
+                }).ToList(),
+                values = fieldValues.ToDictionary(
+                    v => v.CohortTypeFieldId.ToString(),
+                    v => new { valueId = v.CohortFieldValueId, value = v.Value, fileName = v.FileName }),
+            },
             uploadFields = fields.Select(f => new
             {
                 id = f.CohortUploadFieldId,

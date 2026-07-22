@@ -53,6 +53,9 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<CohortUploadField> CohortUploadFields => Set<CohortUploadField>();
     public DbSet<CohortUploadFile> CohortUploadFiles => Set<CohortUploadFile>();
     public DbSet<ModuleCohortSettings> ModuleCohortSettings => Set<ModuleCohortSettings>();
+    public DbSet<CohortType> CohortTypes => Set<CohortType>();
+    public DbSet<CohortTypeField> CohortTypeFields => Set<CohortTypeField>();
+    public DbSet<CohortFieldValue> CohortFieldValues => Set<CohortFieldValue>();
     public DbSet<ModuleCohortQuestionnaire> ModuleCohortQuestionnaires => Set<ModuleCohortQuestionnaire>();
     public DbSet<CohortQuestionnaireResponse> CohortQuestionnaireResponses => Set<CohortQuestionnaireResponse>();
     public DbSet<CohortQuestionnaireCompletion> CohortQuestionnaireCompletions => Set<CohortQuestionnaireCompletion>();

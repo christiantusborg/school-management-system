@@ -17,6 +17,14 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
         app.MapGet("/v1/admin/cohort-settings", GetSettingsAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/cohort-types", ListTypesAsync).RequireAuthorization("AdminOnly");
+        app.MapPost("/v1/admin/cohort-types", CreateTypeAsync).RequireAuthorization("AdminOnly");
+        app.MapPatch("/v1/admin/cohort-types/{typeId:guid}", RenameTypeAsync).RequireAuthorization("AdminOnly");
+        app.MapPut("/v1/admin/cohort-types/{typeId:guid}/structure", SaveTypeStructureAsync).RequireAuthorization("AdminOnly");
+        app.MapDelete("/v1/admin/cohort-types/{typeId:guid}", DeleteTypeAsync).RequireAuthorization("AdminOnly");
+        app.MapPost("/v1/admin/cohort-field-files", UploadFieldFileAsync)
+            .RequireAuthorization("AdminOnly").DisableAntiforgery();
+        app.MapGet("/v1/admin/cohort-field-values/{valueId:guid}/file", DownloadFieldFileAsync).RequireAuthorization("AdminOnly");
         app.MapPut("/v1/admin/cohort-settings", SaveSettingsAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/partners/{partnerId:guid}/cohorts", ListAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/partners/{partnerId:guid}/cohort-sources", SourcesAsync).RequireAuthorization("AdminOnly");
@@ -59,12 +67,21 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         public Guid? ProgrammeId { get; init; }
         public Guid? SubjectId { get; init; }
         public Guid? TeacherId { get; init; }
+        public Guid? CohortTypeId { get; init; }
         public DateTime? StartDate { get; init; }
         public DateTime? EndDate { get; init; }
     }
 
+    public sealed class FieldValueDto
+    {
+        public string? Value { get; init; }
+        public string? FileName { get; init; }
+    }
+
     public sealed class UpdateBody
     {
+        public Guid? CohortTypeId { get; init; }
+        public Dictionary<string, FieldValueDto>? FieldValues { get; init; }
         public Guid? TeacherId { get; init; }
         public DateTime? StartDate { get; init; }
         public DateTime? EndDate { get; init; }
@@ -189,8 +206,13 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
             .OrderBy(t => t.DisplayName)
             .Select(t => new { teacherId = t.TeacherId, displayName = t.DisplayName })
             .ToListAsync(ct);
+        var cohortTypes = await db.CohortTypes
+            .Where(t => t.DeletedAt == null)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .Select(t => new { cohortTypeId = t.CohortTypeId, name = t.Name })
+            .ToListAsync(ct);
 
-        return Results.Ok(new { programmes, modules, teachers });
+        return Results.Ok(new { programmes, modules, teachers, cohortTypes });
     }
 
     private static async Task<IResult> CreateAsync(
@@ -200,6 +222,9 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
             return Results.NotFound();
         if (body.ProgrammeId is null || body.SubjectId is null)
             return Results.BadRequest(new { error = "Programme and module are required." });
+        if (body.CohortTypeId is null
+            || !await db.CohortTypes.AnyAsync(t => t.CohortTypeId == body.CohortTypeId && t.DeletedAt == null, ct))
+            return Results.BadRequest(new { error = "A cohort type is required." });
         var moduleOk = await (
             from s in db.Subjects
             join sp in db.Specializations on s.SpecializationId equals sp.SpecializationId
@@ -218,6 +243,7 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
             PartnerId = partnerId,
             ProgrammeId = body.ProgrammeId.Value,
             SubjectId = body.SubjectId.Value,
+            CohortTypeId = body.CohortTypeId,
             TeacherId = body.TeacherId,
             StartDate = Norm(body.StartDate),
             EndDate = Norm(body.EndDate),
@@ -264,6 +290,14 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         cohort.DocQaDate = Norm(body.DocQaDate);
         if (body.GradeQaChecked is { } gq) cohort.GradeQaChecked = gq;
         cohort.GradeQaDate = Norm(body.GradeQaDate);
+        if (body.CohortTypeId is { } newType)
+        {
+            var typeOk = await db.CohortTypes.AnyAsync(t => t.CohortTypeId == newType && t.DeletedAt == null, ct);
+            if (!typeOk) return Results.BadRequest(new { error = "Unknown cohort type." });
+            cohort.CohortTypeId = newType;
+        }
+        await ModuleCohortLogic.SaveFieldValuesAsync(db, cohort.ModuleCohortId,
+            body.FieldValues?.ToDictionary(kv => kv.Key, kv => (kv.Value?.Value, kv.Value?.FileName)), ct);
         cohort.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { saved = true });
@@ -277,6 +311,171 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         cohort.DeletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { deleted = true });
+    }
+
+    private static readonly string[] TypeFieldTypes =
+    [
+        CohortTypeField.TypeText, CohortTypeField.TypeNumber, CohortTypeField.TypeDate,
+        CohortTypeField.TypeSelect, CohortTypeField.TypeBool, CohortTypeField.TypeFile,
+    ];
+
+    public sealed class TypeFieldDto
+    {
+        public Guid? Id { get; init; }
+        public string? Label { get; init; }
+        public string? Type { get; init; }
+        public string? OptionsText { get; init; }
+        public bool IsRequired { get; init; }
+    }
+
+    public sealed class TypeStructureBody
+    {
+        public List<TypeFieldDto>? Fields { get; init; }
+    }
+
+    private static async Task<IResult> ListTypesAsync(OdinDbContext db, CancellationToken ct)
+    {
+        var types = await db.CohortTypes
+            .Where(t => t.DeletedAt == null)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .Select(t => new
+            {
+                t.CohortTypeId,
+                t.Name,
+                InUse = db.ModuleCohorts.Count(c => c.CohortTypeId == t.CohortTypeId && c.DeletedAt == null),
+            })
+            .ToListAsync(ct);
+        var typeIds = types.Select(t => t.CohortTypeId).ToList();
+        var fields = await db.CohortTypeFields
+            .Where(f => typeIds.Contains(f.CohortTypeId) && f.DeletedAt == null)
+            .OrderBy(f => f.SortOrder)
+            .ToListAsync(ct);
+        return Results.Ok(new
+        {
+            items = types.Select(t => new
+            {
+                cohortTypeId = t.CohortTypeId,
+                name = t.Name,
+                inUse = t.InUse,
+                fields = fields.Where(f => f.CohortTypeId == t.CohortTypeId).Select(f => new
+                {
+                    id = f.CohortTypeFieldId,
+                    label = f.Label,
+                    type = f.Type,
+                    optionsText = f.OptionsText,
+                    isRequired = f.IsRequired,
+                }).ToList(),
+            }).ToList(),
+        });
+    }
+
+    private static async Task<IResult> CreateTypeAsync(
+        [FromBody] Dictionary<string, string?> body, OdinDbContext db, CancellationToken ct)
+    {
+        var name = body.GetValueOrDefault("name")?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return Results.BadRequest(new { error = "Name is required." });
+        var type = new CohortType { Name = name };
+        db.CohortTypes.Add(type);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { cohortTypeId = type.CohortTypeId });
+    }
+
+    private static async Task<IResult> RenameTypeAsync(
+        Guid typeId, [FromBody] Dictionary<string, string?> body, OdinDbContext db, CancellationToken ct)
+    {
+        var type = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
+        if (type is null) return Results.NotFound();
+        var name = body.GetValueOrDefault("name")?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return Results.BadRequest(new { error = "Name is required." });
+        type.Name = name;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { cohortTypeId = typeId });
+    }
+
+    /// <summary>Wholesale field save with soft-delete + restore-by-label so
+    /// values entered on cohorts survive structure edits.</summary>
+    private static async Task<IResult> SaveTypeStructureAsync(
+        Guid typeId, [FromBody] TypeStructureBody body, OdinDbContext db, CancellationToken ct)
+    {
+        var type = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
+        if (type is null) return Results.NotFound();
+        foreach (var f in body.Fields ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(f.Label))
+                return Results.BadRequest(new { error = "Every field needs a label." });
+            if (!TypeFieldTypes.Contains(f.Type))
+                return Results.BadRequest(new { error = $"Unknown field type '{f.Type}'." });
+        }
+        var all = await db.CohortTypeFields.Where(f => f.CohortTypeId == typeId).ToListAsync(ct);
+        var kept = new HashSet<Guid>();
+        var order = 0;
+        foreach (var f in body.Fields ?? [])
+        {
+            var field = f.Id is { } fid ? all.FirstOrDefault(x => x.CohortTypeFieldId == fid) : null;
+            field ??= all.FirstOrDefault(x =>
+                x.DeletedAt != null && string.Equals(x.Label, f.Label!.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (field is null)
+            {
+                field = new CohortTypeField { CohortTypeId = typeId };
+                db.CohortTypeFields.Add(field);
+                all.Add(field);
+            }
+            field.Label = f.Label!.Trim();
+            field.Type = f.Type!;
+            field.OptionsText = f.Type == CohortTypeField.TypeSelect ? f.OptionsText : null;
+            field.IsRequired = f.IsRequired;
+            field.SortOrder = order++;
+            field.DeletedAt = null;
+            kept.Add(field.CohortTypeFieldId);
+        }
+        foreach (var f in all.Where(x => x.DeletedAt == null && !kept.Contains(x.CohortTypeFieldId)))
+            f.DeletedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { saved = true });
+    }
+
+    private static async Task<IResult> DeleteTypeAsync(Guid typeId, OdinDbContext db, CancellationToken ct)
+    {
+        var type = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
+        if (type is null) return Results.NotFound();
+        var inUse = await db.ModuleCohorts.CountAsync(c => c.CohortTypeId == typeId && c.DeletedAt == null, ct);
+        if (inUse > 0)
+            return Results.Conflict(new { error = $"This cohort type is used by {inUse} cohort(s)." });
+        type.DeletedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { deleted = true });
+    }
+
+    private static async Task<IResult> UploadFieldFileAsync(
+        IFormFile file, IFileStorage storage, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0) return Results.BadRequest(new { error = "file is required" });
+        if (file.Length > 100 * 1024 * 1024) return Results.BadRequest(new { error = "Max file size is 100 MB." });
+        var safeName = Path.GetFileName(file.FileName);
+        string storagePath;
+        await using (var stream = file.OpenReadStream())
+        {
+            storagePath = await storage.SaveAsync(stream, $"{ModuleCohortLogic.StoragePrefix}fields/{Guid.NewGuid():N}-{safeName}", ct);
+        }
+        return Results.Ok(new { token = storagePath, fileName = safeName });
+    }
+
+    private static async Task<IResult> DownloadFieldFileAsync(
+        Guid valueId, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+    {
+        var value = await db.CohortFieldValues
+            .Where(v => v.CohortFieldValueId == valueId)
+            .Select(v => new { v.Value, v.FileName })
+            .FirstOrDefaultAsync(ct);
+        if (value is null || !value.Value.Contains(ModuleCohortLogic.StoragePrefix)) return Results.NotFound();
+        try
+        {
+            var stream = await storage.OpenReadAsync(value.Value, ct);
+            return Results.File(stream, "application/octet-stream", value.FileName ?? "cohort-file");
+        }
+        catch (FileNotFoundException) { return Results.NotFound(); }
     }
 
     private static async Task<IResult> GradesAsync(Guid cohortId, OdinDbContext db, CancellationToken ct)

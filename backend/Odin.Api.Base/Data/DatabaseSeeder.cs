@@ -169,6 +169,7 @@ public static class DatabaseSeeder
         await SeedPartnerDatasheetTemplatesAsync(context, logger);
         await SeedFacultyProfileStructureAsync(context, logger);
         await SeedCohortUploadFieldsAsync(context, logger);
+        await SeedCohortTypesAsync(context, logger);
         await SeedPathwaysAsync(context, logger, eduLevelByName);
         await SeedIbssCoreProgrammesAsync(context, logger);
         await SeedDemoPartnersAsync(context, logger);
@@ -1473,8 +1474,11 @@ public static class DatabaseSeeder
 
         // ── Insert pathways missing from the DB ─────────────────────────────
         var existingPathways = await context.Pathways.ToListAsync();
+        // GroupBy→First: concurrent seeders (dev+prod share the DB) once
+        // raced and double-inserted a pathway — never crash on duplicates.
         var pathwayByName = existingPathways
-            .ToDictionary(p => p.Name.Trim().ToLowerInvariant(), p => p);
+            .GroupBy(p => p.Name.Trim().ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.First());
 
         var pathwaysAdded = 0;
         foreach (var s in seed)
@@ -2100,6 +2104,32 @@ public static class DatabaseSeeder
         }
         await context.SaveChangesAsync();
         logger.LogInformation("[Seeder] Module cohort upload fields seeded ({Count})", seeds.Length);
+    }
+
+    /// <summary>
+    /// Seeds a default "Standard" cohort type (no extra fields) when none
+    /// exist, and adopts legacy cohorts without a type onto it — a type is
+    /// required on every cohort going forward.
+    /// </summary>
+    private static async Task SeedCohortTypesAsync(OdinDbContext context, ILogger logger)
+    {
+        var defaultType = await context.CohortTypes.IgnoreQueryFilters().FirstOrDefaultAsync();
+        if (defaultType is null)
+        {
+            defaultType = new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.CohortType { Name = "Standard" };
+            context.CohortTypes.Add(defaultType);
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Default cohort type seeded");
+        }
+        var orphans = await context.ModuleCohorts
+            .Where(c => c.CohortTypeId == null)
+            .ToListAsync();
+        if (orphans.Count > 0)
+        {
+            foreach (var c in orphans) c.CohortTypeId = defaultType.CohortTypeId;
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] {Count} cohort(s) adopted onto the default cohort type", orphans.Count);
+        }
     }
 
     /// <summary>

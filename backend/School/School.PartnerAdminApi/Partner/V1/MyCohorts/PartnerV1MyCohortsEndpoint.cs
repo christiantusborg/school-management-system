@@ -25,6 +25,9 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
         app.MapDelete("/v1/partner/my/cohorts/{cohortId:guid}", DeleteAsync).RequireAuthorization("PartnerOnly");
         app.MapGet("/v1/partner/my/cohorts/{cohortId:guid}/students", StudentsAsync).RequireAuthorization("PartnerOnly");
         app.MapPut("/v1/partner/my/cohorts/{cohortId:guid}/students", AssignStudentsAsync).RequireAuthorization("PartnerOnly");
+        app.MapPost("/v1/partner/my/cohort-field-files", UploadFieldFileAsync)
+            .RequireAuthorization("PartnerOnly").DisableAntiforgery();
+        app.MapGet("/v1/partner/my/cohort-field-values/{valueId:guid}/file", DownloadFieldFileAsync).RequireAuthorization("PartnerOnly");
         app.MapPost("/v1/partner/my/cohorts/{cohortId:guid}/files", UploadFilesAsync)
             .RequireAuthorization("PartnerOnly").DisableAntiforgery();
         app.MapDelete("/v1/partner/my/cohort-files/{fileId:guid}", DeleteFileAsync).RequireAuthorization("PartnerOnly");
@@ -110,7 +113,12 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
             .OrderBy(t => t.DisplayName)
             .Select(t => new { teacherId = t.TeacherId, displayName = t.DisplayName })
             .ToListAsync(ct);
-        return Results.Ok(new { programmes, modules, teachers });
+        var cohortTypes = await db.CohortTypes
+            .Where(t => t.DeletedAt == null)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .Select(t => new { cohortTypeId = t.CohortTypeId, name = t.Name })
+            .ToListAsync(ct);
+        return Results.Ok(new { programmes, modules, teachers, cohortTypes });
     }
 
     private static async Task<IResult> CreateAsync(
@@ -121,6 +129,9 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
         if (fail is not null) return fail;
         if (body.ProgrammeId is null || body.SubjectId is null)
             return Results.BadRequest(new { error = "Programme and module are required." });
+        if (body.CohortTypeId is null
+            || !await db.CohortTypes.AnyAsync(t => t.CohortTypeId == body.CohortTypeId && t.DeletedAt == null, ct))
+            return Results.BadRequest(new { error = "A cohort type is required." });
         var moduleOk = await (
             from s in db.Subjects
             join sp in db.Specializations on s.SpecializationId equals sp.SpecializationId
@@ -139,6 +150,7 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
             PartnerId = partnerId!.Value,
             ProgrammeId = body.ProgrammeId.Value,
             SubjectId = body.SubjectId.Value,
+            CohortTypeId = body.CohortTypeId,
             TeacherId = body.TeacherId,
             StartDate = Norm(body.StartDate),
             EndDate = Norm(body.EndDate),
@@ -198,6 +210,14 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
         cohort.DocQaDate = Norm(body.DocQaDate);
         if (body.GradeQaChecked is { } gq) cohort.GradeQaChecked = gq;
         cohort.GradeQaDate = Norm(body.GradeQaDate);
+        if (body.CohortTypeId is { } newType)
+        {
+            var typeOk = await db.CohortTypes.AnyAsync(t => t.CohortTypeId == newType && t.DeletedAt == null, ct);
+            if (!typeOk) return Results.BadRequest(new { error = "Unknown cohort type." });
+            cohort.CohortTypeId = newType;
+        }
+        await ModuleCohortLogic.SaveFieldValuesAsync(db, cohort.ModuleCohortId,
+            body.FieldValues?.ToDictionary(kv => kv.Key, kv => (kv.Value?.Value, kv.Value?.FileName)), ct);
         cohort.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { saved = true });
@@ -417,6 +437,41 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
         Guid.TryParse(callerId, out var byUserId);
         var result = await ModuleCohortLogic.SubmitGradesAsync(db, cohortId, byUserId, "Partner", ct);
         return result is null ? Results.NotFound() : Results.Ok(result);
+    }
+
+    private static async Task<IResult> UploadFieldFileAsync(
+        HttpContext httpContext, IFormFile file, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+    {
+        var (_, _, _, fail) = await ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+        if (file is null || file.Length == 0) return Results.BadRequest(new { error = "file is required" });
+        if (file.Length > 100 * 1024 * 1024) return Results.BadRequest(new { error = "Max file size is 100 MB." });
+        var safeName = Path.GetFileName(file.FileName);
+        string storagePath;
+        await using (var stream = file.OpenReadStream())
+        {
+            storagePath = await storage.SaveAsync(stream, $"{ModuleCohortLogic.StoragePrefix}fields/{Guid.NewGuid():N}-{safeName}", ct);
+        }
+        return Results.Ok(new { token = storagePath, fileName = safeName });
+    }
+
+    private static async Task<IResult> DownloadFieldFileAsync(
+        Guid valueId, HttpContext httpContext, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+    {
+        var (_, partnerId, _, fail) = await ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+        var value = await (
+            from v in db.CohortFieldValues
+            join c in db.ModuleCohorts on v.ModuleCohortId equals c.ModuleCohortId
+            where v.CohortFieldValueId == valueId && c.PartnerId == partnerId
+            select new { v.Value, v.FileName }).FirstOrDefaultAsync(ct);
+        if (value is null || !value.Value.Contains(ModuleCohortLogic.StoragePrefix)) return Results.NotFound();
+        try
+        {
+            var stream = await storage.OpenReadAsync(value.Value, ct);
+            return Results.File(stream, "application/octet-stream", value.FileName ?? "cohort-file");
+        }
+        catch (FileNotFoundException) { return Results.NotFound(); }
     }
 
     private static async Task<IResult> StudentCohortsAsync(
