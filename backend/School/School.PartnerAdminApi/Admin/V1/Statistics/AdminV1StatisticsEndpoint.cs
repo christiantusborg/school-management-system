@@ -123,7 +123,7 @@ public sealed class AdminV1StatisticsEndpoint : IEndpointMarker
         active = b.Active, activePct = b.ActivePct,
     };
 
-    private static async Task<IResult> OutcomesAsync(
+    internal static async Task<IResult> OutcomesAsync(
         OdinDbContext db, CancellationToken ct,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null)

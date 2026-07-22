@@ -7,6 +7,12 @@
           passed (grades approved), dropped out, deferred, still active. Drafts and rejected
           applications are excluded. Click a row to fold out its programmes and specializations.</p>
       </div>
+      <div class="st-report-btns">
+        <button type="button" class="btn-report" :disabled="reporting" @click="downloadReport('pdf')">
+          {{ reporting === 'pdf' ? 'Preparing…' : '⤓ Full report (PDF)' }}</button>
+        <button type="button" class="btn-report" :disabled="reporting" @click="downloadReport('xlsx')">
+          {{ reporting === 'xlsx' ? 'Preparing…' : '⤓ Spreadsheet (Excel)' }}</button>
+      </div>
     </div>
 
     <div class="st-filters">
@@ -129,6 +135,32 @@ const data = ref({ byPartner: [], bySchool: [], overall: null })
 const loading = ref(false)
 const error = ref('')
 const exporting = ref(false)
+const reporting = ref('')
+
+// Full report: every tab in one document — PDF chapters or an XLSX workbook
+// (Open XML: Excel, LibreOffice and Google Sheets all read it) with one
+// worksheet per tab.
+async function downloadReport(format) {
+  if (reporting.value) return
+  reporting.value = format
+  error.value = ''
+  try {
+    const params = { format }
+    if (from.value) params.from = from.value
+    if (to.value) params.to = to.value
+    const res = await api.get('/v1/admin/statistics/full-report', { params, responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = format === 'xlsx' ? 'mgw-statistics.xlsx' : 'mgw-statistics-report.pdf'
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (e) {
+    error.value = e.response?.data?.error ?? e.message ?? 'Report failed'
+  } finally {
+    reporting.value = ''
+  }
+}
 
 async function exportFile(format) {
   if (exporting.value) return
@@ -183,6 +215,10 @@ onMounted(load)
 
 <style scoped>
 .st-title { margin: 0; font-size: 1.4rem; color: #003366; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.st-report-btns { display: flex; gap: .5rem; flex-shrink: 0; }
+.btn-report { background: #003366; border: 1px solid #003366; color: #fff; border-radius: 6px; padding: .45rem .9rem; font-size: .82rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn-report:disabled { opacity: .6; cursor: default; }
 .st-subtabs { display: flex; gap: .15rem; border-bottom: 2px solid #e2e8f1; margin: .2rem 0 1rem; flex-wrap: wrap; }
 .st-subtab { background: none; border: none; padding: .5rem .9rem; font-size: .86rem; font-weight: 600; color: #6b7888; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
 .st-subtab.on { color: #003366; border-bottom-color: #003366; }

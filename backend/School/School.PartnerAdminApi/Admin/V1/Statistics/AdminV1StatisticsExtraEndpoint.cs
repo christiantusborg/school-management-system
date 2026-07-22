@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using ClosedXML.Excel;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -32,6 +33,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
         app.MapGet("/v1/admin/statistics/operations", OperationsAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/finance", FinanceAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/trends", TrendsAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/statistics/full-report", FullReportAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/{tab}/export", ExportTabAsync).RequireAuthorization("AdminOnly");
         return app;
     }
@@ -734,6 +736,196 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                     x.TotalPages().FontSize(7);
                 });
             });
+        }).GeneratePdf();
+    }
+
+    // ── Full report: every tab in one PDF or one multi-sheet XLSX workbook ──
+
+    private static List<ExportTable> OutcomesTables(JsonElement root)
+    {
+        string[] headers = ["Group", "Programme", "Specialization", "Students",
+            "Passed", "Passed %", "Dropped", "Dropped %", "Deferred", "Deferred %", "Active", "Active %"];
+        string[] Row(string group, string prog, string spec, JsonElement b) =>
+        [
+            group, prog, spec, S(b, "total"), S(b, "passed"), S(b, "passedPct"), S(b, "dropped"),
+            S(b, "droppedPct"), S(b, "deferred"), S(b, "deferredPct"), S(b, "active"), S(b, "activePct"),
+        ];
+        List<string[]> Tree(JsonElement nodes)
+        {
+            var rows = new List<string[]>();
+            foreach (var n in nodes.EnumerateArray())
+            {
+                var label = S(n.GetProperty("bucket"), "label");
+                rows.Add(Row(label, "", "", n.GetProperty("bucket")));
+                foreach (var pg in n.GetProperty("programmes").EnumerateArray())
+                {
+                    rows.Add(Row(label, S(pg.GetProperty("programme"), "label"), "", pg.GetProperty("programme")));
+                    foreach (var sp in pg.GetProperty("specializations").EnumerateArray())
+                        rows.Add(Row(label, S(pg.GetProperty("programme"), "label"), S(sp, "label"), sp));
+                }
+            }
+            return rows;
+        }
+        return
+        [
+            new ExportTable("Per partner", headers, Tree(root.GetProperty("byPartner"))),
+            new ExportTable("Per school", headers, Tree(root.GetProperty("bySchool"))),
+            new ExportTable("Overall", headers, [Row("All", "", "", root.GetProperty("overall"))]),
+        ];
+    }
+
+    private static async Task<List<(string Title, List<ExportTable> Tables)>> BuildAllAsync(
+        OdinDbContext db, DateTime? from, DateTime? to, string? granularity, CancellationToken ct)
+    {
+        var chapters = new List<(string, List<ExportTable>)>();
+        var outcomes = await AdminV1StatisticsEndpoint.OutcomesAsync(db, ct, from, to);
+        if (outcomes is IValueHttpResult { Value: { } op })
+            chapters.Add(("Outcomes", OutcomesTables(JsonSerializer.SerializeToElement(op))));
+
+        foreach (var tab in new[] { "grades", "teachers", "demographics", "operations", "finance", "trends" })
+        {
+            IResult inner = tab switch
+            {
+                "grades" => await GradesAsync(db, ct, from, to),
+                "teachers" => await TeachersAsync(db, ct, from, to),
+                "demographics" => await DemographicsAsync(db, ct, from, to),
+                "operations" => await OperationsAsync(db, ct, from, to),
+                "finance" => await FinanceAsync(db, ct, from, to),
+                _ => await TrendsAsync(db, ct, from, to, granularity),
+            };
+            if (inner is IValueHttpResult { Value: { } payload })
+                chapters.Add((TabTitles[tab], TablesFor(tab, JsonSerializer.SerializeToElement(payload))));
+        }
+        return chapters;
+    }
+
+    private static async Task<IResult> FullReportAsync(
+        OdinDbContext db, CancellationToken ct,
+        [FromQuery] string? format = null,
+        [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
+        [FromQuery] string? granularity = null)
+    {
+        var chapters = await BuildAllAsync(db, from, to, granularity, ct);
+        var period = (from, to) switch
+        {
+            (null, null) => "all time",
+            ({ } f, null) => $"from {f:yyyy-MM-dd}",
+            (null, { } t) => $"until {t:yyyy-MM-dd}",
+            ({ } f, { } t) => $"{f:yyyy-MM-dd} to {t:yyyy-MM-dd}",
+        };
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
+        return string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase)
+            ? Results.File(FullXlsx(chapters, period),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                $"mgw-statistics-{stamp}.xlsx")
+            : Results.File(FullPdf(chapters, period), "application/pdf", $"mgw-statistics-report-{stamp}.pdf");
+    }
+
+    private static byte[] FullXlsx(List<(string Title, List<ExportTable> Tables)> chapters, string period)
+    {
+        using var wb = new XLWorkbook();
+        foreach (var (title, tables) in chapters)
+        {
+            // Sheet names: max 31 chars, no special chars.
+            var sheetName = title.Replace("&", "and");
+            if (sheetName.Length > 31) sheetName = sheetName[..31];
+            var ws = wb.AddWorksheet(sheetName);
+            var row = 1;
+            ws.Cell(row, 1).Value = $"MGW Statistics — {title} · {period}";
+            ws.Cell(row, 1).Style.Font.SetBold().Font.SetFontSize(13).Font.SetFontColor(XLColor.FromHtml("#003366"));
+            row += 2;
+            foreach (var t in tables)
+            {
+                ws.Cell(row, 1).Value = t.Title;
+                ws.Cell(row, 1).Style.Font.SetBold().Font.SetFontSize(11).Font.SetFontColor(XLColor.FromHtml("#003366"));
+                row++;
+                for (var c = 0; c < t.Headers.Length; c++)
+                {
+                    var cell = ws.Cell(row, c + 1);
+                    cell.Value = t.Headers[c];
+                    cell.Style.Font.SetBold();
+                    cell.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#eef2f8"));
+                }
+                row++;
+                foreach (var r in t.Rows)
+                {
+                    for (var c = 0; c < r.Length; c++)
+                    {
+                        var cell = ws.Cell(row, c + 1);
+                        // Real numbers become numeric cells so formulas/sorting work.
+                        if (decimal.TryParse(r[c], System.Globalization.NumberStyles.Number,
+                                System.Globalization.CultureInfo.InvariantCulture, out var num))
+                            cell.Value = num;
+                        else
+                            cell.Value = r[c];
+                    }
+                    row++;
+                }
+                row++;
+            }
+            ws.Columns().AdjustToContents(1, Math.Min(row, 500));
+            ws.SheetView.FreezeRows(1);
+        }
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    private static byte[] FullPdf(List<(string Title, List<ExportTable> Tables)> chapters, string period)
+    {
+        return Document.Create(doc =>
+        {
+            foreach (var (title, tables) in chapters)
+            {
+                doc.Page(page =>
+                {
+                    page.Size(PageSizes.A4.Landscape());
+                    page.Margin(28);
+                    page.DefaultTextStyle(x => x.FontSize(8));
+
+                    page.Header().Column(col =>
+                    {
+                        col.Item().Text($"MGW Statistics Report — {title}").FontSize(15).Bold().FontColor("#003366");
+                        col.Item().Text($"Period: {period} · generated {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC")
+                            .FontSize(8).FontColor("#555555");
+                        col.Item().PaddingTop(4);
+                    });
+
+                    page.Content().Column(col =>
+                    {
+                        foreach (var t in tables)
+                        {
+                            if (t.Rows.Count == 0) continue;
+                            col.Item().PaddingTop(8).Text(t.Title).FontSize(11).Bold().FontColor("#003366");
+                            col.Item().Table(table =>
+                            {
+                                table.ColumnsDefinition(c =>
+                                {
+                                    for (var i = 0; i < t.Headers.Length; i++)
+                                        c.RelativeColumn(i == 0 ? 3 : 1.2f);
+                                });
+                                foreach (var h in t.Headers)
+                                    table.Cell().Background("#f0f3f7").Padding(3).Text(h).Bold().FontSize(7);
+                                var odd = false;
+                                foreach (var r in t.Rows)
+                                {
+                                    odd = !odd;
+                                    foreach (var cell in r)
+                                        table.Cell().Background(odd ? "#ffffff" : "#f8fafc").Padding(3).Text(cell).FontSize(7);
+                                }
+                            });
+                        }
+                    });
+
+                    page.Footer().AlignRight().Text(x =>
+                    {
+                        x.Span($"{title} · Page ").FontSize(7);
+                        x.CurrentPageNumber().FontSize(7);
+                        x.Span(" of ").FontSize(7);
+                        x.TotalPages().FontSize(7);
+                    });
+                });
+            }
         }).GeneratePdf();
     }
 }
