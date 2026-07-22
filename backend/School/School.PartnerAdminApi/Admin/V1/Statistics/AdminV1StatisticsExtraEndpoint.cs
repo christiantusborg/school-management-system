@@ -228,6 +228,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                 Programme = (p.Code ?? "") + " — " + p.Name,
                 st.Gender,
                 st.DateOfBirth,
+                st.DisabilityDisclosure,
                 Nationality = db.Nationalities.Where(n => n.NationalityId == st.NationalityId).Select(n => n.Name).FirstOrDefault(),
                 Industry = db.EmploymentIndustries.Where(i => i.EmploymentIndustryId == st.CurrentEmploymentIndustryId).Select(i => i.Name).FirstOrDefault(),
                 Position = db.PositionFunctions.Where(x => x.PositionFunctionId == st.CurrentPositionFunctionId).Select(x => x.Name).FirstOrDefault(),
@@ -276,6 +277,8 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                 Dimension("nationality", "Nationality", r => (string?)r.Nationality ?? "Unknown"),
                 Dimension("industry", "Employment industry", r => (string?)r.Industry ?? "Unknown"),
                 Dimension("position", "Position function", r => (string?)r.Position ?? "Unknown"),
+                Dimension("disability", "Disability / learning difference disclosed",
+                    r => string.IsNullOrWhiteSpace(r.DisabilityDisclosure) ? "Not answered" : (string)r.DisabilityDisclosure),
             },
         });
     }
