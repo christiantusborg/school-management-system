@@ -321,6 +321,8 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
         var field = await db.CohortUploadFields
             .FirstOrDefaultAsync(f => f.CohortUploadFieldId == fieldId && f.DeletedAt == null, ct);
         if (field is null) return Results.BadRequest(new { error = "Unknown upload field." });
+        if (field.CohortTypeId != null && field.CohortTypeId != cohort.CohortTypeId)
+            return Results.BadRequest(new { error = "That upload field belongs to a different cohort type." });
         if (files is null || files.Count == 0) return Results.BadRequest(new { error = "No files supplied." });
         if (!field.AllowMultiple && files.Count > 1)
             return Results.BadRequest(new { error = $"\"{field.Label}\" accepts a single document." });

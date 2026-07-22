@@ -168,8 +168,8 @@ public static class DatabaseSeeder
         await SeedPartnerDocumentTypesAsync(context, logger);
         await SeedPartnerDatasheetTemplatesAsync(context, logger);
         await SeedFacultyProfileStructureAsync(context, logger);
-        await SeedCohortUploadFieldsAsync(context, logger);
         await SeedCohortTypesAsync(context, logger);
+        await SeedCohortUploadFieldsAsync(context, logger);
         await SeedPathwaysAsync(context, logger, eduLevelByName);
         await SeedIbssCoreProgrammesAsync(context, logger);
         await SeedDemoPartnersAsync(context, logger);
@@ -2081,6 +2081,11 @@ public static class DatabaseSeeder
     private static async Task SeedCohortUploadFieldsAsync(OdinDbContext context, ILogger logger)
     {
         if (await context.CohortUploadFields.IgnoreQueryFilters().AnyAsync()) return;
+        var defaultTypeId = await context.CohortTypes
+            .Where(t => t.DeletedAt == null)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
+            .Select(t => (Guid?)t.CohortTypeId)
+            .FirstOrDefaultAsync();
 
         var seeds = new (string Label, bool Multiple, bool Grading, bool StudentVisible)[]
         {
@@ -2095,6 +2100,7 @@ public static class DatabaseSeeder
         {
             context.CohortUploadFields.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.CohortUploadField
             {
+                CohortTypeId = defaultTypeId,
                 Label = label,
                 AllowMultiple = multiple,
                 IsGradingSheet = grading,
@@ -2129,6 +2135,69 @@ public static class DatabaseSeeder
             foreach (var c in orphans) c.CohortTypeId = defaultType.CohortTypeId;
             await context.SaveChangesAsync();
             logger.LogInformation("[Seeder] {Count} cohort(s) adopted onto the default cohort type", orphans.Count);
+        }
+
+        // Dissertation types (insert-by-name; admin edits never overwritten).
+        var existingTypeNames = (await context.CohortTypes.IgnoreQueryFilters()
+            .Select(t => t.Name).ToListAsync()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var typesAdded = 0;
+        void AddCohortType(string name,
+            (string Label, string Type, string? Options, bool Required)[] dataFields,
+            (string Label, bool Multiple, bool Grading, bool StudentVisible)[] uploads)
+        {
+            if (existingTypeNames.Contains(name)) return;
+            var ctype = new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.CohortType { Name = name };
+            context.CohortTypes.Add(ctype);
+            var order = 0;
+            foreach (var (label, type, options, required) in dataFields)
+                context.CohortTypeFields.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.CohortTypeField
+                {
+                    CohortTypeId = ctype.CohortTypeId,
+                    Label = label, Type = type, OptionsText = options,
+                    IsRequired = required, SortOrder = order++,
+                });
+            var uOrder = 0;
+            foreach (var (label, multiple, grading, visible) in uploads)
+                context.CohortUploadFields.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.CohortUploadField
+                {
+                    CohortTypeId = ctype.CohortTypeId,
+                    Label = label, AllowMultiple = multiple,
+                    IsGradingSheet = grading, VisibleToStudents = visible,
+                    SortOrder = uOrder++,
+                });
+            typesAdded++;
+        }
+        const string TSel = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.CohortTypeField.TypeSelect;
+        const string TBool = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.CohortTypeField.TypeBool;
+        AddCohortType("Dissertation Proposal",
+            new[]
+            {
+                ("Supervisor documents uploaded", TBool, (string?)null, false),
+                ("Supervisor school check", TSel, "Qualified\nUnqualified", false),
+                ("School check — Marks", TSel, "Passed\nNot passed", false),
+                ("School check — Format", TSel, "Passed\nNot passed", false),
+            },
+            new[]
+            {
+                ("Proposal documents", true, false, false),
+                ("Supervisor's profile documents", true, false, false),
+                ("Grading sheet for proposal", true, true, false),
+            });
+        AddCohortType("Final Project / Dissertation",
+            new[]
+            {
+                ("School check — Marks", TSel, "Passed\nNot passed", false),
+                ("School check — Format", TSel, "Passed\nNot passed", false),
+            },
+            new[]
+            {
+                ("Project documents", true, false, false),
+                ("Grading sheet for project", true, true, false),
+            });
+        if (typesAdded > 0)
+        {
+            await context.SaveChangesAsync();
+            logger.LogInformation("[Seeder] Dissertation cohort types seeded: {Count}", typesAdded);
         }
     }
 

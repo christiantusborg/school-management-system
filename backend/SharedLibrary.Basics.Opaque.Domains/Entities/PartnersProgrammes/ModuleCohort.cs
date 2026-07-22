@@ -64,6 +64,9 @@ public class ModuleCohortStudent : IDeletedAtEntity
 public class CohortUploadField : IDeletedAtEntity
 {
     public Guid CohortUploadFieldId { get; set; } = Guid.NewGuid();
+    /// <summary>Owning cohort type — every type carries its own upload
+    /// fields (null only on legacy rows before types owned uploads).</summary>
+    public Guid? CohortTypeId { get; set; }
     public string Label { get; set; } = string.Empty;
     public bool AllowMultiple { get; set; }
     /// <summary>Grading-sheet fields set GradingSheetUploadedDate on upload.</summary>

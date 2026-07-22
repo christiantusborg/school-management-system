@@ -22,6 +22,7 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         app.MapPatch("/v1/admin/cohort-types/{typeId:guid}", RenameTypeAsync).RequireAuthorization("AdminOnly");
         app.MapPut("/v1/admin/cohort-types/{typeId:guid}/structure", SaveTypeStructureAsync).RequireAuthorization("AdminOnly");
         app.MapDelete("/v1/admin/cohort-types/{typeId:guid}", DeleteTypeAsync).RequireAuthorization("AdminOnly");
+        app.MapPost("/v1/admin/cohort-types/{typeId:guid}/clone", CloneTypeAsync).RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/cohort-field-files", UploadFieldFileAsync)
             .RequireAuthorization("AdminOnly").DisableAntiforgery();
         app.MapGet("/v1/admin/cohort-field-values/{valueId:guid}/file", DownloadFieldFileAsync).RequireAuthorization("AdminOnly");
@@ -132,35 +133,8 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         var settings = await ModuleCohortLogic.SettingsAsync(db, ct);
         if (!string.IsNullOrWhiteSpace(body.CohortNumberPattern))
             settings.CohortNumberPattern = body.CohortNumberPattern.Trim();
-
-        // Reconcile upload fields with soft-delete + restore-by-label, so
-        // files uploaded on a removed field survive re-adding it.
-        var all = await db.CohortUploadFields.ToListAsync(ct);
-        var kept = new HashSet<Guid>();
-        var order = 0;
-        foreach (var f in body.Fields ?? [])
-        {
-            if (string.IsNullOrWhiteSpace(f.Label)) continue;
-            var field = f.Id is { } fid ? all.FirstOrDefault(x => x.CohortUploadFieldId == fid) : null;
-            field ??= all.FirstOrDefault(x =>
-                x.DeletedAt != null && string.Equals(x.Label, f.Label.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (field is null)
-            {
-                field = new CohortUploadField();
-                db.CohortUploadFields.Add(field);
-                all.Add(field);
-            }
-            field.Label = f.Label.Trim();
-            field.AllowMultiple = f.AllowMultiple;
-            field.IsGradingSheet = f.IsGradingSheet;
-            field.VisibleToStudents = f.VisibleToStudents;
-            field.SortOrder = order++;
-            field.DeletedAt = null;
-            kept.Add(field.CohortUploadFieldId);
-        }
-        foreach (var f in all.Where(x => x.DeletedAt == null && !kept.Contains(x.CohortUploadFieldId)))
-            f.DeletedAt = DateTime.UtcNow;
-
+        // Upload fields moved into the cohort types — settings carry only
+        // the number pattern now.
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { saved = true });
     }
@@ -328,9 +302,19 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         public bool IsRequired { get; init; }
     }
 
+    public sealed class TypeUploadFieldDto
+    {
+        public Guid? Id { get; init; }
+        public string? Label { get; init; }
+        public bool AllowMultiple { get; init; }
+        public bool IsGradingSheet { get; init; }
+        public bool VisibleToStudents { get; init; }
+    }
+
     public sealed class TypeStructureBody
     {
         public List<TypeFieldDto>? Fields { get; init; }
+        public List<TypeUploadFieldDto>? UploadFields { get; init; }
     }
 
     private static async Task<IResult> ListTypesAsync(OdinDbContext db, CancellationToken ct)
@@ -350,6 +334,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
             .Where(f => typeIds.Contains(f.CohortTypeId) && f.DeletedAt == null)
             .OrderBy(f => f.SortOrder)
             .ToListAsync(ct);
+        var uploadFields = await db.CohortUploadFields
+            .Where(f => f.CohortTypeId != null && typeIds.Contains(f.CohortTypeId.Value) && f.DeletedAt == null)
+            .OrderBy(f => f.SortOrder)
+            .ToListAsync(ct);
         return Results.Ok(new
         {
             items = types.Select(t => new
@@ -357,6 +345,7 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
                 cohortTypeId = t.CohortTypeId,
                 name = t.Name,
                 inUse = t.InUse,
+                locked = t.InUse > 0,
                 fields = fields.Where(f => f.CohortTypeId == t.CohortTypeId).Select(f => new
                 {
                     id = f.CohortTypeFieldId,
@@ -364,6 +353,14 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
                     type = f.Type,
                     optionsText = f.OptionsText,
                     isRequired = f.IsRequired,
+                }).ToList(),
+                uploadFields = uploadFields.Where(f => f.CohortTypeId == t.CohortTypeId).Select(f => new
+                {
+                    id = f.CohortUploadFieldId,
+                    label = f.Label,
+                    allowMultiple = f.AllowMultiple,
+                    isGradingSheet = f.IsGradingSheet,
+                    visibleToStudents = f.VisibleToStudents,
                 }).ToList(),
             }).ToList(),
         });
@@ -386,6 +383,8 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     {
         var type = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
         if (type is null) return Results.NotFound();
+        if (await db.ModuleCohorts.AnyAsync(c => c.CohortTypeId == typeId && c.DeletedAt == null, ct))
+            return Results.BadRequest(new { error = "This cohort type is assigned to a cohort and is locked — clone it to make changes." });
         var name = body.GetValueOrDefault("name")?.Trim();
         if (string.IsNullOrWhiteSpace(name))
             return Results.BadRequest(new { error = "Name is required." });
@@ -401,6 +400,8 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     {
         var type = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
         if (type is null) return Results.NotFound();
+        if (await db.ModuleCohorts.AnyAsync(c => c.CohortTypeId == typeId && c.DeletedAt == null, ct))
+            return Results.BadRequest(new { error = "This cohort type is assigned to a cohort and is locked — clone it to make changes." });
         foreach (var f in body.Fields ?? [])
         {
             if (string.IsNullOrWhiteSpace(f.Label))
@@ -432,8 +433,69 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         }
         foreach (var f in all.Where(x => x.DeletedAt == null && !kept.Contains(x.CohortTypeFieldId)))
             f.DeletedAt = DateTime.UtcNow;
+
+        // Upload fields of this type — same soft-delete/restore-by-label rules.
+        var allUploads = await db.CohortUploadFields.Where(f => f.CohortTypeId == typeId).ToListAsync(ct);
+        var keptUploads = new HashSet<Guid>();
+        var uOrder = 0;
+        foreach (var f in body.UploadFields ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(f.Label)) continue;
+            var field = f.Id is { } uid ? allUploads.FirstOrDefault(x => x.CohortUploadFieldId == uid) : null;
+            field ??= allUploads.FirstOrDefault(x =>
+                x.DeletedAt != null && string.Equals(x.Label, f.Label.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (field is null)
+            {
+                field = new CohortUploadField { CohortTypeId = typeId };
+                db.CohortUploadFields.Add(field);
+                allUploads.Add(field);
+            }
+            field.Label = f.Label.Trim();
+            field.AllowMultiple = f.AllowMultiple;
+            field.IsGradingSheet = f.IsGradingSheet;
+            field.VisibleToStudents = f.VisibleToStudents;
+            field.SortOrder = uOrder++;
+            field.DeletedAt = null;
+            keptUploads.Add(field.CohortUploadFieldId);
+        }
+        foreach (var f in allUploads.Where(x => x.DeletedAt == null && !keptUploads.Contains(x.CohortUploadFieldId)))
+            f.DeletedAt = DateTime.UtcNow;
+
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { saved = true });
+    }
+
+    /// <summary>Full editable copy of a (typically locked) type: name +
+    /// " (copy)", all data fields and upload fields.</summary>
+    private static async Task<IResult> CloneTypeAsync(Guid typeId, OdinDbContext db, CancellationToken ct)
+    {
+        var src = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
+        if (src is null) return Results.NotFound();
+        var clone = new CohortType { Name = src.Name + " (copy)" };
+        db.CohortTypes.Add(clone);
+        var fields = await db.CohortTypeFields
+            .Where(f => f.CohortTypeId == typeId && f.DeletedAt == null)
+            .OrderBy(f => f.SortOrder).ToListAsync(ct);
+        foreach (var f in fields)
+            db.CohortTypeFields.Add(new CohortTypeField
+            {
+                CohortTypeId = clone.CohortTypeId,
+                Label = f.Label, Type = f.Type, OptionsText = f.OptionsText,
+                IsRequired = f.IsRequired, SortOrder = f.SortOrder,
+            });
+        var uploads = await db.CohortUploadFields
+            .Where(f => f.CohortTypeId == typeId && f.DeletedAt == null)
+            .OrderBy(f => f.SortOrder).ToListAsync(ct);
+        foreach (var f in uploads)
+            db.CohortUploadFields.Add(new CohortUploadField
+            {
+                CohortTypeId = clone.CohortTypeId,
+                Label = f.Label, AllowMultiple = f.AllowMultiple,
+                IsGradingSheet = f.IsGradingSheet, VisibleToStudents = f.VisibleToStudents,
+                SortOrder = f.SortOrder,
+            });
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { cohortTypeId = clone.CohortTypeId });
     }
 
     private static async Task<IResult> DeleteTypeAsync(Guid typeId, OdinDbContext db, CancellationToken ct)
@@ -580,6 +642,8 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         var field = await db.CohortUploadFields
             .FirstOrDefaultAsync(f => f.CohortUploadFieldId == fieldId && f.DeletedAt == null, ct);
         if (field is null) return Results.BadRequest(new { error = "Unknown upload field." });
+        if (field.CohortTypeId != null && field.CohortTypeId != cohort.CohortTypeId)
+            return Results.BadRequest(new { error = "That upload field belongs to a different cohort type." });
         if (files is null || files.Count == 0)
             return Results.BadRequest(new { error = "No files supplied." });
         if (!field.AllowMultiple && files.Count > 1)

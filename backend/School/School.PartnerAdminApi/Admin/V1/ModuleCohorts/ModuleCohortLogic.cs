@@ -392,8 +392,12 @@ public static class ModuleCohortLogic
         var row = (await ListAsync(db, null, null, ct, onlyCohortId: cohortId)).FirstOrDefault();
         if (row is null) return null;
 
+        var cohortTypeId = await db.ModuleCohorts
+            .Where(c => c.ModuleCohortId == cohortId)
+            .Select(c => c.CohortTypeId)
+            .FirstOrDefaultAsync(ct);
         var fields = await db.CohortUploadFields
-            .Where(f => f.DeletedAt == null)
+            .Where(f => f.DeletedAt == null && f.CohortTypeId == cohortTypeId)
             .OrderBy(f => f.SortOrder)
             .ToListAsync(ct);
         var files = await db.CohortUploadFiles
@@ -402,10 +406,7 @@ public static class ModuleCohortLogic
             .ToListAsync(ct);
 
         // Cohort type extra-data form + this cohort's values.
-        var typeId = await db.ModuleCohorts
-            .Where(c => c.ModuleCohortId == cohortId)
-            .Select(c => c.CohortTypeId)
-            .FirstOrDefaultAsync(ct);
+        var typeId = cohortTypeId;
         var typeFields = typeId is null ? [] : await db.CohortTypeFields
             .Where(f => f.CohortTypeId == typeId && f.DeletedAt == null)
             .OrderBy(f => f.SortOrder)

@@ -3,8 +3,8 @@
     <div class="mcc-head">
       <div>
         <h2 class="mcc-title">Module Cohorts</h2>
-        <p class="mcc-sub">Settings for the Module Cohort Schedule: the cohort number pattern and the configurable
-          upload fields every cohort shows. Removing a field hides it; re-adding the same label restores its files.</p>
+        <p class="mcc-sub">The cohort number pattern plus the cohort TYPES: every type is a template carrying its
+          own upload fields and data fields. A type assigned to a cohort is locked — clone it to make changes.</p>
       </div>
       <button type="button" class="btn-primary-sm" :disabled="saving || loading" @click="save">
         {{ saving ? 'Saving…' : 'Save' }}
@@ -21,22 +21,6 @@
              placeholder="{partner}-{module}-{n}" />
       <p class="mcc-sub" style="margin:.25rem 0 1rem">{partner} = partner name, {module} = module code, {n} = sequence per partner+module (3 digits).</p>
 
-      <div class="mcc-fields-head">
-        <label class="mcc-lbl" style="margin:0">Upload fields</label>
-        <button type="button" class="btn-sm" @click="fields.push({ id: null, label: '', allowMultiple: true, isGradingSheet: false })">+ Add field</button>
-      </div>
-      <div v-for="(f, i) in fields" :key="i" class="mcc-field-row">
-        <input v-model="f.label" class="mcc-inp" placeholder="Field label" style="flex:1.6" />
-        <select v-model="f.allowMultiple" class="mcc-inp" style="flex:.8">
-          <option :value="false">1 document</option>
-          <option :value="true">Several documents</option>
-        </select>
-        <label class="mcc-check" title="Uploading here stamps 'Date Grading Sheet Uploaded'">
-          <input type="checkbox" v-model="f.isGradingSheet" /> grading sheet
-        </label>
-        <button type="button" class="btn-sm btn-danger" @click="fields.splice(i, 1)">✕</button>
-      </div>
-
       <div class="mcc-fields-head" style="margin-top:1.4rem">
         <label class="mcc-lbl" style="margin:0">Cohort types</label>
         <button type="button" class="btn-sm" @click="openType(null)">+ Add cohort type</button>
@@ -50,13 +34,18 @@
           <tr v-for="t in types" :key="t.cohortTypeId">
             <td style="font-weight:600">{{ t.name }}</td>
             <td>
-              <span v-if="!t.fields.length" class="mcc-muted">—</span>
+              <span v-if="!t.fields.length && !t.uploadFields.length" class="mcc-muted">—</span>
+              <span v-for="f in t.uploadFields" :key="'u' + f.id" class="mcc-chip mcc-chip-upl">{{ f.label }}<em> · upload</em></span>
               <span v-for="f in t.fields" :key="f.id" class="mcc-chip">{{ f.label }}<em> · {{ f.type }}</em></span>
             </td>
-            <td>{{ t.inUse ? `${t.inUse} cohort${t.inUse === 1 ? '' : 's'}` : '—' }}</td>
             <td>
-              <button type="button" class="btn-sm" @click="openType(t)">✎ Edit</button>
-              <button type="button" class="btn-sm btn-danger" @click="removeType(t)">✕</button>
+              {{ t.inUse ? `${t.inUse} cohort${t.inUse === 1 ? '' : 's'}` : '—' }}
+              <span v-if="t.locked" class="mcc-lock" title="Assigned to a cohort — locked; clone to change.">🔒</span>
+            </td>
+            <td>
+              <button type="button" class="btn-sm" @click="openType(t)">{{ t.locked ? '👁 View' : '✎ Edit' }}</button>
+              <button type="button" class="btn-sm" @click="cloneType(t)">📋 Clone</button>
+              <button v-if="!t.locked" type="button" class="btn-sm btn-danger" @click="removeType(t)">✕</button>
             </td>
           </tr>
         </tbody>
@@ -69,15 +58,35 @@
           <div class="mcc-dialog-head"><h3>{{ typeId ? 'Edit cohort type' : 'New cohort type' }}</h3>
             <button type="button" class="mcc-x" @click="typeOpen = false">✕</button></div>
           <div class="mcc-dialog-body">
+            <div v-if="typeLocked" class="mcc-locked-banner">🔒 This cohort type is assigned to a cohort and is locked.
+              Use Clone to create an editable copy.</div>
             <label class="mcc-lbl">Name *</label>
-            <input v-model="typeName" class="mcc-inp" placeholder="e.g. Online run" />
+            <input v-model="typeName" class="mcc-inp" placeholder="e.g. Online run" :disabled="typeLocked" />
+
             <div class="mcc-fields-head" style="margin-top:.8rem">
-              <label class="mcc-lbl" style="margin:0">Fields</label>
-              <button type="button" class="btn-sm" @click="typeFields.push({ id: null, label: '', type: 'text', optionsText: '', isRequired: false })">+ Add field</button>
+              <label class="mcc-lbl" style="margin:0">Upload fields</label>
+              <button v-if="!typeLocked" type="button" class="btn-sm" @click="typeUploads.push({ id: null, label: '', allowMultiple: true, isGradingSheet: false, visibleToStudents: false })">+ Add upload field</button>
+            </div>
+            <div v-for="(f, i) in typeUploads" :key="'u' + i" class="mcc-field-row" style="flex-wrap:wrap">
+              <input v-model="f.label" class="mcc-inp" placeholder="Upload field label" style="flex:1.4" :disabled="typeLocked" />
+              <select v-model="f.allowMultiple" class="mcc-inp" style="flex:.8" :disabled="typeLocked">
+                <option :value="false">1 document</option>
+                <option :value="true">Several documents</option>
+              </select>
+              <label class="mcc-check" title="Uploading here stamps 'Date Grading Sheet Uploaded'">
+                <input type="checkbox" v-model="f.isGradingSheet" :disabled="typeLocked" /> grading sheet</label>
+              <label class="mcc-check" title="Students may download this field's files on their cohorts">
+                <input type="checkbox" v-model="f.visibleToStudents" :disabled="typeLocked" /> student-visible</label>
+              <button v-if="!typeLocked" type="button" class="btn-sm btn-danger" @click="typeUploads.splice(i, 1)">✕</button>
+            </div>
+
+            <div class="mcc-fields-head" style="margin-top:.8rem">
+              <label class="mcc-lbl" style="margin:0">Data fields</label>
+              <button v-if="!typeLocked" type="button" class="btn-sm" @click="typeFields.push({ id: null, label: '', type: 'text', optionsText: '', isRequired: false })">+ Add field</button>
             </div>
             <div v-for="(f, i) in typeFields" :key="i" class="mcc-field-row" style="flex-wrap:wrap">
-              <input v-model="f.label" class="mcc-inp" placeholder="Field label" style="flex:1.4" />
-              <select v-model="f.type" class="mcc-inp" style="flex:1">
+              <input v-model="f.label" class="mcc-inp" placeholder="Field label" style="flex:1.4" :disabled="typeLocked" />
+              <select v-model="f.type" class="mcc-inp" style="flex:1" :disabled="typeLocked">
                 <option value="text">Free text</option>
                 <option value="number">Number</option>
                 <option value="date">Date (calendar)</option>
@@ -85,16 +94,16 @@
                 <option value="bool">Yes / No</option>
                 <option value="file">File upload</option>
               </select>
-              <label class="mcc-check"><input type="checkbox" v-model="f.isRequired" /> req.</label>
-              <button type="button" class="btn-sm btn-danger" @click="typeFields.splice(i, 1)">✕</button>
+              <label class="mcc-check"><input type="checkbox" v-model="f.isRequired" :disabled="typeLocked" /> req.</label>
+              <button v-if="!typeLocked" type="button" class="btn-sm btn-danger" @click="typeFields.splice(i, 1)">✕</button>
               <textarea v-if="f.type === 'select'" v-model="f.optionsText" class="mcc-inp" style="flex-basis:100%" rows="2"
-                        placeholder="Dropdown options — one per line"></textarea>
+                        placeholder="Dropdown options — one per line" :disabled="typeLocked"></textarea>
             </div>
             <div v-if="typeError" class="err-banner" style="margin-top:.5rem">{{ typeError }}</div>
           </div>
           <div class="mcc-dialog-foot">
             <button type="button" class="btn-sm" @click="typeOpen = false">Cancel</button>
-            <button type="button" class="btn-primary-sm" :disabled="typeSaving || !typeName.trim()" @click="saveType">
+            <button v-if="!typeLocked" type="button" class="btn-primary-sm" :disabled="typeSaving || !typeName.trim()" @click="saveType">
               {{ typeSaving ? 'Saving…' : 'Save' }}</button>
           </div>
         </div>
@@ -119,6 +128,8 @@ const typeOpen = ref(false)
 const typeId = ref('')
 const typeName = ref('')
 const typeFields = ref([])
+const typeUploads = ref([])
+const typeLocked = ref(false)
 const typeSaving = ref(false)
 const typeError = ref('')
 
@@ -132,11 +143,28 @@ async function loadTypes() {
 function openType(t) {
   typeId.value = t?.cohortTypeId ?? ''
   typeName.value = t?.name ?? ''
+  typeLocked.value = !!t?.locked
   typeFields.value = (t?.fields ?? []).map(f => ({
     id: f.id, label: f.label, type: f.type, optionsText: f.optionsText ?? '', isRequired: !!f.isRequired,
   }))
+  typeUploads.value = (t?.uploadFields ?? []).map(f => ({
+    id: f.id, label: f.label, allowMultiple: !!f.allowMultiple,
+    isGradingSheet: !!f.isGradingSheet, visibleToStudents: !!f.visibleToStudents,
+  }))
   typeError.value = ''
   typeOpen.value = true
+}
+
+async function cloneType(t) {
+  error.value = ''
+  try {
+    const res = await api.post(`/v1/admin/cohort-types/${t.cohortTypeId}/clone`)
+    await loadTypes()
+    const clone = types.value.find(x => x.cohortTypeId === res.data.cohortTypeId)
+    if (clone) openType(clone)
+  } catch (e) {
+    error.value = e.response?.data?.error ?? e.message ?? 'Clone failed'
+  }
 }
 
 async function saveType() {
@@ -156,6 +184,10 @@ async function saveType() {
         id: f.id, label: f.label.trim(), type: f.type,
         optionsText: f.type === 'select' ? f.optionsText : null,
         isRequired: !!f.isRequired,
+      })),
+      uploadFields: typeUploads.value.filter(f => f.label.trim()).map(f => ({
+        id: f.id, label: f.label.trim(), allowMultiple: !!f.allowMultiple,
+        isGradingSheet: !!f.isGradingSheet, visibleToStudents: !!f.visibleToStudents,
       })),
     })
     typeOpen.value = false
@@ -203,9 +235,6 @@ async function save() {
   try {
     await api.put('/v1/admin/cohort-settings', {
       cohortNumberPattern: pattern.value.trim() || '{partner}-{module}-{n}',
-      fields: fields.value.filter(f => f.label.trim()).map(f => ({
-        id: f.id, label: f.label.trim(), allowMultiple: f.allowMultiple, isGradingSheet: f.isGradingSheet,
-      })),
     })
     savedFlash.value = true
     setTimeout(() => { savedFlash.value = false }, 4000)
@@ -242,6 +271,9 @@ onMounted(load)
 .mcc-muted { color: #9aa5b1; }
 .mcc-chip { display: inline-block; background: #eef3fa; border: 1px solid #d5e0ee; color: #2c3e50; border-radius: 12px; padding: .1rem .55rem; font-size: .72rem; margin: .1rem .25rem .1rem 0; }
 .mcc-chip em { font-style: normal; color: #6b7888; }
+.mcc-chip-upl { background: #fef7e8; border-color: #f0dcae; }
+.mcc-lock { margin-left: .3rem; }
+.mcc-locked-banner { background: #fff4e6; border: 1px solid #f0d2a8; color: #8a5a00; padding: .45rem .7rem; border-radius: 6px; font-size: .8rem; margin-bottom: .6rem; font-weight: 600; }
 .mcc-types { width: 100%; border-collapse: collapse; font-size: .85rem; }
 .mcc-types th { text-align: left; padding: .4rem .55rem; color: #6b7888; font-size: .73rem; text-transform: uppercase; border-bottom: 1.5px solid #e8edf4; }
 .mcc-types td { padding: .4rem .55rem; border-bottom: 1px solid #eef1f5; vertical-align: middle; }
