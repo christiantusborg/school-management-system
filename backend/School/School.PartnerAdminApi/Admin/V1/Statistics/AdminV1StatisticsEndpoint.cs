@@ -43,6 +43,8 @@ public sealed class AdminV1StatisticsEndpoint : IEndpointMarker
             {
                 PartnerName = db.Partners.Where(x => x.PartnerId == e.PartnerId).Select(x => x.Name).FirstOrDefault(),
                 SchoolName = db.Schools.Where(x => x.SchoolId == p.SchoolId).Select(x => x.Name).FirstOrDefault(),
+                ProgrammeLabel = (p.Code ?? "") + " — " + p.Name,
+                SpecializationName = sp.Name,
                 StatusCode = e.Status.Code,
             }).ToListAsync(ct);
 
@@ -76,8 +78,22 @@ public sealed class AdminV1StatisticsEndpoint : IEndpointMarker
             .OrderBy(g => g.Key)
             .Select(g => Bucket(g.Key, g.Select(x => x.StatusCode).ToList()))
             .ToList();
+        // Programme aggregate + one nested bucket per specialization.
+        var byProgramme = rows
+            .GroupBy(r => r.ProgrammeLabel)
+            .OrderBy(g => g.Key)
+            .Select(g => new
+            {
+                programme = Bucket(g.Key, g.Select(x => x.StatusCode).ToList()),
+                specializations = g
+                    .GroupBy(x => x.SpecializationName ?? "(no specialization)")
+                    .OrderBy(sg => sg.Key)
+                    .Select(sg => Bucket(sg.Key, sg.Select(x => x.StatusCode).ToList()))
+                    .ToList(),
+            })
+            .ToList();
         var overall = Bucket("All", rows.Select(x => x.StatusCode).ToList());
 
-        return Results.Ok(new { byPartner, bySchool, overall });
+        return Results.Ok(new { byPartner, bySchool, byProgramme, overall });
     }
 }
