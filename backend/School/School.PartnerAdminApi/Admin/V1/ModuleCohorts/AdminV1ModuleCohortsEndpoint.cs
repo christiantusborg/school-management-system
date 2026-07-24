@@ -93,6 +93,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         public DateTime? DocQaDate { get; init; }
         public bool? GradeQaChecked { get; init; }
         public DateTime? GradeQaDate { get; init; }
+        /// <summary>Cohort grading override: false = follow the module,
+        /// true = use RubricRows as this cohort's own rubric.</summary>
+        public bool? RubricOverride { get; init; }
+        public List<School.PartnerAdminApi.Admin.V1.Rubrics.AdminV1RubricsEndpoint.RowDto>? RubricRows { get; init; }
     }
 
     public sealed class AssignBody
@@ -270,6 +274,8 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
             if (!typeOk) return Results.BadRequest(new { error = "Unknown cohort type." });
             cohort.CohortTypeId = newType;
         }
+        var rubricError = await ModuleCohortLogic.ApplyRubricOverrideAsync(db, cohort, body.RubricOverride, body.RubricRows, ct);
+        if (rubricError is not null) return Results.BadRequest(new { error = rubricError });
         await ModuleCohortLogic.SaveFieldValuesAsync(db, cohort.ModuleCohortId,
             body.FieldValues?.ToDictionary(kv => kv.Key, kv => (kv.Value?.Value, kv.Value?.FileName)), ct);
         cohort.UpdatedAt = DateTime.UtcNow;

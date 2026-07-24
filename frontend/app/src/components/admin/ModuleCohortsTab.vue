@@ -247,6 +247,37 @@
                   <div v-else class="mc-system">{{ fmtDate(det.cohort.gradeQaDate) }}</div></div>
               </div>
             </div>
+
+            <div class="mc-section">
+              <div class="mc-section-title">Grading</div>
+              <p v-if="det.rubric?.locked" class="mc-sub" style="color:#b3261e; margin:.2rem 0 .5rem">
+                🔒 Students in this cohort already have saved marks — the grading setup is locked.</p>
+              <label class="mc-lbl" style="display:flex; align-items:center; gap:.45rem; cursor:pointer; font-size:.85rem;">
+                <input type="checkbox" v-model="form.rubricOverride" :disabled="readOnly || det.rubric?.locked" />
+                Override grading for this cohort with its own rubric
+              </label>
+              <p v-if="!form.rubricOverride" class="mc-sub" style="margin:.35rem 0 0">
+                Follows the module's grading:
+                <strong>{{ det.rubric?.moduleRubricName ? `rubric — ${det.rubric.moduleRubricName}` : 'simple single grade (0–100)' }}</strong>
+              </p>
+              <template v-else>
+                <div class="mc-rubovr mc-rubovr-head"><span>Section</span><span>Criteria</span><span>Max %</span><span></span></div>
+                <div v-for="(r, i) in form.rubricRows" :key="i" class="mc-rubovr">
+                  <input v-model="r.section" class="mc-inp" :disabled="readOnly || det.rubric?.locked" placeholder="e.g. Findings" />
+                  <textarea v-model="r.criteria" class="mc-inp" rows="2" :disabled="readOnly || det.rubric?.locked" placeholder="What is assessed…"></textarea>
+                  <input v-model.number="r.maxPercent" type="number" min="1" max="100" class="mc-inp" :disabled="readOnly || det.rubric?.locked" />
+                  <button v-if="!readOnly && !det.rubric?.locked" type="button" class="btn-sm" @click="form.rubricRows.splice(i, 1)">✕</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:.8rem; margin-top:.5rem;">
+                  <button v-if="!readOnly && !det.rubric?.locked" type="button" class="btn-sm"
+                          @click="form.rubricRows.push({ section: '', criteria: '', maxPercent: null })">+ Add row</button>
+                  <span :style="{ fontWeight: 700, fontSize: '.82rem', color: rubricOvrTotal === 100 ? '#1d7a3e' : '#b3261e' }">
+                    Total: {{ rubricOvrTotal }}% {{ rubricOvrTotal === 100 ? '✓' : '(must be exactly 100)' }}</span>
+                </div>
+                <p class="mc-sub" style="margin:.4rem 0 0">Applies to this cohort only — every criterion is scored 1–100
+                  on the Grades tab and the final mark is the weighted total.</p>
+              </template>
+            </div>
           </template>
 
           <template v-else-if="detTab === 'grades'">
@@ -666,11 +697,17 @@ async function openDetail(c) {
       gradeQaChecked: !!k.gradeQaChecked,
       gradeQaDate: iso(k.gradeQaDate),
     }
+    form.value.rubricOverride = !!res.data.rubric?.overridden
+    form.value.rubricRows = (res.data.rubric?.rows ?? []).map(r => ({ ...r }))
+    if (!form.value.rubricRows.length) form.value.rubricRows = [{ section: '', criteria: '', maxPercent: null }]
     detOpen.value = true
   } catch (e) {
     error.value = e.response?.data?.error ?? e.message ?? 'Failed to open cohort'
   }
 }
+
+const rubricOvrTotal = computed(() =>
+  (form.value.rubricRows ?? []).reduce((t, r) => t + (Number(r.maxPercent) || 0), 0))
 
 async function saveDetail() {
   if (savingDet.value) return
@@ -691,6 +728,12 @@ async function saveDetail() {
       docQaDate: form.value.docQaDate || null,
       gradeQaChecked: form.value.gradeQaChecked,
       gradeQaDate: form.value.gradeQaDate || null,
+      rubricOverride: !!form.value.rubricOverride,
+      rubricRows: form.value.rubricOverride
+        ? form.value.rubricRows
+            .filter(r => (r.section ?? '').trim())
+            .map(r => ({ id: r.id, section: r.section, criteria: r.criteria, maxPercent: r.maxPercent }))
+        : null,
     })
     if (detTab.value === 'students' || students.value.length) {
       await api.put(P.value.students(det.value.cohort.moduleCohortId), {
@@ -809,6 +852,8 @@ watch(() => props.partnerId, load, { immediate: true })
 .mc-section-title { font-weight: 700; color: #003366; font-size: .85rem; margin-bottom: .5rem; }
 .mc-system { padding: .4rem .55rem; background: #f2f5f9; border: 1px dashed #cfd7e3; border-radius: 5px; font-size: .82rem; color: #44536a; min-height: 1.9rem; }
 .mc-upl { margin-bottom: .6rem; }
+.mc-rubovr { display: grid; grid-template-columns: 1fr 2fr 90px 36px; gap: .5rem; align-items: start; margin-top: .45rem; }
+.mc-rubovr-head { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; color: #6b7888; font-weight: 700; margin-top: .6rem; }
 .mc-rub-cell { background: #f8fafd; padding: .6rem .9rem !important; }
 .mc-rub-grid { display: grid; grid-template-columns: 1.1fr 2.4fr 70px 110px 90px; gap: .5rem; align-items: center; padding: .25rem 0; }
 .mc-rub-head { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; color: #6b7888; font-weight: 700; border-bottom: 1px solid #e2e8f1; }

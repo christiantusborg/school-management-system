@@ -216,6 +216,8 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
             if (!typeOk) return Results.BadRequest(new { error = "Unknown cohort type." });
             cohort.CohortTypeId = newType;
         }
+        var rubricError = await ModuleCohortLogic.ApplyRubricOverrideAsync(db, cohort, body.RubricOverride, body.RubricRows, ct);
+        if (rubricError is not null) return Results.BadRequest(new { error = rubricError });
         await ModuleCohortLogic.SaveFieldValuesAsync(db, cohort.ModuleCohortId,
             body.FieldValues?.ToDictionary(kv => kv.Key, kv => (kv.Value?.Value, kv.Value?.FileName)), ct);
         cohort.UpdatedAt = DateTime.UtcNow;

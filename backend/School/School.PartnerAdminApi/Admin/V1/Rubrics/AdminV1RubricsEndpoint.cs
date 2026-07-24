@@ -42,7 +42,7 @@ public sealed class AdminV1RubricsEndpoint : IEndpointMarker
         public int MaxPercent { get; init; }
     }
 
-    private static string? ValidateRows(List<RowDto> rows)
+    internal static string? ValidateRows(List<RowDto> rows)
     {
         if (rows.Count == 0) return "A rubric needs at least one row.";
         if (rows.Any(r => string.IsNullOrWhiteSpace(r.Section)))
@@ -57,7 +57,7 @@ public sealed class AdminV1RubricsEndpoint : IEndpointMarker
     /// ids update in place, dropped rows soft-delete (saved student scores
     /// survive), and a new row matching a soft-deleted section+criteria
     /// restores it — the same pattern as the other builders.</summary>
-    private static async Task ReconcileRowsAsync(OdinDbContext db, Guid templateId, List<RowDto> wanted, CancellationToken ct)
+    internal static async Task ReconcileRowsAsync(OdinDbContext db, Guid templateId, List<RowDto> wanted, CancellationToken ct)
     {
         var existing = await db.RubricRows.Where(r => r.RubricTemplateId == templateId).ToListAsync(ct);
         var keep = new HashSet<Guid>();

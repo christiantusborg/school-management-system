@@ -16,6 +16,10 @@ public class ModuleCohort : IDeletedAtEntity
     public Guid PartnerId { get; set; }
     /// <summary>Required cohort type — brings the type's extra-data form.</summary>
     public Guid? CohortTypeId { get; set; }
+    /// <summary>Grading override: a cohort-owned custom rubric used INSTEAD of
+    /// the module's grading for this cohort only. Null = follow the module.
+    /// Locked once any assigned student has a saved mark.</summary>
+    public Guid? RubricTemplateId { get; set; }
     public Guid ProgrammeId { get; set; }
     /// <summary>The module (Subject).</summary>
     public Guid SubjectId { get; set; }

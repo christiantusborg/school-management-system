@@ -139,7 +139,7 @@ public static class ModuleCohortLogic
             {
                 c.CohortNumber,
                 ModuleCode = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.Code).FirstOrDefault(),
-                RubricTemplateId = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.RubricTemplateId).FirstOrDefault(),
+                RubricTemplateId = c.RubricTemplateId ?? db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.RubricTemplateId).FirstOrDefault(),
             })
             .FirstOrDefaultAsync(ct);
         if (cohort is null) return null;
@@ -226,7 +226,7 @@ public static class ModuleCohortLogic
             .Select(c => new
             {
                 ModuleCode = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.Code).FirstOrDefault(),
-                RubricTemplateId = db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.RubricTemplateId).FirstOrDefault(),
+                RubricTemplateId = c.RubricTemplateId ?? db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.RubricTemplateId).FirstOrDefault(),
             })
             .FirstOrDefaultAsync(ct);
         if (cohort is null) return (false, null, 0, []);
@@ -506,6 +506,98 @@ public static class ModuleCohortLogic
     }
 
     /// <summary>Full record: list row + configured upload fields with files.</summary>
+    /// <summary>Any assigned student already has a mark for this cohort's
+    /// module (resolved by code within their own specialization)?</summary>
+    public static async Task<bool> HasAnySavedGradeAsync(OdinDbContext db, Guid cohortId, CancellationToken ct)
+    {
+        var moduleCode = await db.ModuleCohorts
+            .Where(c => c.ModuleCohortId == cohortId)
+            .Select(c => db.Subjects.Where(s => s.SubjectId == c.SubjectId).Select(s => s.Code).FirstOrDefault())
+            .FirstOrDefaultAsync(ct);
+        if (moduleCode is null) return false;
+        return await (
+            from mcs in db.ModuleCohortStudents
+            join e in db.Enrollments on mcs.StudentEnrollmentId equals e.StudentEnrollmentId
+            where mcs.ModuleCohortId == cohortId && mcs.DeletedAt == null && e.DeletedAt == null
+                && (from g in db.SubjectGrades
+                    join sub in db.Subjects on g.SubjectId equals sub.SubjectId
+                    where g.StudentEnrollmentId == e.StudentEnrollmentId
+                        && sub.SpecializationId == e.SpecializationId
+                        && sub.Code == moduleCode
+                    select g.SubjectGradeId).Any()
+            select mcs.ModuleCohortStudentId).AnyAsync(ct);
+    }
+
+    /// <summary>
+    /// Grading override on the cohort: null = keep, false = follow the module
+    /// again, true = use the cohort's own custom rubric (rows must total 100).
+    /// Blocked entirely once any assigned student has a saved mark; identical
+    /// re-saves are treated as no-ops so normal record saves keep working.
+    /// </summary>
+    public static async Task<string?> ApplyRubricOverrideAsync(
+        OdinDbContext db, ModuleCohort cohort, bool? overrideEnabled,
+        List<School.PartnerAdminApi.Admin.V1.Rubrics.AdminV1RubricsEndpoint.RowDto>? rows, CancellationToken ct)
+    {
+        if (overrideEnabled is null) return null;
+        var wants = overrideEnabled.Value;
+        var current = cohort.RubricTemplateId is not null;
+
+        if (wants == current)
+        {
+            if (!wants) return null;
+            var existingRows = await db.RubricRows
+                .Where(r => r.RubricTemplateId == cohort.RubricTemplateId && r.DeletedAt == null)
+                .OrderBy(r => r.SortOrder)
+                .Select(r => new { r.Section, r.Criteria, r.MaxPercent })
+                .ToListAsync(ct);
+            var wanted = (rows ?? []).Select(r => new
+            {
+                Section = r.Section.Trim(),
+                Criteria = r.Criteria.Trim(),
+                r.MaxPercent,
+            }).ToList();
+            if (existingRows.Count == wanted.Count && existingRows.Zip(wanted).All(p =>
+                    p.First.Section == p.Second.Section
+                    && p.First.Criteria == p.Second.Criteria
+                    && p.First.MaxPercent == p.Second.MaxPercent))
+                return null;
+        }
+
+        if (await HasAnySavedGradeAsync(db, cohort.ModuleCohortId, ct))
+            return "Grading cannot be changed — students in this cohort already have saved marks.";
+
+        if (!wants)
+        {
+            cohort.RubricTemplateId = null;
+            var owned = await db.RubricTemplates
+                .Where(t => t.OwnerCohortId == cohort.ModuleCohortId && t.DeletedAt == null)
+                .ToListAsync(ct);
+            foreach (var t in owned) t.DeletedAt = DateTime.UtcNow;
+            return null;
+        }
+
+        var list = rows ?? [];
+        if (School.PartnerAdminApi.Admin.V1.Rubrics.AdminV1RubricsEndpoint.ValidateRows(list) is { } error)
+            return error;
+        var template = await db.RubricTemplates
+            .FirstOrDefaultAsync(t => t.OwnerCohortId == cohort.ModuleCohortId && !t.IsShared, ct);
+        if (template is null)
+        {
+            template = new RubricTemplate
+            {
+                Name = $"{cohort.CohortNumber} rubric",
+                IsShared = false,
+                OwnerCohortId = cohort.ModuleCohortId,
+            };
+            db.RubricTemplates.Add(template);
+        }
+        template.DeletedAt = null;
+        await School.PartnerAdminApi.Admin.V1.Rubrics.AdminV1RubricsEndpoint.ReconcileRowsAsync(
+            db, template.RubricTemplateId, list, ct);
+        cohort.RubricTemplateId = template.RubricTemplateId;
+        return null;
+    }
+
     public static async Task<object?> DetailAsync(OdinDbContext db, Guid cohortId, CancellationToken ct)
     {
         var row = (await ListAsync(db, null, null, ct, onlyCohortId: cohortId)).FirstOrDefault();
@@ -535,9 +627,35 @@ public static class ModuleCohortLogic
             .Where(v => v.ModuleCohortId == cohortId && typeFieldIds.Contains(v.CohortTypeFieldId))
             .ToListAsync(ct);
 
+        var rubricInfo = await db.ModuleCohorts
+            .Where(c => c.ModuleCohortId == cohortId)
+            .Select(c => new
+            {
+                c.RubricTemplateId,
+                ModuleRubricName = db.Subjects.Where(s => s.SubjectId == c.SubjectId)
+                    .Select(s => db.RubricTemplates.Where(t => t.RubricTemplateId == s.RubricTemplateId)
+                        .Select(t => t.Name).FirstOrDefault()).FirstOrDefault(),
+            })
+            .FirstOrDefaultAsync(ct);
+        var overrideRows = rubricInfo?.RubricTemplateId is { } overrideTemplateId
+            ? await db.RubricRows
+                .Where(r => r.RubricTemplateId == overrideTemplateId && r.DeletedAt == null)
+                .OrderBy(r => r.SortOrder)
+                .Select(r => new { id = r.RubricRowId, section = r.Section, criteria = r.Criteria, maxPercent = r.MaxPercent })
+                .ToListAsync(ct)
+            : null;
+        var gradingLocked = await HasAnySavedGradeAsync(db, cohortId, ct);
+
         return new
         {
             cohort = row,
+            rubric = new
+            {
+                overridden = rubricInfo?.RubricTemplateId != null,
+                rows = (object?)overrideRows,
+                moduleRubricName = rubricInfo?.ModuleRubricName,
+                locked = gradingLocked,
+            },
             cohortType = typeId is null ? null : new
             {
                 fields = typeFields.Select(f => new

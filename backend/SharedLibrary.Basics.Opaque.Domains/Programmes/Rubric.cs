@@ -16,6 +16,8 @@ public class RubricTemplate : IDeletedAtEntity
     /// picker; non-shared ones belong to exactly one subject.</summary>
     public bool IsShared { get; set; }
     public Guid? OwnerSubjectId { get; set; }
+    /// <summary>Set when this is a cohort-owned override rubric.</summary>
+    public Guid? OwnerCohortId { get; set; }
     public DateTime? DeletedAt { get; set; }
 }
 
