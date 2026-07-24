@@ -9,7 +9,9 @@ public class PartnerAddressConfiguration : IEntityTypeConfiguration<PartnerAddre
     public void Configure(EntityTypeBuilder<PartnerAddress> builder)
     {
         builder.HasKey(e => e.PartnerAddressId);
-        builder.Property(e => e.CountryCode).HasMaxLength(2).IsRequired();
+        // Widened from 2: the partner Profile form stores a free-text
+        // country name here, not an ISO code.
+        builder.Property(e => e.CountryCode).HasMaxLength(64).IsRequired();
         builder.HasOne(e => e.Type)
             .WithMany()
             .HasForeignKey(e => e.PartnerAddressTypeId)

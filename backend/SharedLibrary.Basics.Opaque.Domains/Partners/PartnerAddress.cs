@@ -15,7 +15,7 @@ public class PartnerAddress : IDeletedAtEntity
     public string? City { get; set; }
     public string? StateRegion { get; set; }
     public string? PostalCode { get; set; }
-    public string CountryCode { get; set; } = default!; // ISO 3166-1 alpha-2
+    public string CountryCode { get; set; } = default!; // country name or ISO code (free text, max 64)
 
     public DateTime? DeletedAt { get; set; }
     
