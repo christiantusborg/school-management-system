@@ -13,6 +13,8 @@
 
     <div class="filter-row">
       <input v-model="search" class="inp" placeholder="Fuzzy search — name, email, programme, partner…" />
+      <label class="unpaid-chk" title="Only students with at least one unpaid installment or invoice">
+        <input type="checkbox" v-model="unpaidOnly" /> Unpaid only</label>
       <select v-model="filterProgrammeId" class="inp">
         <option value="">All programmes</option>
         <option v-for="p in programmesAvailable" :key="p.programmeId" :value="p.programmeId">{{ p.name }}</option>
@@ -34,13 +36,18 @@
     <table v-else-if="!loading" class="data-table">
       <thead>
         <tr>
-          <th>Student #</th><th>Name</th><th v-if="!partnerId">Partner</th>
+          <th>Student #</th><th>Paid</th><th>Name</th><th v-if="!partnerId">Partner</th>
           <th>Email</th><th>Enrolments</th><th>Actions</th><th></th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="s in pagedRows" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
           <td class="mono">{{ s.studentNumber }}</td>
+          <td>
+            <span v-if="!s.enrollments.some(e => e.hasPaymentPlan)" class="muted">—</span>
+            <span v-else-if="s.enrollments.some(e => e.hasUnpaid)" class="s-badge s-badge-unpaid">Unpaid</span>
+            <span v-else class="s-badge s-badge-paid">Paid</span>
+          </td>
           <td>
             <a class="s-name-link" @click.stop="openStudentDetail(s)">
               {{ s.firstName ?? '—' }} {{ s.lastName ?? '' }}
@@ -2834,6 +2841,7 @@ const filterPartnerName = ref('')
 const partnersAvailable = computed(() =>
   [...new Set(list.value.map(s => s.partnerName).filter(Boolean))].sort((a, b) => a.localeCompare(b)))
 
+const unpaidOnly = ref(false)
 const filtered = computed(() => {
   const q = search.value.trim()
   // Start either from the fuzzy search hits or the full list.
@@ -2847,6 +2855,8 @@ const filtered = computed(() => {
     rows = rows.filter(s => s.enrollments.some(e => e.specializationId === filterSpecializationId.value))
   if (filterPartnerName.value)
     rows = rows.filter(s => s.partnerName === filterPartnerName.value)
+  if (unpaidOnly.value)
+    rows = rows.filter(s => s.enrollments.some(e => e.hasUnpaid))
   if (filterStatusId.value !== '') {
     const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
     rows = rows.filter(s => {
@@ -2867,7 +2877,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / p
 const pagedRows = computed(() =>
   filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 // Any filter/search change goes back to page 1; clamp when rows shrink.
-watch([search, filterProgrammeId, filterSpecializationId, filterPartnerName, filterStatusId, pageSize],
+watch([search, filterProgrammeId, filterSpecializationId, filterPartnerName, filterStatusId, unpaidOnly, pageSize],
   () => { page.value = 1 })
 watch(pageCount, n => { if (page.value > n) page.value = n })
 
@@ -3369,6 +3379,9 @@ async function runExport() {
 .enr-prog { background: #e8f0f8; color: #003366; border-radius: 4px; padding: 1px 6px; font-size: .75rem; font-weight: 700; margin: 0 .3rem; }
 .s-badge { font-size: .7rem; padding: 1px 6px; border-radius: 10px; margin-left: .3rem; font-weight: 600; }
 .s-badge-overdue { background: #fde7e5; color: #a8241e; border: 1px solid #e8b3af; }
+.s-badge-unpaid { background: #fdf3e5; color: #a8641e; border: 1px solid #ecc9a0; }
+.s-badge-paid { background: #e7f0e9; color: #1d7a3e; border: 1px solid #9dc4a8; }
+.unpaid-chk { display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; color: #44536a; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .s-badge-signup  { background: #fff4e6; color: #b66a00; border: 1px solid #f0d2a8; }
 .st-submitted { background: #fff7e0; color: #8a6d00; }
 .st-pending   { background: #e8f0f8; color: #0055a5; }

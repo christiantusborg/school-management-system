@@ -69,6 +69,23 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                 .Select(p => p.StudentEnrollmentId)
                 .ToListAsync(cancellationToken)).ToHashSet();
 
+        // Paid-status column: any unpaid instalment/invoice at all (regardless
+        // of due date), and whether a plan with items exists in the first place.
+        var unpaidIds = enrollmentIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await db.EnrollmentPaymentPlans
+                .Where(p => enrollmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null
+                    && (p.Installments.Any(i => !i.IsPaid) || p.AdditionalInvoices.Any(a => !a.IsPaid)))
+                .Select(p => p.StudentEnrollmentId)
+                .ToListAsync(cancellationToken)).ToHashSet();
+        var planIds = enrollmentIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await db.EnrollmentPaymentPlans
+                .Where(p => enrollmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null
+                    && (p.Installments.Any() || p.AdditionalInvoices.Any()))
+                .Select(p => p.StudentEnrollmentId)
+                .ToListAsync(cancellationToken)).ToHashSet();
+
         // Group by student. Students with NO enrolment yet (mid-signup,
         // wizard steps 1–3) must appear too — the "Signing up" chip lives off
         // them — so the student set is enrolment students PLUS unfinished
@@ -128,6 +145,8 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                     statusCode = e.StatusCode,
                     statusName = e.StatusName,
                     paymentOverdue = overdueIds.Contains(e.StudentEnrollmentId),
+                    hasUnpaid = unpaidIds.Contains(e.StudentEnrollmentId),
+                    hasPaymentPlan = planIds.Contains(e.StudentEnrollmentId),
                 }).ToList(),
             };
         }).ToList();
