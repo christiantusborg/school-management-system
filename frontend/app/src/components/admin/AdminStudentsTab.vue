@@ -37,7 +37,7 @@
       <thead>
         <tr>
           <th>Student #</th><th>Paid</th><th>Name</th><th v-if="!partnerId">Partner</th>
-          <th>Email</th><th>Enrolments</th><th>Actions</th><th></th>
+          <th>Email</th><th>Enrolments</th><th>Specialization</th><th>Information</th><th>Actions</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -58,7 +58,18 @@
           <td>{{ s.email ?? '—' }}<span v-if="!s.emailVerified" class="s-badge unverified">unverified</span></td>
           <td>
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
-              <span class="enr-prog">{{ e.programmeCode }}</span> · {{ e.specializationName }}
+              <span class="enr-prog">{{ e.programmeCode }}</span>
+            </div>
+            <div v-if="s.signingUp" class="enrol-line">&nbsp;</div>
+          </td>
+          <td>
+            <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
+              {{ e.specializationName || '—' }}
+            </div>
+            <div v-if="s.signingUp" class="enrol-line">&nbsp;</div>
+          </td>
+          <td>
+            <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
               <span :class="['s-badge', statusClass(e.statusCode)]">{{ e.statusName }}</span>
               <span v-if="e.paymentOverdue" class="s-badge s-badge-overdue"
                     title="An installment or additional invoice is unpaid past its due date (Programs → Payment).">Payment overdue</span>
