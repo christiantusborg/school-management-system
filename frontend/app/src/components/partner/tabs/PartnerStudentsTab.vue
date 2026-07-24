@@ -8,7 +8,7 @@
               :class="['status-chip', { active: filterStatusId === s.id }]"
               @click="filterStatusId = s.id">
         {{ s.label }}
-        <span class="chip-count">{{ countFor(s.id) }}</span>
+        <span v-if="s.id !== 'action-required'" class="chip-count">{{ countFor(s.id) }}</span>
       </button>
     </div>
 
@@ -148,6 +148,10 @@
             <div class="row-2">
               <div class="field"><label>Date of birth</label><input type="date" v-model="dobInput" /></div>
               <div class="field"><label>Passport / ID</label><input v-model="detail.personal.passportId" /></div>
+            </div>
+            <div class="field">
+              <label>Student card ID <span style="font-weight:400; color:#8a97a8">(overrides the ID on the student card only)</span></label>
+              <input v-model="detail.personal.studentCardId" />
             </div>
             <div class="field">
               <label>Nationality</label>
@@ -331,6 +335,7 @@
                   <dl>
                     <dt>Date of birth</dt><dd>{{ formatDateD(detailModal.data.personal?.dateOfBirth) || '—' }}</dd>
                     <dt>Passport / ID</dt><dd>{{ detailModal.data.personal?.passportId || '—' }}</dd>
+                    <dt>Student card ID</dt><dd>{{ detailModal.data.personal?.studentCardId || '—' }}</dd>
                     <dt>Address</dt><dd>{{ formatAddressD(detailModal.data.personal?.address) || '—' }}</dd>
                   </dl>
                 </div>
@@ -429,6 +434,10 @@
                     </div>
                     <button class="btn-mini-d" :disabled="!activeEnrollment.letters?.[t.key]"
                             @click="downloadLetterPartner(activeEnrollment.letters?.[t.key])">Download</button>
+                    <button v-if="!auth.user?.isTeacher && EMAILABLE_KEYS.includes(t.key)"
+                            class="btn-mini-d btn-mini-email"
+                            :disabled="!activeEnrollment.letters?.[t.key]"
+                            @click="openSendEmail(t)">✉ Send</button>
                   </div>
                   <!-- Provisional transcript: rendered live from saved grades,
                        listed with the other letters — same as the admin portal. -->
@@ -444,6 +453,32 @@
                     </button>
                   </div>
                 </template>
+              </div>
+
+              <!-- Ad-hoc send dialog — same flow as the admin portal -->
+              <div v-if="emailSend.open" class="email-send-pop">
+                <div class="email-send-card">
+                  <div class="esp-head">
+                    <strong>Send {{ emailSend.label }} email</strong>
+                    <button class="esp-close" @click="emailSend.open = false">✕</button>
+                  </div>
+                  <p class="muted" style="font-size:.78rem;">
+                    Sends the saved email template (PDF attached) to the student plus the template's
+                    enabled CC/BCC. Add one-off addresses below (comma-separated) if needed.
+                  </p>
+                  <label class="esp-label">Extra CC</label>
+                  <input v-model="emailSend.cc" type="text" placeholder="a@x.com, b@y.com" />
+                  <label class="esp-label">Extra BCC</label>
+                  <input v-model="emailSend.bcc" type="text" placeholder="c@z.com" />
+                  <div v-if="emailSend.error" class="err-banner" style="margin-top:.4rem;">{{ emailSend.error }}</div>
+                  <div v-if="emailSend.ok" class="ok-banner" style="margin-top:.4rem;">{{ emailSend.ok }}</div>
+                  <div class="esp-actions">
+                    <button class="btn-mini-d btn-mini-ghost-d" @click="emailSend.open = false">Cancel</button>
+                    <button class="btn-mini-d btn-mini-email" :disabled="emailSend.sending" @click="sendLetterEmail">
+                      {{ emailSend.sending ? 'Sending…' : 'Send now' }}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1075,6 +1110,40 @@ async function downloadLetterPartner(letter) {
   }
 }
 
+// Manual (re-)send of the offer/admission email — same dialog as the admin
+// portal, hitting the partner-scoped endpoint. Hidden for teachers.
+const EMAILABLE_KEYS = ['offerLetter', 'admissionLetter']
+const emailSend = ref({ open: false, key: '', label: '', cc: '', bcc: '', sending: false, error: '', ok: '' })
+
+function openSendEmail(t) {
+  emailSend.value = { open: true, key: t.key, label: t.label, cc: '', bcc: '', sending: false, error: '', ok: '' }
+}
+
+function splitEmails(s) {
+  return (s || '').split(/[,;\s]+/).map(x => x.trim()).filter(Boolean)
+}
+
+async function sendLetterEmail() {
+  if (!detailModal.value?.studentId || !activeEnrollment.value) return
+  const es = emailSend.value
+  es.sending = true; es.error = ''; es.ok = ''
+  try {
+    const enumName = es.key.charAt(0).toUpperCase() + es.key.slice(1)
+    const res = await api.post(
+      `/v1/partner/my-students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/${enumName}/send-email`,
+      { ccAdHoc: splitEmails(es.cc), bccAdHoc: splitEmails(es.bcc) })
+    const to = res.data?.to ?? 'student'
+    es.ok = `Sent to ${to}${(res.data?.cc?.length ? ` (cc ${res.data.cc.length})` : '')}.`
+    setTimeout(() => { emailSend.value.open = false }, 2000)
+  } catch (err) {
+    es.error = err.response?.data?.error
+      ?? (err.response?.data?.outcome ? `Not sent: ${err.response.data.outcome}` : null)
+      ?? err.message ?? 'Send failed'
+  } finally {
+    es.sending = false
+  }
+}
+
 function formatDateD(iso) {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -1118,6 +1187,7 @@ async function savePersonal() {
       lastName: detail.value.account.lastName,
       dateOfBirth: detail.value.personal.dateOfBirth,
       passportId: detail.value.personal.passportId,
+      studentCardId: detail.value.personal.studentCardId,
       nationalityId: detail.value.personal.nationalityId,
       addressLine1: detail.value.personal.address.line1,
       addressLine2: detail.value.personal.address.line2,
@@ -1271,6 +1341,7 @@ function adaptForWizard(d, targetEnrollmentId = null) {
     email: d.account?.email ?? '',
     dateOfBirth: d.personal?.dateOfBirth?.slice(0, 10) ?? '',
     passportId: d.personal?.passportId ?? '',
+    studentCardId: d.personal?.studentCardId ?? '',
     address: addressStr,
     highestDegree: d.background?.highestDegree ?? '',
     degreeSpecialization: d.background?.degreeSpecialization ?? '',
@@ -1874,6 +1945,18 @@ function confirmSubStatus() {
 .btn-mini-d { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }
 .btn-mini-d:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }
 .btn-mini-d:hover:not(:disabled) { background: #143b6c; }
+.btn-mini-email { background: #fff; color: #6b4ea3; border-color: #6b4ea3; }
+.btn-mini-email:hover:not(:disabled) { background: #f1ecf9; }
+.btn-mini-email:disabled { background: #f1f5f9; color: #94a3b8; border-color: #cbd5e1; }
+.btn-mini-ghost-d { background: #fff; color: #5f6e85; border-color: #cbd5e1; }
+.btn-mini-ghost-d:hover:not(:disabled) { background: #f1f5f9; }
+.email-send-pop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 1200; }
+.email-send-card { background: #fff; border-radius: 9px; width: min(420px, 92%); padding: 1rem 1.1rem; box-shadow: 0 8px 30px rgba(0,0,0,.2); }
+.esp-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .3rem; }
+.esp-close { border: 0; background: none; font-size: 1rem; cursor: pointer; color: #5f6e85; }
+.esp-label { display: block; font-size: .74rem; font-weight: 700; color: #6b7888; text-transform: uppercase; letter-spacing: .04em; margin: .5rem 0 .2rem; }
+.email-send-card input { width: 100%; padding: .4rem .5rem; border: 1px solid #d8dde5; border-radius: 5px; font-size: .82rem; }
+.esp-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
 .pp-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 .pp-table th { text-align: left; padding: .4rem .6rem; color: #6b7888; font-size: .72rem; text-transform: uppercase; border-bottom: 1.5px solid #e8edf4; }
 .pp-table td { padding: .45rem .6rem; border-bottom: 1px solid #eef1f5; }

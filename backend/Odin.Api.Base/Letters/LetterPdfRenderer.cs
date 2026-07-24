@@ -38,7 +38,24 @@ public sealed class LetterPdfRenderer
 
         return Document.Create(container =>
         {
-            foreach (var pageDef in layout.GetPages())
+            // Auto Total/GPA: unless the layout has a manually-placed
+            // transcriptTotals field on any page, the Total + GPA rows are
+            // appended under the ranged grades table with the highest RowEnd
+            // across the whole layout. The anchor is resolved globally (not
+            // per page) so the total renders exactly once, always below the
+            // last table, regardless of which range holds the final grade row.
+            var allPageDefs = layout.GetPages().ToList();
+            var allLayoutFields = allPageDefs.SelectMany(p => p.Fields ?? new()).ToList();
+            var hasManualTotals = allLayoutFields.Any(f =>
+                string.Equals((f.Kind ?? "").Trim(), "transcriptTotals", StringComparison.OrdinalIgnoreCase));
+            string? autoTotalsFieldId = null;
+            if (!hasManualTotals && allRows.Count > 0)
+                autoTotalsFieldId = allLayoutFields
+                    .Where(f => string.Equals((f.Kind ?? "").Trim(), "transcriptTable", StringComparison.OrdinalIgnoreCase) && f.RowEnd > 0)
+                    .OrderBy(f => f.RowEnd)
+                    .LastOrDefault()?.Id;
+
+            foreach (var pageDef in allPageDefs)
             {
                 // Legacy auto-paginating grade table (no range): render the page
                 // as a flowing Header/Content/Footer page so the table paginates
@@ -75,25 +92,7 @@ public sealed class LetterPdfRenderer
                         else
                             layers.PrimaryLayer().Background(Colors.White);
 
-                        // Auto Total/GPA: unless the layout has a manually-placed
-                        // transcriptTotals field, the Total + GPA rows are appended
-                        // directly under the last grade-range table that holds data
-                        // (the range containing the final grade row, else the
-                        // highest range). This keeps the total glued to the end of
-                        // the grades no matter how many ranges are populated.
-                        var pageFields = pageDef.Fields ?? new();
-                        var hasManualTotals = pageFields.Any(f =>
-                            string.Equals((f.Kind ?? "").Trim(), "transcriptTotals", StringComparison.OrdinalIgnoreCase));
                         var schoolName = tagValues.TryGetValue("[school name]", out var snv) ? snv : null;
-                        string? autoTotalsFieldId = null;
-                        if (!hasManualTotals && allRows.Count > 0)
-                        {
-                            var ranges = pageFields
-                                .Where(f => string.Equals((f.Kind ?? "").Trim(), "transcriptTable", StringComparison.OrdinalIgnoreCase) && f.RowEnd > 0)
-                                .OrderBy(f => f.RowEnd).ToList();
-                            var containing = ranges.FirstOrDefault(f => Math.Max(1, f.RowStart) <= allRows.Count && allRows.Count <= f.RowEnd);
-                            autoTotalsFieldId = (containing ?? ranges.LastOrDefault())?.Id;
-                        }
 
                         foreach (var field in pageDef.Fields ?? new())
                         {

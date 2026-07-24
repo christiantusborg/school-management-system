@@ -30,6 +30,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 s.MoodlePassword,
                 s.UserId,
                 s.PassportId,
+                s.StudentCardId,
                 s.DateOfBirth,
                 s.HighestDegree,
                 s.DegreeSpecialization,
@@ -290,6 +291,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             {
                 dateOfBirth = student.DateOfBirth,
                 passportId = student.PassportId,
+                studentCardId = student.StudentCardId,
                 nationalityId = student.NationalityId,
                 address = new
                 {

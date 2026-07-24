@@ -539,8 +539,8 @@ function addTextField() {
 }
 
 // Insert a fixed-range grades table (e.g. 1-10). Each renders only its slice
-// of the student's grades; the renderer appends Total/GPA under the range that
-// holds the last grade. Add only the ranges a programme needs.
+// of the student's grades; the renderer appends Total/GPA under the highest
+// range table in the layout. Add only the ranges a programme needs.
 function addRangeTable(from, to) {
   const f = {
     id: uid(),
@@ -790,11 +790,13 @@ function placeholderRectConfig(f) {
   }
 }
 function placeholderLabelConfig(f) {
-  const label = f.kind === 'transcriptTotals'
-    ? 'Total / GPA (auto)'
-    : f.kind === 'transcriptTable'
-      ? (f.rowEnd > 0 ? `Grades Table (${f.rowStart}-${f.rowEnd})` : 'Grades Table (auto-generated)')
-      : 'Grade Standard Table'
+  const label = f.imageAssetId === STUDENT_PHOTO_ASSET_ID
+    ? 'Student Card Photo'
+    : f.kind === 'transcriptTotals'
+      ? 'Total / GPA (auto)'
+      : f.kind === 'transcriptTable'
+        ? (f.rowEnd > 0 ? `Grades Table (${f.rowStart}-${f.rowEnd})` : 'Grades Table (auto-generated)')
+        : 'Grade Standard Table'
   return {
     x: 8 * scale.value,
     y: 8 * scale.value,

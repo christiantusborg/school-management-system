@@ -30,6 +30,7 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
                 s.StudentNumber,
                 s.UserId,
                 s.PassportId,
+                s.StudentCardId,
                 s.DateOfBirth,
                 s.HighestDegree,
                 s.DegreeSpecialization,
@@ -266,6 +267,7 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
             {
                 dateOfBirth = student.DateOfBirth,
                 passportId = student.PassportId,
+                studentCardId = student.StudentCardId,
                 nationalityId = student.NationalityId,
                 address = new
                 {

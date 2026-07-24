@@ -82,6 +82,7 @@ public sealed class LetterTagResolver(OdinDbContext db)
                     .Select(s => new
                     {
                         s.StudentNumber,
+                        s.StudentCardId,
                         s.PassportId,
                         s.DateOfBirth,
                         UserId = s.UserId,
@@ -146,7 +147,13 @@ public sealed class LetterTagResolver(OdinDbContext db)
         result["[student full name]"] = fullName;
         result["[student firstname]"] = firstName;
         result["[student surname]"]   = surname;
-        result["[student number]"]    = enrollment.Student?.StudentNumber ?? string.Empty;
+        // The Student ID Card may carry a per-student card ID that overrides
+        // the real student number ON THE CARD only; every other letter keeps
+        // the real number.
+        var isIdCard = reference?.Contains("-IDCARD-", StringComparison.OrdinalIgnoreCase) == true;
+        result["[student number]"]    = (isIdCard && !string.IsNullOrWhiteSpace(enrollment.Student?.StudentCardId)
+            ? enrollment.Student!.StudentCardId
+            : enrollment.Student?.StudentNumber) ?? string.Empty;
         result["[student address]"]   = address;
         result["[passport id]"]       = enrollment.Student?.PassportId ?? string.Empty;
         result["[project title]"]     = enrollment.ProjectTitle ?? string.Empty;

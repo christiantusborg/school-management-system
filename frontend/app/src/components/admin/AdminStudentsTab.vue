@@ -7,7 +7,7 @@
       <button v-for="s in STATUS_FILTERS" :key="s.id ?? 'all'"
               :class="['status-chip', { active: filterStatusId === s.id }]"
               @click="filterStatusId = s.id">
-        {{ s.label }}<span class="chip-count">{{ countFor(s.id) }}</span>
+        {{ s.label }}<span v-if="s.id !== 'action-required'" class="chip-count">{{ countFor(s.id) }}</span>
       </button>
     </div>
 
@@ -360,6 +360,11 @@
                     <label class="edit-field">
                       <span>Passport / ID</span>
                       <input v-model="detailModal.data.personal.passportId" />
+                    </label>
+                    <label class="edit-field">
+                      <span>Student card ID</span>
+                      <input v-model="detailModal.data.personal.studentCardId"
+                             placeholder="Overrides the ID on the card only" />
                     </label>
                     <label class="edit-field edit-field-wide">
                       <span>Nationality</span>
@@ -2280,6 +2285,7 @@ async function saveAdminPersonal() {
       lastName: d.account?.lastName ?? null,
       dateOfBirth: d.personal?.dateOfBirth ?? null,
       passportId: d.personal?.passportId ?? null,
+      studentCardId: d.personal?.studentCardId ?? null,
       nationalityId: d.personal?.nationalityId ?? null,
       addressLine1: d.personal?.address?.line1 ?? null,
       addressLine2: d.personal?.address?.line2 ?? null,
@@ -2935,6 +2941,7 @@ function adaptForWizard(d, targetEnrollmentId = null) {
     email: d.account?.email ?? '',
     dateOfBirth: d.personal?.dateOfBirth?.slice(0, 10) ?? '',
     passportId: d.personal?.passportId ?? '',
+    studentCardId: d.personal?.studentCardId ?? '',
     address: addressStr,
     highestDegree: d.background?.highestDegree ?? '',
     degreeSpecialization: d.background?.degreeSpecialization ?? '',

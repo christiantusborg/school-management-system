@@ -35,6 +35,11 @@ public class Student
 
     public Guid PartnerId { get; set; }
     public string? PassportId { get; set; }
+
+    /// <summary>Overrides the real StudentNumber ON THE STUDENT ID CARD only
+    /// (the [student number] tag when rendering the IDCARD letter). Editable
+    /// by both Admission and the partner; blank = card shows StudentNumber.</summary>
+    public string? StudentCardId { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public string? HighestDegree { get; set; }
 

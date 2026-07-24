@@ -1,3 +1,4 @@
+using Odin.Api.Base.Letters;
 using School.PartnerAdminApi.SharedStudentEdits;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
@@ -21,13 +22,34 @@ public sealed class AdminV1StudentsPersonalEndpoint : IEndpointMarker
         Guid studentId,
         [FromBody] StudentEditService.PersonalDto body,
         OdinDbContext db,
+        LetterReleaseService letterRelease,
         CancellationToken ct)
     {
         var student = await db.Students
             .FirstOrDefaultAsync(s => s.StudentId == studentId && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();
 
+        var oldCardId = student.StudentCardId;
         await StudentEditService.UpdatePersonalAsync(db, student, body, "admin", ct);
+
+        // A changed card ID must show on already-issued cards: re-render every
+        // released Student ID Card of this student's enrolments (best effort).
+        if (!string.Equals(oldCardId ?? "", student.StudentCardId ?? "", StringComparison.Ordinal))
+        {
+            var cardEnrollments = await db.StudentDocuments
+                .Where(d => d.StudentId == student.StudentId
+                    && d.DocumentTypeId == SystemDocumentTypeIds.StudentIdCard
+                    && d.DeletedAt == null && d.EnrollmentId != null)
+                .Select(d => d.EnrollmentId!.Value)
+                .Distinct()
+                .ToListAsync(ct);
+            foreach (var enrollmentId in cardEnrollments)
+            {
+                try { await letterRelease.ReleaseAsync(enrollmentId, LetterType.StudentIdCard, ct); }
+                catch { /* keep the personal save even if a re-render fails */ }
+            }
+        }
+
         return Results.NoContent();
     }
 }

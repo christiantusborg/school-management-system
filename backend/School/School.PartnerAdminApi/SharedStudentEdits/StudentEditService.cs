@@ -24,6 +24,8 @@ public static class StudentEditService
         public string? LastName { get; init; }
         public DateTime? DateOfBirth { get; init; }
         public string? PassportId { get; init; }
+        /// <summary>Card-only override of the student number (ID card).</summary>
+        public string? StudentCardId { get; init; }
         public int? NationalityId { get; init; }
         public string? AddressLine1 { get; init; }
         public string? AddressLine2 { get; init; }
@@ -104,6 +106,7 @@ public static class StudentEditService
 
         student.DateOfBirth = dto.DateOfBirth;
         student.PassportId = string.IsNullOrWhiteSpace(dto.PassportId) ? null : dto.PassportId;
+        student.StudentCardId = string.IsNullOrWhiteSpace(dto.StudentCardId) ? null : dto.StudentCardId.Trim();
         student.NationalityId = dto.NationalityId;
 
         var profile = await db.UserProfiles
