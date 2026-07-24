@@ -86,9 +86,8 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
             website = partner.Website,
             registrationNumber = partner.RegistrationNumber,
             taxId = partner.TaxId,
-            // Contact person: domain doesn't store name/title; only email/phone.
-            contactPersonName = (string?)null,
-            contactPersonTitle = (string?)null,
+            contactPersonName = partner.ContactPersonName,
+            contactPersonTitle = partner.ContactPersonTitle,
             contactPersonEmail = contactEmail?.Email,
             contactPersonPhone = contactPhone?.Phone,
             // Address.
@@ -101,9 +100,8 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
             // Contract.
             contractStart = contract?.StartDate,
             contractEnd = contract?.EndDate,
-            // Not modelled in the new domain — round-trip as null.
-            tier = (string?)null,
-            internalNotes = (string?)null,
+            tier = partner.Tier,
+            internalNotes = partner.InternalNotes,
         });
     }
 
@@ -130,6 +128,10 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
         if (body.Website is not null) partner.Website = string.IsNullOrWhiteSpace(body.Website) ? null : body.Website.Trim();
         if (body.RegistrationNumber is not null) partner.RegistrationNumber = string.IsNullOrWhiteSpace(body.RegistrationNumber) ? null : body.RegistrationNumber.Trim();
         if (body.TaxId is not null) partner.TaxId = string.IsNullOrWhiteSpace(body.TaxId) ? null : body.TaxId.Trim();
+        if (body.ContactPersonName is not null) partner.ContactPersonName = string.IsNullOrWhiteSpace(body.ContactPersonName) ? null : body.ContactPersonName.Trim();
+        if (body.ContactPersonTitle is not null) partner.ContactPersonTitle = string.IsNullOrWhiteSpace(body.ContactPersonTitle) ? null : body.ContactPersonTitle.Trim();
+        if (body.Tier is not null) partner.Tier = string.IsNullOrWhiteSpace(body.Tier) ? null : body.Tier.Trim();
+        if (body.InternalNotes is not null) partner.InternalNotes = string.IsNullOrWhiteSpace(body.InternalNotes) ? null : body.InternalNotes;
 
         // Address upsert (single primary address).
         var addressFieldsTouched = body.AddressLine1 is not null || body.AddressLine2 is not null
@@ -141,21 +143,26 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
                 .FirstOrDefaultAsync(a => a.PartnerId == partnerId && a.DeletedAt == null, ct);
             if (address is null)
             {
-                // PartnerAddress requires a PartnerAddressTypeId — fall back to the
-                // first available type (or skip address upsert if none exist).
+                // PartnerAddress requires a PartnerAddressTypeId; when the
+                // lookup table is empty the save used to skip SILENTLY —
+                // create a default "Primary" type instead so the address
+                // always persists.
                 var addressTypeId = await db.PartnerAddressTypes
                     .OrderBy(t => t.SortOrder).Select(t => (Guid?)t.PartnerAddressTypeId).FirstOrDefaultAsync(ct);
-                if (addressTypeId is not null)
+                if (addressTypeId is null)
                 {
-                    address = new PartnerAddress
-                    {
-                        PartnerAddressId = Guid.NewGuid(),
-                        PartnerId = partnerId,
-                        PartnerAddressTypeId = addressTypeId.Value,
-                        CountryCode = body.Country ?? "XX",
-                    };
-                    db.PartnerAddresses.Add(address);
+                    var defaultType = new PartnerAddressType { Code = "primary", Name = "Primary", SortOrder = 0 };
+                    db.PartnerAddressTypes.Add(defaultType);
+                    addressTypeId = defaultType.PartnerAddressTypeId;
                 }
+                address = new PartnerAddress
+                {
+                    PartnerAddressId = Guid.NewGuid(),
+                    PartnerId = partnerId,
+                    PartnerAddressTypeId = addressTypeId.Value,
+                    CountryCode = body.Country ?? "XX",
+                };
+                db.PartnerAddresses.Add(address);
             }
             if (address is not null)
             {

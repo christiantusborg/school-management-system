@@ -29,6 +29,13 @@ public class Partner : IDeletedAtEntity
     public string? RegistrationNumber { get; set; }
     public string? TaxId { get; set; }
 
+    // Profile-tab fields previously dropped on save (no domain columns).
+    public string? ContactPersonName { get; set; }
+    public string? ContactPersonTitle { get; set; }
+    /// <summary>Partnership tier label (e.g. Silver / Gold).</summary>
+    public string? Tier { get; set; }
+    public string? InternalNotes { get; set; }
+
     /// <summary>
     /// Partner-level "disabled" flag. Distinct from <see cref="DeletedAt"/>:
     /// a disabled partner is invisible to its own users (they cannot log in)
