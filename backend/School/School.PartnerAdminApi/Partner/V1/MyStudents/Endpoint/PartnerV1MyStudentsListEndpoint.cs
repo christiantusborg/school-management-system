@@ -56,6 +56,27 @@ public sealed class PartnerV1MyStudentsListEndpoint : IEndpointMarker
             })
             .ToListAsync(ct);
 
+        // Payment flags matching the Admission overview: overdue (past-due
+        // unpaid), any unpaid at all, and whether a plan with items exists.
+        var enrollmentIds = enrollments.Select(e => e.StudentEnrollmentId).ToList();
+        var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Unspecified);
+        var overdueIds = enrollmentIds.Count == 0 ? new HashSet<Guid>()
+            : (await db.EnrollmentPaymentPlans
+                .Where(p => enrollmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null
+                    && (p.Installments.Any(i => !i.IsPaid && i.DueDate != null && i.DueDate < today)
+                        || p.AdditionalInvoices.Any(a => !a.IsPaid && a.DueDate != null && a.DueDate < today)))
+                .Select(p => p.StudentEnrollmentId).ToListAsync(ct)).ToHashSet();
+        var unpaidIds = enrollmentIds.Count == 0 ? new HashSet<Guid>()
+            : (await db.EnrollmentPaymentPlans
+                .Where(p => enrollmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null
+                    && (p.Installments.Any(i => !i.IsPaid) || p.AdditionalInvoices.Any(a => !a.IsPaid)))
+                .Select(p => p.StudentEnrollmentId).ToListAsync(ct)).ToHashSet();
+        var planIds = enrollmentIds.Count == 0 ? new HashSet<Guid>()
+            : (await db.EnrollmentPaymentPlans
+                .Where(p => enrollmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null
+                    && (p.Installments.Any() || p.AdditionalInvoices.Any()))
+                .Select(p => p.StudentEnrollmentId).ToListAsync(ct)).ToHashSet();
+
         // Include all of the partner's students even if they have no enrollment yet
         // (frontend "Applying (draft)" chip includes them via includeNoEnrolment).
         var partnerStudents = await db.Students
@@ -98,6 +119,9 @@ public sealed class PartnerV1MyStudentsListEndpoint : IEndpointMarker
                     commencementDate = e.CommencementDate,
                     statusCode = e.StatusCode,
                     statusName = e.StatusName,
+                    paymentOverdue = overdueIds.Contains(e.StudentEnrollmentId),
+                    hasUnpaid = unpaidIds.Contains(e.StudentEnrollmentId),
+                    hasPaymentPlan = planIds.Contains(e.StudentEnrollmentId),
                 }).ToList(),
             };
         }).ToList();

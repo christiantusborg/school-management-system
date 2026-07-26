@@ -15,6 +15,8 @@
     <!-- Search + secondary filters -->
     <div class="filter-row">
       <input v-model="search" class="inp" placeholder="Fuzzy search — name, email, programme, student #…" />
+      <label class="unpaid-chk" title="Only students with at least one unpaid installment or invoice">
+        <input type="checkbox" v-model="unpaidOnly" /> Unpaid only</label>
       <select v-model="filterProgrammeId" class="inp">
         <option value="">All programmes</option>
         <option v-for="p in programmesAvailable" :key="p.programmeId" :value="p.programmeId">{{ p.name }}</option>
@@ -28,10 +30,16 @@
 
     <div v-if="!loading && filtered.length === 0" class="empty">No students match.</div>
     <table v-else-if="!loading" class="data-table">
-      <thead><tr><th>Student #</th><th>Name</th><th>Email</th><th>Enrolments</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Student #</th><th>Paid</th><th>Name</th><th>Email</th><th>Enrolments</th><th>Specialization</th><th>Status</th><th></th></tr></thead>
       <tbody>
         <tr v-for="s in pagedRows" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
           <td class="mono">{{ s.studentNumber }}</td>
+          <td>
+            <span v-if="!s.enrollments.some(e => e.hasPaymentPlan)" class="muted">—</span>
+            <span v-else-if="s.enrollments.some(e => e.hasUnpaid)" class="s-badge s-badge-unpaid"
+                  title="There are outstanding installments or invoices">Paid partially</span>
+            <span v-else class="s-badge s-badge-paid" title="No outstanding installments or invoices">Paid full</span>
+          </td>
           <td>
             <a class="s-name-link" @click.stop="openStudentDetail(s)">
               {{ s.firstName ?? '—' }} {{ s.lastName ?? '' }}
@@ -41,7 +49,12 @@
           <td>{{ s.email ?? '—' }}<span v-if="!s.emailVerified" class="s-badge unverified">unverified</span></td>
           <td>
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
-              <span class="enr-prog">{{ e.programmeCode }}</span> · {{ e.specializationName }}
+              <span class="enr-prog">{{ e.programmeCode }}</span>
+            </div>
+          </td>
+          <td>
+            <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
+              {{ e.specializationName || '—' }}
             </div>
           </td>
           <td class="td-status-col">
@@ -787,6 +800,7 @@ const fuse = computed(() => new Fuse(list.value, {
   minMatchCharLength: 2,
 }))
 
+const unpaidOnly = ref(false)
 const filtered = computed(() => {
   const q = search.value.trim()
   let rows = !q
@@ -797,6 +811,8 @@ const filtered = computed(() => {
     rows = rows.filter(s => s.enrollments.some(e => e.programmeId === filterProgrammeId.value))
   if (filterSpecializationId.value)
     rows = rows.filter(s => s.enrollments.some(e => e.specializationId === filterSpecializationId.value))
+  if (unpaidOnly.value)
+    rows = rows.filter(s => s.enrollments.some(e => e.hasUnpaid))
   if (filterStatusId.value !== '') {
     const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
     rows = rows.filter(s => {
@@ -814,7 +830,7 @@ const pageSize = ref(50)
 const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))
 const pagedRows = computed(() =>
   filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
-watch([search, filterProgrammeId, filterSpecializationId, filterStatusId, pageSize],
+watch([search, filterProgrammeId, filterSpecializationId, filterStatusId, unpaidOnly, pageSize],
   () => { page.value = 1 })
 watch(pageCount, n => { if (page.value > n) page.value = n })
 
@@ -1966,6 +1982,9 @@ function confirmSubStatus() {
 .pp-summary { display: flex; gap: 1.25rem; flex-wrap: wrap; font-size: .85rem; padding: .5rem 0 0; }
 .pp-due strong { color: #a8241e; }
 .pp-ok strong { color: #065f46; }
+.s-badge-unpaid { background: #fdf3e5; color: #a8641e; border: 1px solid #ecc9a0; }
+.s-badge-paid { background: #e7f0e9; color: #1d7a3e; border: 1px solid #9dc4a8; }
+.unpaid-chk { display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; color: #44536a; font-weight: 600; white-space: nowrap; cursor: pointer; }
 </style>
 
 <style scoped>
