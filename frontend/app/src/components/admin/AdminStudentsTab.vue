@@ -704,6 +704,11 @@
                       </div>
                     </div>
                     <div class="letter-actions">
+                      <button v-if="UPLOADABLE_LETTER_KEYS.includes(t.key) && canRegenerateLetters"
+                              class="btn-mini btn-mini-ghost" :disabled="uploadingLetterKey === t.key"
+                              :title="`Upload the student's OLD ${t.label} (pre-Hub graduate) — replaces any generated PDF; Generate replaces the upload again`"
+                              @click="pickLegacyLetter(t)">
+                        {{ uploadingLetterKey === t.key ? 'Uploading…' : '⇧ Upload old' }}</button>
                       <button class="btn-mini" :disabled="!activeEnrollment.letters?.[t.key]"
                               @click="downloadLetter(activeEnrollment.letters?.[t.key])">Download</button>
                       <button v-if="canRegenerateLetters" class="btn-mini btn-mini-ghost"
@@ -727,6 +732,11 @@
                       <div class="letter-sub">Rendered live from the grades saved so far · watermarked until grades are submitted</div>
                     </div>
                     <div class="letter-actions">
+                      <button class="btn-mini btn-mini-ghost" :disabled="downloadingLetterProvisional"
+                              title="Renders a fresh provisional transcript from the grades saved right now"
+                              @click="downloadLetterProvisional()">
+                        {{ downloadingLetterProvisional ? 'Generating…' : 'Generate' }}
+                      </button>
                       <button class="btn-mini" :disabled="downloadingLetterProvisional" @click="downloadLetterProvisional()">
                         {{ downloadingLetterProvisional ? 'Preparing…' : 'Download' }}
                       </button>
@@ -734,6 +744,8 @@
                   </div>
                 </template>
                 <p v-if="letterRegenResult" class="muted" style="margin-top:.4rem;">{{ letterRegenResult }}</p>
+                <input ref="legacyLetterInput" type="file" accept="application/pdf" style="display:none"
+                       @change="uploadLegacyLetter" />
               </div>
 
               <!-- Ad-hoc send dialog -->
@@ -2070,6 +2082,40 @@ async function saveCommencement() {
     commencementSaveError.value = err.response?.data?.error ?? err.message ?? 'Save failed'
   } finally {
     savingCommencement.value = false
+  }
+}
+
+// Legacy letter upload: old pre-Hub transcripts/certificates take the
+// released-document slot; Generate afterwards replaces the upload again —
+// a letter is either generated OR uploaded, never both.
+const UPLOADABLE_LETTER_KEYS = ['transcript', 'printableTranscript', 'certificate', 'provisionalCertificate']
+const legacyLetterInput = ref(null)
+const uploadingLetterKey = ref('')
+let pendingLegacyLetter = null
+function pickLegacyLetter(t) {
+  pendingLegacyLetter = t
+  legacyLetterInput.value?.click()
+}
+async function uploadLegacyLetter(ev) {
+  const file = ev.target.files?.[0]
+  ev.target.value = ''
+  const t = pendingLegacyLetter
+  pendingLegacyLetter = null
+  if (!file || !t || !detailModal.value?.studentId || !activeEnrollment.value) return
+  uploadingLetterKey.value = t.key
+  letterRegenResult.value = ''
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    await api.post(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/${t.key}/upload`,
+      fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    letterRegenResult.value = `Uploaded old ${t.label}: ${file.name}`
+    await refreshDetailModal()
+  } catch (err) {
+    letterRegenResult.value = err.response?.data?.error ?? err.message ?? 'Upload failed'
+  } finally {
+    uploadingLetterKey.value = ''
   }
 }
 
