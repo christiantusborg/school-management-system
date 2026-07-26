@@ -2339,7 +2339,7 @@ function logout() { auth.logout(); router.push('/login') }
 .btn-logout:hover { background: rgba(255,255,255,0.13); }
 .btn-nav-link { text-decoration: none; display: inline-flex; align-items: center; }
 
-.container { max-width: 1200px; margin: 2rem auto; padding: 0 1.5rem; }
+.container { margin: 2rem auto; padding: 0 2rem; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.25rem; }
 .page-title { font-size: 1.5rem; font-weight: 700; color: #003366; }
 .page-sub { font-size: 0.82rem; color: #888; margin-top: 0.2rem; }
