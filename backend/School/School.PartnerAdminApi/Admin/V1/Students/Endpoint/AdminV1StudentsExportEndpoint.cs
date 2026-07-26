@@ -254,6 +254,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                 ProgrammeMinDurationMonths = e.Specialization.Programmes.MinDurationMonths,
                 ProgrammeMaxDurationMonths = e.Specialization.Programmes.MaxDurationMonths,
                 e.ApprovedDurationMonths,
+                e.GraduationDate,
                 e.Specialization.TuitionFeeUsd,
                 e.Specialization.InstructionLanguage,
                 OfferAcceptanceMode = e.Specialization.OfferAcceptanceMode,
@@ -393,7 +394,11 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
                         e.ApprovedDurationMonths,
                         applicationDate,
                         LastAt(e.StudentEnrollmentId, EnrollmentStatusIds.ApplicationApprovedAdmission),
-                        LastAt(e.StudentEnrollmentId, EnrollmentStatusIds.GradesApproved),
+                        // The enrolment's explicit graduation date wins (what
+                        // the letters print); the status-note timestamp is only
+                        // a fallback — for imported students that note carries
+                        // the IMPORT moment, not the real graduation.
+                        e.GraduationDate ?? LastAt(e.StudentEnrollmentId, EnrollmentStatusIds.GradesApproved),
                         LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.OfferLetter),
                         LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.AdmissionLetter),
                         LetterAt(e.StudentEnrollmentId, SystemDocumentTypeIds.Transcript),
