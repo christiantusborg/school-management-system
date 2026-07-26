@@ -37,7 +37,7 @@
       <thead>
         <tr>
           <th>Student #</th><th>Paid</th><th>Name</th><th v-if="!partnerId">Partner</th>
-          <th>Email</th><th>Enrolments</th><th>Specialization</th><th>Information</th><th>Actions</th><th></th>
+          <th>Email</th><th>Enrolments</th><th>Specialization</th><th>Status</th><th>Actions</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -45,8 +45,9 @@
           <td class="mono">{{ s.studentNumber }}</td>
           <td>
             <span v-if="!s.enrollments.some(e => e.hasPaymentPlan)" class="muted">—</span>
-            <span v-else-if="s.enrollments.some(e => e.hasUnpaid)" class="s-badge s-badge-unpaid">Unpaid</span>
-            <span v-else class="s-badge s-badge-paid">Paid</span>
+            <span v-else-if="s.enrollments.some(e => e.hasUnpaid)" class="s-badge s-badge-unpaid"
+                  title="There are outstanding installments or invoices">Paid partially</span>
+            <span v-else class="s-badge s-badge-paid" title="No outstanding installments or invoices">Paid full</span>
           </td>
           <td>
             <a class="s-name-link" @click.stop="openStudentDetail(s)">
@@ -70,7 +71,7 @@
           </td>
           <td>
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
-              <span :class="['s-badge', statusClass(e.statusCode)]">{{ e.statusName }}</span>
+              <span :class="['s-badge', statusClass(e.statusCode)]" :title="e.statusName">{{ simpleStatus(e.statusCode) }}</span>
               <span v-if="e.paymentOverdue" class="s-badge s-badge-overdue"
                     title="An installment or additional invoice is unpaid past its due date (Programs → Payment).">Payment overdue</span>
             </div>
@@ -1200,6 +1201,17 @@ const emit = defineEmits(['add-student'])
 // state. "Action required" is the default landing (admin's queue) and "All"
 // is the catch-all at the end. Order: action queue → pre-admission → post-
 // admission → post-grading. Counts are derived client-side from the list.
+// Overview status column shows simplified stages (real status in the
+// tooltip): Graduate = grades approved; Active = grading phase;
+// Applicant = everything up to and including admission.
+function simpleStatus(code) {
+  if (code === 'GradesApproved') return 'Graduate'
+  if (code === 'AwaitingGradesApproval' || code === 'AwaitingGradesSubmit') return 'Active'
+  if (code === 'Deferred') return 'Deferred'
+  if (code === 'DroppedOut') return 'Dropped Out'
+  return 'Applicant'
+}
+
 const STATUS_FILTERS = [
   { id: 'action-required',           label: 'Action required',             codes: ['ApplicationAwaitingReviewByAdmission', 'AwaitingGradesApproval'] },
   { id: 'pending-admission',         label: 'Pending Admission Approval',  codes: ['ApplicationAwaitingReviewByAdmission'] },
