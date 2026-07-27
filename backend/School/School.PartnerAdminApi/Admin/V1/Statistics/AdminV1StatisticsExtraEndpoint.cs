@@ -33,6 +33,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
         app.MapGet("/v1/admin/statistics/operations", OperationsAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/finance", FinanceAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/trends", TrendsAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/statistics/signups", SignupsAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/full-report", FullReportAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/statistics/{tab}/export", ExportTabAsync).RequireAuthorization("AdminOnly");
         // Ad-blocker-safe aliases: filter lists (EasyPrivacy etc.) block URLs
@@ -514,11 +515,11 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
     {
         ["grades"] = "Grades", ["teachers"] = "Teacher grading behaviour",
         ["demographics"] = "Demographics", ["operations"] = "Operations & QA",
-        ["finance"] = "Finance", ["trends"] = "Trends",
+        ["finance"] = "Finance", ["trends"] = "Trends", ["signups"] = "Signups",
     };
 
     private static async Task<IResult> ExportTabAsync(
-        string tab, OdinDbContext db, ILogger<AdminV1StatisticsExtraEndpoint> log, CancellationToken ct,
+        string tab, OdinDbContext db, HttpContext httpContext, ILogger<AdminV1StatisticsExtraEndpoint> log, CancellationToken ct,
         [FromQuery] string? format = null,
         [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
         [FromQuery] string? granularity = null)
@@ -538,6 +539,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
             "demographics" => await DemographicsAsync(db, ct, from, to),
             "operations" => await OperationsAsync(db, ct, from, to),
             "finance" => await FinanceAsync(db, ct, from, to),
+            "signups" => await SignupsAsync(db, httpContext, ct, from, to),
             _ => await TrendsAsync(db, ct, from, to, granularity),
         };
         if (inner is not IValueHttpResult { Value: { } payload }) return Results.NotFound();
@@ -667,6 +669,37 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                 tables.Add(new ExportTable("Payments per partner",
                     ["Partner", "Paid", "Paid amount", "Overdue", "Overdue amount", "Upcoming", "Upcoming amount", "Students overdue"],
                     finRows));
+                break;
+
+            case "signups":
+                if (root.GetProperty("isSuper").GetBoolean())
+                {
+                    tables.Add(new ExportTable("Summary", ["Metric", "Value"],
+                    [
+                        ["Total signups", S(root, "total")],
+                        ["Brought in by staff", S(root, "staffSignups")],
+                        ["Self signups (public page)", S(root, "selfSignups")],
+                    ]));
+                    tables.Add(new ExportTable("Leaderboard",
+                        ["Rank", "Who", "Office", "Signups"],
+                        root.GetProperty("leaderboard").EnumerateArray().Select(r => new[]
+                        {
+                            S(r, "rank"), S(r, "name"), S(r, "office"), S(r, "count"),
+                        }).ToList()));
+                }
+                else
+                {
+                    var me = root.GetProperty("me");
+                    tables.Add(new ExportTable("Your signups", ["Metric", "Value"],
+                    [
+                        ["Signups you brought in", S(me, "count")],
+                        ["Your rank", S(me, "rank")],
+                        ["Ranked staff in period", S(me, "of")],
+                    ]));
+                }
+                tables.Add(new ExportTable("Signups per day", ["Date", "Count"],
+                    root.GetProperty("timeline").EnumerateArray()
+                        .Select(d => new[] { S(d, "date"), S(d, "count") }).ToList()));
                 break;
 
             case "trends":
@@ -941,5 +974,102 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                 });
             }
         }).GeneratePdf();
+    }
+
+    // ── Signup leaderboard ──────────────────────────────────────────────────
+    // Who brought in the signups (Added by) in the period: SuperAdministrator
+    // sees the full leaderboard; every other admin level (incl. Sales) sees
+    // only their own numbers plus their anonymous rank.
+
+    private static async Task<IResult> SignupsAsync(
+        OdinDbContext db, HttpContext httpContext, CancellationToken ct,
+        [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
+    {
+        var (f, t) = Range(from, to);
+        var callerId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var isSuper = httpContext.User.IsInRole("SuperAdministrator");
+
+        var rows = await (
+            from st in db.Students
+            join u in db.Users on st.UserId equals u.Id
+            where st.DeletedAt == null
+                && (f == null || u.CreatedAt >= f)
+                && (t == null || u.CreatedAt < t)
+            select new { st.CreatedByUserId, u.CreatedAt }).ToListAsync(ct);
+
+        var selfSignups = rows.Count(r => r.CreatedByUserId == null);
+        var byCreator = rows.Where(r => r.CreatedByUserId != null)
+            .GroupBy(r => r.CreatedByUserId!)
+            .Select(g => new
+            {
+                Id = g.Key,
+                Count = g.Count(),
+                Days = g.GroupBy(x => x.CreatedAt.Date)
+                    .ToDictionary(d => d.Key, d => d.Count()),
+            })
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        List<object> Timeline(IEnumerable<DateTime> dates)
+        {
+            return dates.GroupBy(d => d.Date).OrderBy(g => g.Key)
+                .Select(g => (object)new { date = g.Key.ToString("yyyy-MM-dd"), count = g.Count() })
+                .ToList();
+        }
+
+        if (isSuper)
+        {
+            var creatorIds = byCreator.Select(x => x.Id).ToList();
+            var names = creatorIds.Count == 0
+                ? new Dictionary<string, (string Name, string Office)>()
+                : (await db.Users
+                    .Where(u => creatorIds.Contains(u.Id))
+                    .Select(u => new
+                    {
+                        u.Id,
+                        u.UserName,
+                        u.PartnerId,
+                        Name = db.UserProfiles.Where(p => p.UserId == u.Id)
+                            .Select(p => ((p.FirstName ?? "") + " " + (p.LastName ?? "")).Trim())
+                            .FirstOrDefault(),
+                    })
+                    .ToListAsync(ct))
+                    .ToDictionary(
+                        u => u.Id,
+                        u => (Name: string.IsNullOrWhiteSpace(u.Name) ? (u.UserName ?? "?") : u.Name!,
+                              Office: u.PartnerId != null ? "partner" : "admission"));
+
+            return Results.Ok(new
+            {
+                isSuper = true,
+                total = rows.Count,
+                selfSignups,
+                staffSignups = rows.Count - selfSignups,
+                leaderboard = byCreator.Select((x, i) => new
+                {
+                    rank = i + 1,
+                    name = names.TryGetValue(x.Id, out var n) ? n.Name : "?",
+                    office = names.TryGetValue(x.Id, out var o) ? o.Office : "?",
+                    count = x.Count,
+                }).ToList(),
+                timeline = Timeline(rows.Select(r => r.CreatedAt)),
+            });
+        }
+
+        var mineIndex = byCreator.FindIndex(x => x.Id == callerId);
+        var mine = mineIndex >= 0 ? byCreator[mineIndex] : null;
+        return Results.Ok(new
+        {
+            isSuper = false,
+            me = new
+            {
+                count = mine?.Count ?? 0,
+                rank = mineIndex >= 0 ? mineIndex + 1 : (int?)null,
+                of = byCreator.Count,
+            },
+            timeline = Timeline(rows
+                .Where(r => r.CreatedByUserId == callerId)
+                .Select(r => r.CreatedAt)),
+        });
     }
 }

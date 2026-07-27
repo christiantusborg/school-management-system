@@ -41,6 +41,7 @@
     <OperationsStats v-if="visited.has('operations')" v-show="sub === 'operations'" :from="from" :to="to" />
     <FinanceStats v-if="visited.has('finance')" v-show="sub === 'finance'" :from="from" :to="to" />
     <TrendsStats v-if="visited.has('trends')" v-show="sub === 'trends'" :from="from" :to="to" />
+    <SignupStats v-if="visited.has('signups')" v-show="sub === 'signups'" :from="from" :to="to" />
 
     <template v-if="sub === 'outcomes'">
     <div v-if="error" class="err-banner">{{ error }}</div>
@@ -113,6 +114,7 @@ import DemographicsStats from './stats/DemographicsStats.vue'
 import OperationsStats from './stats/OperationsStats.vue'
 import FinanceStats from './stats/FinanceStats.vue'
 import TrendsStats from './stats/TrendsStats.vue'
+import SignupStats from './stats/SignupStats.vue'
 
 const SUB_TABS = [
   { key: 'outcomes', label: 'Outcomes' },
@@ -122,6 +124,7 @@ const SUB_TABS = [
   { key: 'operations', label: 'Operations & QA' },
   { key: 'finance', label: 'Finance' },
   { key: 'trends', label: 'Trends' },
+  { key: 'signups', label: 'Signups' },
 ]
 const sub = ref('outcomes')
 const visited = reactive(new Set())
