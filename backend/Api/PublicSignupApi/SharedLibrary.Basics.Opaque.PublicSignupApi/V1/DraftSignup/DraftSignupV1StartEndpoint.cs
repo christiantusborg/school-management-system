@@ -27,9 +27,12 @@ public sealed class DraftSignupV1StartEndpoint : IEndpointMarker
         public string? LastName { get; init; }
         public string? Email { get; init; }
         public string? BlindedElement { get; init; }
+        /// <summary>Actor ticket minted by the staff add-student modal; lets
+        /// /finish attribute the created student to the staff member.</summary>
+        public string? ActorTicket { get; init; }
     }
 
-    public sealed record DraftStartCacheState(string PartnerSlug, string FirstName, string LastName);
+    public sealed record DraftStartCacheState(string PartnerSlug, string FirstName, string LastName, string? ActorUserId = null);
 
     private static async Task<IResult> HandleAsync(
         [FromBody] StartRequest body,
@@ -82,10 +85,15 @@ public sealed class DraftSignupV1StartEndpoint : IEndpointMarker
         if (!initResult.TryGetResponseRaw(out var initData, out var failure))
             return failure!;
 
+        // Staff-added signup? Resolve the actor ticket to the staff user id.
+        string? actorUserId = null;
+        if (!string.IsNullOrWhiteSpace(body.ActorTicket))
+            actorUserId = await cache.GetAsync<string>($"wizactor:{body.ActorTicket.Trim()}");
+
         // Stash wizard-only fields so /finish can copy them onto UserProfile + Student.
         await cache.SetAsync(
             $"wizdraft:{initData!.RegistrationId}",
-            new DraftStartCacheState(body.PartnerSlug.Trim(), body.FirstName.Trim(), body.LastName.Trim()),
+            new DraftStartCacheState(body.PartnerSlug.Trim(), body.FirstName.Trim(), body.LastName.Trim(), actorUserId),
             TimeSpan.FromMinutes(5));
 
         return Results.Ok(new

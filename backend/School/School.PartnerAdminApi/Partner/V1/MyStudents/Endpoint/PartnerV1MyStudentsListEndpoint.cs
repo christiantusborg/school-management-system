@@ -76,6 +76,11 @@ public sealed class PartnerV1MyStudentsListEndpoint : IEndpointMarker
                 .Where(p => enrollmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null
                     && (p.Installments.Any() || p.AdditionalInvoices.Any()))
                 .Select(p => p.StudentEnrollmentId).ToListAsync(ct)).ToHashSet();
+        var paidIds = enrollmentIds.Count == 0 ? new HashSet<Guid>()
+            : (await db.EnrollmentPaymentPlans
+                .Where(p => enrollmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null
+                    && (p.Installments.Any(i => i.IsPaid) || p.AdditionalInvoices.Any(a => a.IsPaid)))
+                .Select(p => p.StudentEnrollmentId).ToListAsync(ct)).ToHashSet();
 
         // Include all of the partner's students even if they have no enrollment yet
         // (frontend "Applying (draft)" chip includes them via includeNoEnrolment).
@@ -128,6 +133,7 @@ public sealed class PartnerV1MyStudentsListEndpoint : IEndpointMarker
                     paymentOverdue = overdueIds.Contains(e.StudentEnrollmentId),
                     hasUnpaid = unpaidIds.Contains(e.StudentEnrollmentId),
                     hasPaymentPlan = planIds.Contains(e.StudentEnrollmentId),
+                    hasPaid = paidIds.Contains(e.StudentEnrollmentId),
                 }).ToList(),
             };
         }).ToList();

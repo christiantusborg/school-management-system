@@ -53,6 +53,11 @@ public class Student
     /// <summary>Highest signup-wizard step the applicant has completed (0 = not started, 6 = submitted).</summary>
     public int WizardStep { get; set; }
 
+    /// <summary>Who created this student: an admission/partner staff user id
+    /// (via the add-student wizard's actor ticket or CSV import), or null when
+    /// the student signed up themself.</summary>
+    public string? CreatedByUserId { get; set; }
+
     // Identity / address (filled by the wizard)
     public int? NationalityId { get; set; }
 

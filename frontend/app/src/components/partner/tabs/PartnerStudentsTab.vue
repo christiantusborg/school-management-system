@@ -15,8 +15,13 @@
     <!-- Search + secondary filters -->
     <div class="filter-row">
       <input v-model="search" class="inp" placeholder="Fuzzy search — name, email, programme, student #…" />
-      <label class="unpaid-chk" title="Only students with at least one unpaid installment or invoice">
-        <input type="checkbox" v-model="unpaidOnly" /> Unpaid only</label>
+      <select v-model="payFilter" class="pay-filter" title="Filter by payment stage">
+        <option value="">All payments</option>
+        <option value="unpaid">Unpaid</option>
+        <option value="partial">Paid partially</option>
+        <option value="full">Paid full</option>
+        <option value="none">No payment plan</option>
+      </select>
       <select v-model="filterProgrammeId" class="inp">
         <option value="">All programmes</option>
         <option v-for="p in programmesAvailable" :key="p.programmeId" :value="p.programmeId">{{ p.name }}</option>
@@ -35,8 +40,10 @@
         <tr v-for="s in pagedRows" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
           <td class="mono">{{ s.studentNumber }}</td>
           <td>
-            <span v-if="!s.enrollments.some(e => e.hasPaymentPlan)" class="muted">—</span>
-            <span v-else-if="s.enrollments.some(e => e.hasUnpaid)" class="s-badge s-badge-unpaid"
+            <span v-if="payStage(s) === 'none'" class="muted">—</span>
+            <span v-else-if="payStage(s) === 'unpaid'" class="s-badge s-badge-overdue"
+                  title="A payment plan exists but nothing has been paid yet">Unpaid</span>
+            <span v-else-if="payStage(s) === 'partial'" class="s-badge s-badge-unpaid"
                   title="There are outstanding installments or invoices">Paid partially</span>
             <span v-else class="s-badge s-badge-paid" title="No outstanding installments or invoices">Paid full</span>
           </td>
@@ -829,7 +836,16 @@ async function continueSignup(s) {
   }
 }
 
-const unpaidOnly = ref(false)
+const payFilter = ref('')
+// Payment stage across all of a student's plans: unpaid (nothing paid yet),
+// partial (some paid, some open), full (nothing open), none (no plan).
+function payStage(s) {
+  if (!s.enrollments.some(e => e.hasPaymentPlan)) return 'none'
+  const anyUnpaid = s.enrollments.some(e => e.hasUnpaid)
+  if (!anyUnpaid) return 'full'
+  return s.enrollments.some(e => e.hasPaid) ? 'partial' : 'unpaid'
+}
+
 const filtered = computed(() => {
   const q = search.value.trim()
   let rows = !q
@@ -840,8 +856,8 @@ const filtered = computed(() => {
     rows = rows.filter(s => s.enrollments.some(e => e.programmeId === filterProgrammeId.value))
   if (filterSpecializationId.value)
     rows = rows.filter(s => s.enrollments.some(e => e.specializationId === filterSpecializationId.value))
-  if (unpaidOnly.value)
-    rows = rows.filter(s => s.enrollments.some(e => e.hasUnpaid))
+  if (payFilter.value)
+    rows = rows.filter(s => payStage(s) === payFilter.value)
   if (filterStatusId.value !== '') {
     const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
     rows = rows.filter(s => {
@@ -860,7 +876,7 @@ const pageSize = ref(50)
 const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))
 const pagedRows = computed(() =>
   filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
-watch([search, filterProgrammeId, filterSpecializationId, filterStatusId, unpaidOnly, pageSize],
+watch([search, filterProgrammeId, filterSpecializationId, filterStatusId, payFilter, pageSize],
   () => { page.value = 1 })
 watch(pageCount, n => { if (page.value > n) page.value = n })
 
@@ -2016,7 +2032,7 @@ function confirmSubStatus() {
 .s-badge-paid { background: #e7f0e9; color: #1d7a3e; border: 1px solid #9dc4a8; }
 .s-badge-signup { background: #fdf3e5; color: #a8641e; border: 1px solid #ecc9a0; }
 .btn-continue-signup { background: #b8860b; border-color: #b8860b; color: #fff; }
-.unpaid-chk { display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; color: #44536a; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.pay-filter { padding: .4rem .55rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; background: #fff; color: #2c3e50; }
 </style>
 
 <style scoped>

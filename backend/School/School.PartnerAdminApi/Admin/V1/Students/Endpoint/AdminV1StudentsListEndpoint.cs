@@ -85,6 +85,13 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                     && (p.Installments.Any() || p.AdditionalInvoices.Any()))
                 .Select(p => p.StudentEnrollmentId)
                 .ToListAsync(cancellationToken)).ToHashSet();
+        var paidIds = enrollmentIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await db.EnrollmentPaymentPlans
+                .Where(p => enrollmentIds.Contains(p.StudentEnrollmentId) && p.DeletedAt == null
+                    && (p.Installments.Any(i => i.IsPaid) || p.AdditionalInvoices.Any(a => a.IsPaid)))
+                .Select(p => p.StudentEnrollmentId)
+                .ToListAsync(cancellationToken)).ToHashSet();
 
         // Group by student. Students with NO enrolment yet (mid-signup,
         // wizard steps 1–3) must appear too — the "Signing up" chip lives off
@@ -104,6 +111,7 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                 s.WizardStep,
                 s.UserId,
                 s.PartnerId,
+                s.CreatedByUserId,
                 User = new { s.User.UserName, s.User.Email, s.User.EmailConfirmed },
                 Profile = db.UserProfiles.Where(p => p.UserId == s.UserId)
                     .Select(p => new { p.FirstName, p.LastName }).FirstOrDefault(),
@@ -112,6 +120,28 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
             .ToListAsync(cancellationToken);
 
         var enrollmentsByStudent = enrollments.GroupBy(e => e.StudentId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // "Added by" labels: staff name + which office; null = self signup.
+        var creatorIds = students.Where(s => s.CreatedByUserId != null)
+            .Select(s => s.CreatedByUserId!).Distinct().ToList();
+        var creators = creatorIds.Count == 0
+            ? new Dictionary<string, string>()
+            : (await db.Users
+                .Where(u => creatorIds.Contains(u.Id))
+                .Select(u => new
+                {
+                    u.Id,
+                    u.UserName,
+                    u.PartnerId,
+                    Name = db.UserProfiles.Where(p => p.UserId == u.Id)
+                        .Select(p => ((p.FirstName ?? "") + " " + (p.LastName ?? "")).Trim())
+                        .FirstOrDefault(),
+                })
+                .ToListAsync(cancellationToken))
+                .ToDictionary(
+                    u => u.Id,
+                    u => (string.IsNullOrWhiteSpace(u.Name) ? u.UserName : u.Name)
+                        + (u.PartnerId != null ? " (partner)" : " (admission)"));
 
         var items = students.Select(s =>
         {
@@ -123,6 +153,7 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
             {
                 studentId = s.StudentId,
                 studentNumber = s.StudentNumber,
+                createdBy = s.CreatedByUserId != null ? creators.GetValueOrDefault(s.CreatedByUserId) : null,
                 wizardStep = s.WizardStep,
                 signingUp,
                 username = s.User.UserName,
@@ -147,6 +178,7 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                     paymentOverdue = overdueIds.Contains(e.StudentEnrollmentId),
                     hasUnpaid = unpaidIds.Contains(e.StudentEnrollmentId),
                     hasPaymentPlan = planIds.Contains(e.StudentEnrollmentId),
+                    hasPaid = paidIds.Contains(e.StudentEnrollmentId),
                 }).ToList(),
             };
         }).ToList();

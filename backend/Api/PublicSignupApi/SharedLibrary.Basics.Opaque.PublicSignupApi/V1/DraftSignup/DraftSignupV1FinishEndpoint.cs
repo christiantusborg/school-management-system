@@ -111,6 +111,7 @@ public sealed class DraftSignupV1FinishEndpoint : IEndpointMarker
             PartnerId = partner.PartnerId,
             StudentNumber = GenerateStudentNumber(),
             WizardStep = 1,
+            CreatedByUserId = draftState.ActorUserId,
         };
         db.Students.Add(student);
         await db.SaveChangesAsync(ct);

@@ -786,6 +786,8 @@ async function startAccount() {
       lastName: form.lastName.trim(),
       email: form.email.trim(),
       blindedElement,
+      // Staff add-student modal: attribute the created student to the actor.
+      actorTicket: new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('actor') || null,
     })
     if (startRes.data?.existingUser) {
       // The email already has an application — continue it instead of failing.

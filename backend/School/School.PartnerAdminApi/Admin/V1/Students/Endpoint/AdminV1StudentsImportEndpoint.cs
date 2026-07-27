@@ -328,6 +328,7 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                     IsLegacyStudent = plan.GivenStudentNumber is not null,
                     PartnerId = plan.Partner!.PartnerId,
                     WizardStep = 6,
+                    CreatedByUserId = actorId == Guid.Empty ? null : actorId.ToString(),
                     PassportId = plan.Cell("PassportId"),
                     DateOfBirth = plan.DateOfBirth,
                     NationalityId = plan.NationalityId,

@@ -13,8 +13,13 @@
 
     <div class="filter-row">
       <input v-model="search" class="inp" placeholder="Fuzzy search — name, email, programme, partner…" />
-      <label class="unpaid-chk" title="Only students with at least one unpaid installment or invoice">
-        <input type="checkbox" v-model="unpaidOnly" /> Unpaid only</label>
+      <select v-model="payFilter" class="pay-filter" title="Filter by payment stage">
+        <option value="">All payments</option>
+        <option value="unpaid">Unpaid</option>
+        <option value="partial">Paid partially</option>
+        <option value="full">Paid full</option>
+        <option value="none">No payment plan</option>
+      </select>
       <select v-model="filterProgrammeId" class="inp">
         <option value="">All programmes</option>
         <option v-for="p in programmesAvailable" :key="p.programmeId" :value="p.programmeId">{{ p.name }}</option>
@@ -37,15 +42,17 @@
       <thead>
         <tr>
           <th>Student #</th><th>Paid</th><th>Name</th><th v-if="!partnerId">Partner</th>
-          <th>Email</th><th>Enrolments</th><th>Specialization</th><th>Status</th><th>Actions</th><th></th>
+          <th>Email</th><th>Enrolments</th><th>Specialization</th><th>Status</th><th>Added by</th><th>Actions</th><th></th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="s in pagedRows" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
           <td class="mono">{{ s.studentNumber }}</td>
           <td>
-            <span v-if="!s.enrollments.some(e => e.hasPaymentPlan)" class="muted">—</span>
-            <span v-else-if="s.enrollments.some(e => e.hasUnpaid)" class="s-badge s-badge-unpaid"
+            <span v-if="payStage(s) === 'none'" class="muted">—</span>
+            <span v-else-if="payStage(s) === 'unpaid'" class="s-badge s-badge-overdue"
+                  title="A payment plan exists but nothing has been paid yet">Unpaid</span>
+            <span v-else-if="payStage(s) === 'partial'" class="s-badge s-badge-unpaid"
                   title="There are outstanding installments or invoices">Paid partially</span>
             <span v-else class="s-badge s-badge-paid" title="No outstanding installments or invoices">Paid full</span>
           </td>
@@ -80,6 +87,9 @@
                     title="The signup wizard was started but never submitted. Re-entering the same email in the wizard continues where it stopped.">
                 Signing up — step {{ Math.max(s.wizardStep, 1) }} of 6</span>
             </div>
+          </td>
+          <td>
+            <span :class="{ muted: !s.createdBy }">{{ s.createdBy ?? 'Student signup' }}</span>
           </td>
           <td class="enrol-actions-cell">
             <div v-if="s.signingUp" class="enrol-actions">
@@ -2910,7 +2920,16 @@ const filterPartnerName = ref('')
 const partnersAvailable = computed(() =>
   [...new Set(list.value.map(s => s.partnerName).filter(Boolean))].sort((a, b) => a.localeCompare(b)))
 
-const unpaidOnly = ref(false)
+const payFilter = ref('')
+// Payment stage across all of a student's plans: unpaid (nothing paid yet),
+// partial (some paid, some open), full (nothing open), none (no plan).
+function payStage(s) {
+  if (!s.enrollments.some(e => e.hasPaymentPlan)) return 'none'
+  const anyUnpaid = s.enrollments.some(e => e.hasUnpaid)
+  if (!anyUnpaid) return 'full'
+  return s.enrollments.some(e => e.hasPaid) ? 'partial' : 'unpaid'
+}
+
 const filtered = computed(() => {
   const q = search.value.trim()
   // Start either from the fuzzy search hits or the full list.
@@ -2924,8 +2943,8 @@ const filtered = computed(() => {
     rows = rows.filter(s => s.enrollments.some(e => e.specializationId === filterSpecializationId.value))
   if (filterPartnerName.value)
     rows = rows.filter(s => s.partnerName === filterPartnerName.value)
-  if (unpaidOnly.value)
-    rows = rows.filter(s => s.enrollments.some(e => e.hasUnpaid))
+  if (payFilter.value)
+    rows = rows.filter(s => payStage(s) === payFilter.value)
   if (filterStatusId.value !== '') {
     const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
     rows = rows.filter(s => {
@@ -2946,7 +2965,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / p
 const pagedRows = computed(() =>
   filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 // Any filter/search change goes back to page 1; clamp when rows shrink.
-watch([search, filterProgrammeId, filterSpecializationId, filterPartnerName, filterStatusId, unpaidOnly, pageSize],
+watch([search, filterProgrammeId, filterSpecializationId, filterPartnerName, filterStatusId, payFilter, pageSize],
   () => { page.value = 1 })
 watch(pageCount, n => { if (page.value > n) page.value = n })
 
@@ -3450,7 +3469,7 @@ async function runExport() {
 .s-badge-overdue { background: #fde7e5; color: #a8241e; border: 1px solid #e8b3af; }
 .s-badge-unpaid { background: #fdf3e5; color: #a8641e; border: 1px solid #ecc9a0; }
 .s-badge-paid { background: #e7f0e9; color: #1d7a3e; border: 1px solid #9dc4a8; }
-.unpaid-chk { display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; color: #44536a; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.pay-filter { padding: .4rem .55rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; background: #fff; color: #2c3e50; }
 .s-badge-signup  { background: #fff4e6; color: #b66a00; border: 1px solid #f0d2a8; }
 .st-submitted { background: #fff7e0; color: #8a6d00; }
 .st-pending   { background: #e8f0f8; color: #0055a5; }

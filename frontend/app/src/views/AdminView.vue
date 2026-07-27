@@ -71,7 +71,7 @@
         <!-- Step 2: Wizard iframe -->
         <iframe
           v-else-if="addStudentStep === 'wizard' && addStudentPartnerSlug"
-          :src="`/#/apply?partner=${addStudentPartnerSlug}`"
+          :src="`/#/apply?partner=${addStudentPartnerSlug}${addStudentActorTicket ? `&actor=${addStudentActorTicket}` : ''}`"
           class="add-student-iframe"
           title="Student signup">
         </iframe>
@@ -1155,6 +1155,14 @@ function openAddStudentForManagedPartner() {
   addStudentStep.value = 'wizard'
   showAddStudentAdmin.value = true
 }
+const addStudentActorTicket = ref('')
+watch(showAddStudentAdmin, async open => {
+  if (!open) return
+  try {
+    addStudentActorTicket.value = (await apiClient.post('/v1/admin/students/actor-ticket')).data.ticket
+  } catch { addStudentActorTicket.value = '' }
+})
+
 function closeAddStudentAdmin() {
   showAddStudentAdmin.value = false
   addStudentStep.value = 'pick'

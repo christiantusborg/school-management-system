@@ -86,7 +86,7 @@
         </div>
         <iframe
           v-if="auth.user?.partnerSlug"
-          :src="`/#/apply?partner=${auth.user.partnerSlug}`"
+          :src="`/#/apply?partner=${auth.user.partnerSlug}${addStudentActorTicket ? `&actor=${addStudentActorTicket}` : ''}`"
           class="add-student-iframe"
           title="Student signup">
         </iframe>
@@ -1367,6 +1367,13 @@ watch(mainTab, (t) => { if (t === 'certs') loadCertificates() })
 // Hosts the public signup wizard inside an iframe, scoped to this partner's
 // slug. Closing the modal triggers a refresh of the students table.
 const showAddStudent = ref(false)
+const addStudentActorTicket = ref('')
+watch(showAddStudent, async open => {
+  if (!open) return
+  try {
+    addStudentActorTicket.value = (await apiClient.post('/v1/partner/my-students/actor-ticket')).data.ticket
+  } catch { addStudentActorTicket.value = '' }
+})
 function closeAddStudent() {
   showAddStudent.value = false
   // Tell the partner students tab to reload, since the student count likely
