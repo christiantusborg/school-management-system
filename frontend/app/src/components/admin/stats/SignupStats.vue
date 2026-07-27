@@ -9,6 +9,10 @@
       </select>
       <label v-if="data?.isSuper" class="sg-chk" title="Only staff with the Sales admin level — for commission runs">
         <input type="checkbox" v-model="salesOnly" /> Sales staff only</label>
+      <div class="sg-view">
+        <button type="button" :class="['sg-view-btn', { on: view === 'staff' }]" @click="view = 'staff'">👤 Per staff</button>
+        <button type="button" :class="['sg-view-btn', { on: view === 'school' }]" @click="view = 'school'">🏫 Per school</button>
+      </div>
     </div>
 
     <div v-if="error" class="err-banner">{{ error }}</div>
@@ -23,8 +27,34 @@
           <template v-if="isPaid"> · total <strong>{{ money(data.totalAmount) }}</strong></template>
         </p>
 
-        <h3 class="ss-section">🏆 Leaderboard <span class="ss-muted">(click a row for the detail list — commission basis)</span></h3>
-        <table v-if="data.leaderboard.length" class="data-table" style="max-width:900px">
+        <template v-if="view === 'school'">
+          <h3 class="ss-section">🏫 Per school <span class="ss-muted">(all {{ metricNoun }}, attributed or not — click a row for details)</span></h3>
+          <table v-if="data.bySchool?.length" class="data-table" style="max-width:900px">
+            <thead><tr><th style="width:64px">Rank</th><th>School</th><th style="width:90px">Count</th>
+              <th v-if="isPaid" style="width:130px">Amount</th><th style="width:32%"></th></tr></thead>
+            <tbody>
+              <template v-for="r in data.bySchool" :key="'sc' + r.rank">
+                <tr class="lb-row" @click="openSchool = openSchool === r.rank ? 0 : r.rank">
+                  <td class="lb-rank">{{ openSchool === r.rank ? '▾' : '▸' }} {{ medal(r.rank) }}</td>
+                  <td style="font-weight:600">{{ r.name }}</td>
+                  <td><strong>{{ r.count }}</strong></td>
+                  <td v-if="isPaid"><strong class="ss-good">{{ money(r.amount) }}</strong></td>
+                  <td><div class="ss-bar" style="width:100%"><div class="ss-fill lb-fill"
+                    :style="{ width: schoolBarPct(r) + '%' }"></div></div></td>
+                </tr>
+                <tr v-if="openSchool === r.rank">
+                  <td :colspan="isPaid ? 5 : 4" class="lb-details">
+                    <DetailTable :details="r.details" :is-paid="isPaid" :money="money" />
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <p v-else class="ss-sub">Nothing in this period.</p>
+        </template>
+
+        <h3 v-show="view === 'staff'" class="ss-section">🏆 Leaderboard <span class="ss-muted">(click a row for the detail list — commission basis)</span></h3>
+        <table v-show="view === 'staff'" v-if="data.leaderboard.length" class="data-table" style="max-width:900px">
           <thead><tr><th style="width:64px">Rank</th><th>Who</th><th style="width:90px">Count</th>
             <th v-if="isPaid" style="width:130px">Amount</th><th style="width:32%"></th></tr></thead>
           <tbody>
@@ -45,7 +75,7 @@
             </template>
           </tbody>
         </table>
-        <p v-else class="ss-sub">Nothing attributed in this period.</p>
+        <p v-else v-show="view === 'staff'" class="ss-sub">Nothing attributed in this period.</p>
 
         <h3 class="ss-section">{{ metricNoun[0].toUpperCase() + metricNoun.slice(1) }} per day</h3>
         <DayChart :timeline="data.timeline" :is-paid="isPaid" :money="money" />
@@ -61,7 +91,15 @@
           <div v-else class="me-rank">Nothing attributed yet this period — share your referral link! 🔗</div>
         </div>
         <h3 class="ss-section">Your details</h3>
-        <DetailTable :details="data.me.details" :is-paid="isPaid" :money="money" />
+        <DetailTable v-if="view === 'staff'" :details="data.me.details" :is-paid="isPaid" :money="money" />
+        <table v-else-if="data.bySchool?.length" class="data-table" style="max-width:700px">
+          <thead><tr><th>School</th><th>Count</th><th v-if="isPaid">Amount</th></tr></thead>
+          <tbody><tr v-for="r in data.bySchool" :key="r.name">
+            <td style="font-weight:600">{{ r.name }}</td><td>{{ r.count }}</td>
+            <td v-if="isPaid"><strong class="ss-good">{{ money(r.amount) }}</strong></td>
+          </tr></tbody>
+        </table>
+        <p v-else class="ss-sub">Nothing in this period.</p>
         <h3 class="ss-section">Per day</h3>
         <DayChart :timeline="data.timeline" :is-paid="isPaid" :money="money" />
       </template>
@@ -80,6 +118,13 @@ const error = ref('')
 const metric = ref('')
 const salesOnly = ref(false)
 const openRow = ref(0)
+const openSchool = ref(0)
+const view = ref('staff')
+function schoolBarPct(r) {
+  const top = data.value.bySchool[0]
+  const denom = isPaid.value ? (top.amount || 1) : (top.count || 1)
+  return ((isPaid.value ? r.amount : r.count) * 100) / denom
+}
 
 // System enrollment statuses (fixed ids).
 const STATUSES = [
@@ -156,6 +201,7 @@ async function load() {
   loading.value = true
   error.value = ''
   openRow.value = 0
+  openSchool.value = 0
   try {
     const params = {}
     if (props.from) params.from = props.from
@@ -179,6 +225,9 @@ onMounted(load)
 .sg-controls { display: flex; align-items: center; gap: .6rem; margin-bottom: .8rem; flex-wrap: wrap; }
 .sg-sel { padding: .4rem .55rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .84rem; background: #fff; }
 .sg-chk { display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; color: #44536a; font-weight: 600; cursor: pointer; }
+.sg-view { display: inline-flex; gap: .3rem; margin-left: .4rem; }
+.sg-view-btn { background: #f2f5f9; border: 1px solid #cfd7e3; border-radius: 5px; padding: .3rem .7rem; font-size: .78rem; font-weight: 600; color: #2c3e50; cursor: pointer; }
+.sg-view-btn.on { background: #003366; border-color: #003366; color: #fff; }
 .lb-row { cursor: pointer; }
 .lb-row:hover td { background: #f0f4fa; }
 .lb-rank { font-size: 1rem; white-space: nowrap; }

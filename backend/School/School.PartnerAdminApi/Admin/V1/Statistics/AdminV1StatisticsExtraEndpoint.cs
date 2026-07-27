@@ -985,7 +985,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
 
     private sealed record SignupEvent(
         string? CreatedByUserId, DateTime At, string Student, string StudentNumber,
-        decimal? Amount, string? Currency, string? Note);
+        decimal? Amount, string? Currency, string? Note, string? School);
 
     private static async Task<IResult> SignupsAsync(
         OdinDbContext db, HttpContext httpContext, CancellationToken ct,
@@ -1017,6 +1017,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                     Amount = (decimal?)i.Amount,
                     pl.Currency,
                     Note = "Installment " + i.Sequence,
+                    School = db.Schools.Where(sc => sc.SchoolId == e.Specialization.Programmes.SchoolId).Select(sc => sc.Name).FirstOrDefault(),
                 }).ToListAsync(ct);
             var inv = await (
                 from a in db.AdditionalInvoices
@@ -1036,6 +1037,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                     a.LinesJson,
                     pl.Currency,
                     Note = "Additional invoice " + a.Sequence,
+                    School = db.Schools.Where(sc => sc.SchoolId == e.Specialization.Programmes.SchoolId).Select(sc => sc.Name).FirstOrDefault(),
                 }).ToListAsync(ct);
 
             static decimal InvoiceAmount(string linesJson)
@@ -1054,8 +1056,8 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                 catch { return 0; }
             }
 
-            events = inst.Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", x.Amount, x.Currency, x.Note))
-                .Concat(inv.Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", InvoiceAmount(x.LinesJson), x.Currency, x.Note)))
+            events = inst.Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", x.Amount, x.Currency, x.Note, x.School))
+                .Concat(inv.Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", InvoiceAmount(x.LinesJson), x.Currency, x.Note, x.School)))
                 .OrderBy(x => x.At).ToList();
         }
         else if (Guid.TryParse(metric, out var statusId))
@@ -1077,9 +1079,10 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                     Name = db.UserProfiles.Where(pr => pr.UserId == st.UserId)
                         .Select(pr => ((pr.FirstName ?? "") + " " + (pr.LastName ?? "")).Trim()).FirstOrDefault(),
                     StatusName = db.EnrollmentStatuses.Where(x => x.EnrollmentStatusId == statusId).Select(x => x.Name).FirstOrDefault(),
+                    School = db.Schools.Where(sc => sc.SchoolId == e.Specialization.Programmes.SchoolId).Select(sc => sc.Name).FirstOrDefault(),
                 }).ToListAsync(ct);
             events = notes.GroupBy(n => n.EnrollmentId).Select(g => g.OrderBy(x => x.At).First())
-                .Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", null, null, "→ " + (x.StatusName ?? "status")))
+                .Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", null, null, "→ " + (x.StatusName ?? "status"), x.School))
                 .OrderBy(x => x.At).ToList();
         }
         else
@@ -1096,8 +1099,13 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                     st.StudentNumber,
                     Name = db.UserProfiles.Where(pr => pr.UserId == st.UserId)
                         .Select(pr => ((pr.FirstName ?? "") + " " + (pr.LastName ?? "")).Trim()).FirstOrDefault(),
+                    School = db.Enrollments
+                        .Where(e2 => e2.StudentId == st.StudentId && e2.DeletedAt == null)
+                        .OrderBy(e2 => e2.CommencementDate)
+                        .Select(e2 => db.Schools.Where(sc => sc.SchoolId == e2.Specialization.Programmes.SchoolId).Select(sc => sc.Name).FirstOrDefault())
+                        .FirstOrDefault(),
                 }).ToListAsync(ct);
-            events = signups.Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", null, null, null))
+            events = signups.Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", null, null, null, x.School))
                 .OrderBy(x => x.At).ToList();
         }
 
@@ -1150,6 +1158,13 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                 note = e.Note,
             }).ToList();
 
+        List<object> BySchool(IEnumerable<SignupEvent> src) => src
+            .GroupBy(e => e.School ?? "(no school)")
+            .Select(g => new { name = g.Key, count = g.Count(), amount = g.Sum(x => x.Amount ?? 0), evs = g.ToList() })
+            .OrderByDescending(x => x.amount).ThenByDescending(x => x.count)
+            .Select((x, i) => (object)new { rank = i + 1, x.name, x.count, x.amount, details = Details(x.evs) })
+            .ToList();
+
         if (isSuper)
         {
             var creatorIds = byCreator.Select(x => x.Id).ToList();
@@ -1190,6 +1205,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                     amount = x.Amount,
                     details = Details(x.Events),
                 }).ToList(),
+                bySchool = BySchool(events),
                 timeline = Timeline(events),
             });
         }
@@ -1209,6 +1225,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                 of = byCreator.Count,
                 details = Details(myEvents),
             },
+            bySchool = BySchool(myEvents),
             timeline = Timeline(myEvents),
         });
     }
