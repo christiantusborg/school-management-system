@@ -369,17 +369,23 @@
           </template>
 
           <template v-else>
-            <p class="mc-sub">Admitted / active students enrolled in {{ det.cohort.programmeName }} at this partner.
+            <p v-if="mode === 'admin'" class="mc-sub">Any student in the system — cross-partner and cross-programme.
+              Marks only transfer to students whose specialization contains module {{ det.cohort.moduleCode }};
+              others appear on the grades skip list. Tick to assign.</p>
+            <p v-else class="mc-sub">Admitted / active students enrolled in {{ det.cohort.programmeName }} at this partner.
               Tick to assign to this cohort.</p>
+            <input v-if="mode === 'admin'" v-model="studentSearch" class="mc-inp" style="max-width:340px; margin-bottom:.5rem"
+                   placeholder="Search name, number, partner, programme…" />
             <div v-if="studentsLoading" class="loading-row">Loading…</div>
-            <table v-else-if="students.length" class="data-table">
-              <thead><tr><th></th><th>Student</th><th>Student #</th><th>Status</th></tr></thead>
+            <table v-else-if="visibleStudents.length" class="data-table">
+              <thead><tr><th></th><th>Student</th><th>Student #</th><th v-if="mode === 'admin'">Programme</th><th>Status</th></tr></thead>
               <tbody>
-                <tr v-for="s in students" :key="s.enrollmentId">
+                <tr v-for="s in visibleStudents" :key="s.enrollmentId">
                   <td><input type="checkbox" v-model="s.assigned" /></td>
                   <td>{{ s.firstName }} {{ s.lastName }}
                     <span v-if="s.partnerName" class="mc-chip" :title="`Enrolled at ${s.partnerName}`">{{ s.partnerName }}</span></td>
                   <td>{{ s.studentNumber }}</td>
+                  <td v-if="mode === 'admin'">{{ s.programmeCode }}</td>
                   <td>{{ s.statusName }}</td>
                 </tr>
               </tbody>
@@ -513,6 +519,15 @@ const uploading = ref(false)
 
 const students = ref([])
 const studentsLoading = ref(false)
+// Admin assign dialog is system-wide — searchable; assigned rows always stay visible.
+const studentSearch = ref('')
+const visibleStudents = computed(() => {
+  const q = studentSearch.value.trim().toLowerCase()
+  if (!q) return students.value
+  return students.value.filter(s => s.assigned
+    || `${s.firstName ?? ''} ${s.lastName ?? ''} ${s.studentNumber ?? ''} ${s.partnerName ?? ''} ${s.programmeCode ?? ''} ${s.statusName ?? ''}`
+      .toLowerCase().includes(q))
+})
 
 // Grades tab: marks for the cohort's module, drafted into SubjectGrades;
 // optional submit flips fully-graded students to awaiting approval.

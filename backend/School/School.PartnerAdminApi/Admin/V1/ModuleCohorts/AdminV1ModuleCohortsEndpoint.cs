@@ -602,19 +602,21 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
             .Select(s => s.StudentEnrollmentId)
             .ToListAsync(ct)).ToHashSet();
 
-        // Admission may place ANY student of this programme, cross-partner
-        // and regardless of stage (drafts excluded — not real students yet);
-        // the partner endpoint keeps the own-partner admitted/active gate.
+        // Admission may place ANY student in the SYSTEM — cross-partner and
+        // cross-programme, any stage (drafts excluded — not real students
+        // yet). Marks still only transfer where the student's specialization
+        // carries this module's code; others land on the grades skip list.
+        // The partner endpoint keeps the own-partner admitted/active gate.
         var candidates = await db.Enrollments
-            .Where(e => e.DeletedAt == null
-                && e.Specialization.ProgrammeId == cohort.ProgrammeId
-                && e.Status.Code != "Draft")
+            .Where(e => e.DeletedAt == null && e.Status.Code != "Draft")
             .Select(e => new
             {
                 enrollmentId = e.StudentEnrollmentId,
                 studentId = e.StudentId,
                 statusName = e.Status.Name,
                 ownPartner = e.PartnerId == cohort.PartnerId,
+                sameProgramme = e.Specialization.ProgrammeId == cohort.ProgrammeId,
+                programmeCode = e.Specialization.Programmes.Code,
                 partnerName = db.Partners.Where(p => p.PartnerId == e.PartnerId).Select(p => p.Name).FirstOrDefault(),
                 studentNumber = db.Students.Where(s => s.StudentId == e.StudentId).Select(s => s.StudentNumber).FirstOrDefault(),
                 firstName = db.Students.Where(s => s.StudentId == e.StudentId)
@@ -627,7 +629,9 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         return Results.Ok(new
         {
             students = candidates
-                .OrderByDescending(c => c.ownPartner).ThenBy(c => c.lastName).ThenBy(c => c.firstName)
+                .OrderByDescending(c => c.ownPartner && c.sameProgramme)
+                .ThenByDescending(c => c.ownPartner)
+                .ThenBy(c => c.lastName).ThenBy(c => c.firstName)
                 .Select(c => new
             {
                 c.enrollmentId,
@@ -637,6 +641,7 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
                 c.lastName,
                 c.statusName,
                 partnerName = c.ownPartner ? null : c.partnerName,
+                c.programmeCode,
                 assigned = assignedIds.Contains(c.enrollmentId),
             }).ToList(),
         });
