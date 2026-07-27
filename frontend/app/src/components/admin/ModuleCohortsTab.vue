@@ -377,7 +377,8 @@
               <tbody>
                 <tr v-for="s in students" :key="s.enrollmentId">
                   <td><input type="checkbox" v-model="s.assigned" /></td>
-                  <td>{{ s.firstName }} {{ s.lastName }}</td>
+                  <td>{{ s.firstName }} {{ s.lastName }}
+                    <span v-if="s.partnerName" class="mc-chip" :title="`Enrolled at ${s.partnerName}`">{{ s.partnerName }}</span></td>
                   <td>{{ s.studentNumber }}</td>
                   <td>{{ s.statusName }}</td>
                 </tr>

@@ -179,11 +179,26 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
                 name = s.Name,
             }).ToListAsync(ct);
 
-        var teachers = await db.Teachers
-            .Where(t => t.PartnerId == partnerId && t.DeletedAt == null)
-            .OrderBy(t => t.DisplayName)
-            .Select(t => new { teacherId = t.TeacherId, displayName = t.DisplayName })
-            .ToListAsync(ct);
+        // Admission sees EVERY teacher (own partner first); teachers from
+        // other partners carry their partner's name in the label.
+        var teachers = (await db.Teachers
+            .Where(t => t.DeletedAt == null)
+            .OrderBy(t => t.PartnerId == partnerId ? 0 : 1)
+            .ThenBy(t => t.DisplayName)
+            .Select(t => new
+            {
+                teacherId = t.TeacherId,
+                t.DisplayName,
+                Own = t.PartnerId == partnerId,
+                PartnerName = db.Partners.Where(p => p.PartnerId == t.PartnerId).Select(p => p.Name).FirstOrDefault(),
+            })
+            .ToListAsync(ct))
+            .Select(t => new
+            {
+                t.teacherId,
+                displayName = t.Own ? t.DisplayName : $"{t.DisplayName} — {t.PartnerName ?? "other partner"}",
+            })
+            .ToList();
         var cohortTypes = await db.CohortTypes
             .Where(t => t.DeletedAt == null)
             .OrderBy(t => t.SortOrder).ThenBy(t => t.Name)
@@ -211,9 +226,11 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         if (!moduleOk) return Results.BadRequest(new { error = "That module does not belong to the chosen programme." });
         if (body.TeacherId is not null)
         {
+            // Admission may assign ANY teacher, cross-partner (partners are
+            // limited to their own on the partner endpoint).
             var teacherOk = await db.Teachers.AnyAsync(t =>
-                t.TeacherId == body.TeacherId && t.PartnerId == partnerId && t.DeletedAt == null, ct);
-            if (!teacherOk) return Results.BadRequest(new { error = "Unknown teacher for this partner." });
+                t.TeacherId == body.TeacherId && t.DeletedAt == null, ct);
+            if (!teacherOk) return Results.BadRequest(new { error = "Unknown teacher." });
         }
 
         var cohort = new ModuleCohort
@@ -248,8 +265,8 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         if (body.TeacherId is not null)
         {
             var teacherOk = await db.Teachers.AnyAsync(t =>
-                t.TeacherId == body.TeacherId && t.PartnerId == cohort.PartnerId && t.DeletedAt == null, ct);
-            if (!teacherOk) return Results.BadRequest(new { error = "Unknown teacher for this partner." });
+                t.TeacherId == body.TeacherId && t.DeletedAt == null, ct);
+            if (!teacherOk) return Results.BadRequest(new { error = "Unknown teacher." });
         }
         cohort.TeacherId = body.TeacherId;
         cohort.StartDate = Norm(body.StartDate);
@@ -585,15 +602,20 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
             .Select(s => s.StudentEnrollmentId)
             .ToListAsync(ct)).ToHashSet();
 
+        // Admission may place ANY student of this programme, cross-partner
+        // and regardless of stage (drafts excluded — not real students yet);
+        // the partner endpoint keeps the own-partner admitted/active gate.
         var candidates = await db.Enrollments
-            .Where(e => e.DeletedAt == null && e.PartnerId == cohort.PartnerId
+            .Where(e => e.DeletedAt == null
                 && e.Specialization.ProgrammeId == cohort.ProgrammeId
-                && ModuleCohortLogic.AssignableStatusCodes.Contains(e.Status.Code))
+                && e.Status.Code != "Draft")
             .Select(e => new
             {
                 enrollmentId = e.StudentEnrollmentId,
                 studentId = e.StudentId,
                 statusName = e.Status.Name,
+                ownPartner = e.PartnerId == cohort.PartnerId,
+                partnerName = db.Partners.Where(p => p.PartnerId == e.PartnerId).Select(p => p.Name).FirstOrDefault(),
                 studentNumber = db.Students.Where(s => s.StudentId == e.StudentId).Select(s => s.StudentNumber).FirstOrDefault(),
                 firstName = db.Students.Where(s => s.StudentId == e.StudentId)
                     .Select(s => db.UserProfiles.Where(p => p.UserId == s.UserId).Select(p => p.FirstName).FirstOrDefault()).FirstOrDefault(),
@@ -604,7 +626,9 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
 
         return Results.Ok(new
         {
-            students = candidates.Select(c => new
+            students = candidates
+                .OrderByDescending(c => c.ownPartner).ThenBy(c => c.lastName).ThenBy(c => c.firstName)
+                .Select(c => new
             {
                 c.enrollmentId,
                 c.studentId,
@@ -612,8 +636,9 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
                 c.firstName,
                 c.lastName,
                 c.statusName,
+                partnerName = c.ownPartner ? null : c.partnerName,
                 assigned = assignedIds.Contains(c.enrollmentId),
-            }).OrderBy(c => c.lastName).ThenBy(c => c.firstName).ToList(),
+            }).ToList(),
         });
     }
 
