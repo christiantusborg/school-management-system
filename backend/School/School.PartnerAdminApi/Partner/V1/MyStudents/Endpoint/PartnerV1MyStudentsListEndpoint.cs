@@ -87,6 +87,7 @@ public sealed class PartnerV1MyStudentsListEndpoint : IEndpointMarker
                 s.StudentNumber,
                 s.UserId,
                 s.PartnerId,
+                s.WizardStep,
                 User = new { s.User.UserName, s.User.Email, s.User.EmailConfirmed },
                 Profile = db.UserProfiles.Where(p => p.UserId == s.UserId)
                     .Select(p => new { p.FirstName, p.LastName }).FirstOrDefault(),
@@ -98,8 +99,13 @@ public sealed class PartnerV1MyStudentsListEndpoint : IEndpointMarker
         var items = partnerStudents.Select(s =>
         {
             var enrs = enrollmentsByStudent.GetValueOrDefault(s.StudentId) ?? new();
+            // Same rule as the admin overview: wizard unfinished and nothing
+            // beyond Draft yet.
+            var signingUp = s.WizardStep < 6 && enrs.All(e => e.StatusCode == "Draft");
             return new
             {
+                signingUp,
+                wizardStep = s.WizardStep,
                 studentId = s.StudentId,
                 studentNumber = s.StudentNumber,
                 username = s.User.UserName,

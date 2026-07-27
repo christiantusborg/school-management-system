@@ -58,6 +58,17 @@
             </div>
           </td>
           <td class="td-status-col">
+            <div v-if="s.signingUp" class="status-line">
+              <span class="s-badge s-badge-signup"
+                    title="The signup wizard was started but never submitted.">
+                Signing up — step {{ Math.max(s.wizardStep, 1) }} of 6</span>
+              <button v-if="!auth.user?.isTeacher" class="btn-review-app btn-review-app-sm btn-continue-signup"
+                      :disabled="s.openingSignup"
+                      title="Open the signup wizard exactly where this applicant stopped — no password needed."
+                      @click.stop="continueSignup(s)">
+                {{ s.openingSignup ? 'Opening…' : '▶ Continue signup' }}
+              </button>
+            </div>
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="status-line">
               <span :class="['flow-badge', 'fb-' + flowState(s, e).color]"
                     :title="flowState(s, e).reason || flowState(s, e).label">
@@ -625,6 +636,7 @@ const STATUS_FILTERS = [
   { id: 'rejected-awaiting-student', label: 'Rejected — Awaiting Student', codes: ['ApplicationRejectedByPartner', 'ApplicationRejectedByAdmission'] },
   { id: 'pending-admission',         label: 'Pending Admission Approval',  codes: ['ApplicationAwaitingReviewByAdmission'] },
   { id: 'applying',                  label: 'Applying (draft)',            codes: ['Draft'], includeNoEnrolment: true },
+  { id: 'signing-up',                label: 'Signing up',                  codes: null, signingUp: true },
   { id: 'awaiting-student-accept',   label: 'Awaiting Student Acceptance', codes: ['AcceptOffer'] },
   { id: 'admitted',                  label: 'Admitted',                    codes: ['ApplicationApprovedAdmission', 'AcceptAdmission'] },
   { id: 'admitted-grading',          label: 'Admitted — Grading',          codes: ['AwaitingGradesSubmit'] },
@@ -761,6 +773,7 @@ function countFor(id) {
   if (!f) return 0
   let n = 0
   for (const s of list.value) {
+    if (f.signingUp) { if (s.signingUp) n++; continue }
     if (f.includeNoEnrolment && s.enrollments.length === 0) { n++; continue }
     if (s.enrollments.some(e => f.codes?.includes(e.statusCode))) n++
   }
@@ -800,6 +813,22 @@ const fuse = computed(() => new Fuse(list.value, {
   minMatchCharLength: 2,
 }))
 
+// "Continue signup": mint a wizard token for the unfinished application and
+// open the public wizard in a new tab exactly where the applicant stopped.
+async function continueSignup(s) {
+  if (s.openingSignup) return
+  s.openingSignup = true
+  try {
+    const res = await api.post(`/v1/partner/my-students/${s.studentId}/signup-token`)
+    const { wizardToken, partnerSlug } = res.data
+    window.open(`/#/apply?partner=${encodeURIComponent(partnerSlug)}&resume=${encodeURIComponent(wizardToken)}`, '_blank')
+  } catch (e) {
+    alert(e.response?.data?.error ?? e.message ?? 'Could not open the signup wizard')
+  } finally {
+    s.openingSignup = false
+  }
+}
+
 const unpaidOnly = ref(false)
 const filtered = computed(() => {
   const q = search.value.trim()
@@ -816,6 +845,7 @@ const filtered = computed(() => {
   if (filterStatusId.value !== '') {
     const f = STATUS_FILTERS.find(x => x.id === filterStatusId.value)
     rows = rows.filter(s => {
+      if (f?.signingUp) return s.signingUp
       const matchesNoEnrolment = f?.includeNoEnrolment && s.enrollments.length === 0
       const matchesCode = s.enrollments.some(e => f?.codes?.includes(e.statusCode))
       return matchesNoEnrolment || matchesCode
@@ -1984,6 +2014,8 @@ function confirmSubStatus() {
 .pp-ok strong { color: #065f46; }
 .s-badge-unpaid { background: #fdf3e5; color: #a8641e; border: 1px solid #ecc9a0; }
 .s-badge-paid { background: #e7f0e9; color: #1d7a3e; border: 1px solid #9dc4a8; }
+.s-badge-signup { background: #fdf3e5; color: #a8641e; border: 1px solid #ecc9a0; }
+.btn-continue-signup { background: #b8860b; border-color: #b8860b; color: #fff; }
 .unpaid-chk { display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; color: #44536a; font-weight: 600; white-space: nowrap; cursor: pointer; }
 </style>
 
