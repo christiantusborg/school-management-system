@@ -30,6 +30,10 @@ public sealed class DraftSignupV1StartEndpoint : IEndpointMarker
         /// <summary>Actor ticket minted by the staff add-student modal; lets
         /// /finish attribute the created student to the staff member.</summary>
         public string? ActorTicket { get; init; }
+        /// <summary>Referral link (?ref=&lt;UserGuid&gt;): permanent personal
+        /// link of a staff member; signups through it carry their name as
+        /// "added by". Validated to a real enabled non-student user.</summary>
+        public string? Ref { get; init; }
     }
 
     public sealed record DraftStartCacheState(string PartnerSlug, string FirstName, string LastName, string? ActorUserId = null);
@@ -89,6 +93,14 @@ public sealed class DraftSignupV1StartEndpoint : IEndpointMarker
         string? actorUserId = null;
         if (!string.IsNullOrWhiteSpace(body.ActorTicket))
             actorUserId = await cache.GetAsync<string>($"wizactor:{body.ActorTicket.Trim()}");
+        // Referral link fallback: ?ref=<UserGuid> in the shared signup URL.
+        if (actorUserId is null && !string.IsNullOrWhiteSpace(body.Ref) && Guid.TryParse(body.Ref.Trim(), out _))
+        {
+            var refId = body.Ref.Trim();
+            var refOk = await db.Users.AnyAsync(u => u.Id == refId && u.IsEnabled && u.DeletedAt == null, ct)
+                && !await db.Students.AnyAsync(st => st.UserId == refId && st.DeletedAt == null, ct);
+            if (refOk) actorUserId = refId;
+        }
 
         // Stash wizard-only fields so /finish can copy them onto UserProfile + Student.
         await cache.SetAsync(

@@ -14,6 +14,9 @@ public static class AdminLevels
     public const string Manager            = "Manager";
     public const string Editor             = "Editor";
     public const string Viewer             = "Viewer";
+    /// <summary>Sales staff: same permissions as Viewer — read-only admission
+    /// access, mainly for sharing personal referral signup links.</summary>
+    public const string Sales              = "Sales";
 
     public static readonly string[] All =
     [
@@ -21,7 +24,8 @@ public static class AdminLevels
         Administrator,
         Manager,
         Editor,
-        Viewer
+        Viewer,
+        Sales
     ];
 
     public static bool IsValid(string? level) => level is not null && Array.IndexOf(All, level) >= 0;

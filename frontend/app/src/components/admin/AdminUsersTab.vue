@@ -4,6 +4,15 @@
 
     <h2 class="page-title">Admin Users</h2>
     <p class="page-sub">{{ users.length }} admin user{{ users.length !== 1 ? 's' : '' }}</p>
+    <div class="ref-bar">
+      <span class="ref-lbl">Referral links — partner:</span>
+      <select v-model="refPartnerSlug" class="ref-sel">
+        <option value="">— choose a partner —</option>
+        <option v-for="p in refPartners" :key="p.slug" :value="p.slug">{{ p.name }}</option>
+      </select>
+      <span class="muted" style="font-size:.76rem">🔗 Ref link copies a personal signup URL; students who apply through it are shown as "Added by" that user.</span>
+    </div>
+
 
     <table v-if="users.length" class="data-table">
       <thead><tr><th>Username</th><th>Email</th><th>Level</th><th>Status</th><th>Actions</th></tr></thead>
@@ -26,6 +35,9 @@
             </button>
           </td>
           <td class="actions">
+            <button class="btn-sm" :title="refPartnerSlug ? 'Copy this user\'s personal signup link — students who sign up through it show them as Added by' : 'Pick a partner in the Referral links selector above first'"
+                    :disabled="!refPartnerSlug" @click="copyRefLink(u)">
+              {{ copiedRef === u.userId ? '✓ Copied' : '🔗 Ref link' }}</button>
             <button class="btn-sm" :disabled="busy === u.userId" @click="resetPassword(u)">
               {{ busy === `reset:${u.userId}` ? 'Resetting…' : 'Reset password' }}
             </button>
@@ -83,7 +95,25 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import api from '../../api/client.js'
 
 const users = ref([])
-const levels = ref(['SuperAdministrator', 'Administrator', 'Manager', 'Editor', 'Viewer'])
+const levels = ref(['SuperAdministrator', 'Administrator', 'Manager', 'Editor', 'Viewer', 'Sales'])
+
+// Personal referral signup links (?ref=<userId> attributes "Added by").
+const refPartners = ref([])
+const refPartnerSlug = ref('')
+const copiedRef = ref('')
+async function loadRefPartners() {
+  try {
+    const res = await api.get('/v1/admin/school/partners')
+    refPartners.value = (res.data.items ?? []).filter(p => p.slug)
+  } catch { refPartners.value = [] }
+}
+loadRefPartners()
+async function copyRefLink(u) {
+  const url = `${window.location.origin}/#/apply?partner=${encodeURIComponent(refPartnerSlug.value)}&ref=${encodeURIComponent(u.userId)}`
+  try { await navigator.clipboard.writeText(url) } catch { prompt('Copy the link:', url) }
+  copiedRef.value = u.userId
+  setTimeout(() => { if (copiedRef.value === u.userId) copiedRef.value = '' }, 2000)
+}
 const loadError = ref('')
 const busy = ref('')
 
@@ -228,4 +258,7 @@ select { padding: .25rem .5rem; border: 1.5px solid #d0d7e0; border-radius: 5px;
 .created-banner strong { color: #065f46; }
 .pw { background: #fff; padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: .82rem; }
 .btn-tiny { background: #fff; border: 1px solid #d0d7e0; border-radius: 4px; padding: 2px 8px; font-size: .76rem; cursor: pointer; margin-left: .35rem; }
+.ref-bar { display: flex; align-items: center; gap: .6rem; margin: .4rem 0 .8rem; flex-wrap: wrap; }
+.ref-lbl { font-size: .82rem; font-weight: 600; color: #44536a; }
+.ref-sel { padding: .35rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; background: #fff; }
 </style>
