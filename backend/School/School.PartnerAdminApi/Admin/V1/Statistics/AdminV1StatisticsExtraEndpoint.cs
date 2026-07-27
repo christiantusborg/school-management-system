@@ -976,46 +976,179 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
         }).GeneratePdf();
     }
 
-    // ── Signup leaderboard ──────────────────────────────────────────────────
-    // Who brought in the signups (Added by) in the period: SuperAdministrator
-    // sees the full leaderboard; every other admin level (incl. Sales) sees
-    // only their own numbers plus their anonymous rank.
+    // ── Signups / sales leaderboard ─────────────────────────────────────────
+    // Metric-switchable: signups (account created), "switched to <status>" (a
+    // status-note landed in the period) or payments received (installments /
+    // additional invoices marked paid, with amounts). SuperAdministrator sees
+    // the full leaderboard with per-event details (for commission), optionally
+    // limited to Sales-level staff; everyone else sees only themselves.
+
+    private sealed record SignupEvent(
+        string? CreatedByUserId, DateTime At, string Student, string StudentNumber,
+        decimal? Amount, string? Currency, string? Note);
 
     private static async Task<IResult> SignupsAsync(
         OdinDbContext db, HttpContext httpContext, CancellationToken ct,
-        [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
+        [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
+        [FromQuery] string? metric = null, [FromQuery] bool salesOnly = false)
     {
         var (f, t) = Range(from, to);
         var callerId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         var isSuper = httpContext.User.IsInRole("SuperAdministrator");
 
-        var rows = await (
-            from st in db.Students
-            join u in db.Users on st.UserId equals u.Id
-            where st.DeletedAt == null
-                && (f == null || u.CreatedAt >= f)
-                && (t == null || u.CreatedAt < t)
-            select new { st.CreatedByUserId, u.CreatedAt }).ToListAsync(ct);
+        List<SignupEvent> events;
+        if (string.Equals(metric, "paid", StringComparison.OrdinalIgnoreCase))
+        {
+            var inst = await (
+                from i in db.PaymentInstallments
+                join pl in db.EnrollmentPaymentPlans on i.PaymentPlanId equals pl.PaymentPlanId
+                join e in db.Enrollments on pl.StudentEnrollmentId equals e.StudentEnrollmentId
+                join st in db.Students on e.StudentId equals st.StudentId
+                where pl.DeletedAt == null && e.DeletedAt == null && st.DeletedAt == null
+                    && i.IsPaid && i.PaidDate != null
+                    && (f == null || i.PaidDate >= f) && (t == null || i.PaidDate < t)
+                select new
+                {
+                    st.CreatedByUserId,
+                    At = i.PaidDate!.Value,
+                    st.StudentNumber,
+                    Name = db.UserProfiles.Where(pr => pr.UserId == st.UserId)
+                        .Select(pr => ((pr.FirstName ?? "") + " " + (pr.LastName ?? "")).Trim()).FirstOrDefault(),
+                    Amount = (decimal?)i.Amount,
+                    pl.Currency,
+                    Note = "Installment " + i.Sequence,
+                }).ToListAsync(ct);
+            var inv = await (
+                from a in db.AdditionalInvoices
+                join pl in db.EnrollmentPaymentPlans on a.PaymentPlanId equals pl.PaymentPlanId
+                join e in db.Enrollments on pl.StudentEnrollmentId equals e.StudentEnrollmentId
+                join st in db.Students on e.StudentId equals st.StudentId
+                where pl.DeletedAt == null && e.DeletedAt == null && st.DeletedAt == null
+                    && a.IsPaid && a.PaidDate != null
+                    && (f == null || a.PaidDate >= f) && (t == null || a.PaidDate < t)
+                select new
+                {
+                    st.CreatedByUserId,
+                    At = a.PaidDate!.Value,
+                    st.StudentNumber,
+                    Name = db.UserProfiles.Where(pr => pr.UserId == st.UserId)
+                        .Select(pr => ((pr.FirstName ?? "") + " " + (pr.LastName ?? "")).Trim()).FirstOrDefault(),
+                    a.LinesJson,
+                    pl.Currency,
+                    Note = "Additional invoice " + a.Sequence,
+                }).ToListAsync(ct);
 
-        var selfSignups = rows.Count(r => r.CreatedByUserId == null);
-        var byCreator = rows.Where(r => r.CreatedByUserId != null)
-            .GroupBy(r => r.CreatedByUserId!)
+            static decimal InvoiceAmount(string linesJson)
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(linesJson);
+                    decimal sum = 0;
+                    foreach (var line in doc.RootElement.EnumerateArray())
+                        foreach (var prop in line.EnumerateObject())
+                            if (prop.Name.Contains("amount", StringComparison.OrdinalIgnoreCase)
+                                && prop.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                sum += prop.Value.GetDecimal();
+                    return sum;
+                }
+                catch { return 0; }
+            }
+
+            events = inst.Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", x.Amount, x.Currency, x.Note))
+                .Concat(inv.Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", InvoiceAmount(x.LinesJson), x.Currency, x.Note)))
+                .OrderBy(x => x.At).ToList();
+        }
+        else if (Guid.TryParse(metric, out var statusId))
+        {
+            // First note per enrolment landing on that status inside the
+            // period — a re-bounce doesn't double-count.
+            var notes = await (
+                from n in db.EnrollmentStatusNotes
+                join e in db.Enrollments on n.EnrollmentId equals e.StudentEnrollmentId
+                join st in db.Students on e.StudentId equals st.StudentId
+                where n.StatusId == statusId && e.DeletedAt == null && st.DeletedAt == null
+                    && (f == null || n.CreatedAt >= f) && (t == null || n.CreatedAt < t)
+                select new
+                {
+                    n.EnrollmentId,
+                    st.CreatedByUserId,
+                    At = n.CreatedAt,
+                    st.StudentNumber,
+                    Name = db.UserProfiles.Where(pr => pr.UserId == st.UserId)
+                        .Select(pr => ((pr.FirstName ?? "") + " " + (pr.LastName ?? "")).Trim()).FirstOrDefault(),
+                    StatusName = db.EnrollmentStatuses.Where(x => x.EnrollmentStatusId == statusId).Select(x => x.Name).FirstOrDefault(),
+                }).ToListAsync(ct);
+            events = notes.GroupBy(n => n.EnrollmentId).Select(g => g.OrderBy(x => x.At).First())
+                .Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", null, null, "→ " + (x.StatusName ?? "status")))
+                .OrderBy(x => x.At).ToList();
+        }
+        else
+        {
+            var signups = await (
+                from st in db.Students
+                join u in db.Users on st.UserId equals u.Id
+                where st.DeletedAt == null
+                    && (f == null || u.CreatedAt >= f) && (t == null || u.CreatedAt < t)
+                select new
+                {
+                    st.CreatedByUserId,
+                    At = u.CreatedAt,
+                    st.StudentNumber,
+                    Name = db.UserProfiles.Where(pr => pr.UserId == st.UserId)
+                        .Select(pr => ((pr.FirstName ?? "") + " " + (pr.LastName ?? "")).Trim()).FirstOrDefault(),
+                }).ToListAsync(ct);
+            events = signups.Select(x => new SignupEvent(x.CreatedByUserId, x.At, x.Name ?? "?", x.StudentNumber ?? "?", null, null, null))
+                .OrderBy(x => x.At).ToList();
+        }
+
+        // Sales-only view for commission runs: keep only creators with the
+        // Sales admin level.
+        HashSet<string>? salesIds = null;
+        if (salesOnly)
+        {
+            salesIds = (await (
+                from ur in db.UserRoles
+                join r in db.Roles on ur.RoleId equals r.Id
+                where r.Name == "Sales"
+                select ur.UserId).ToListAsync(ct)).ToHashSet();
+        }
+
+        var selfCount = events.Count(e => e.CreatedByUserId == null);
+        var attributed = events.Where(e => e.CreatedByUserId != null
+            && (salesIds == null || salesIds.Contains(e.CreatedByUserId!))).ToList();
+
+        var byCreator = attributed
+            .GroupBy(e => e.CreatedByUserId!)
             .Select(g => new
             {
                 Id = g.Key,
                 Count = g.Count(),
-                Days = g.GroupBy(x => x.CreatedAt.Date)
-                    .ToDictionary(d => d.Key, d => d.Count()),
+                Amount = g.Sum(x => x.Amount ?? 0),
+                Events = g.OrderBy(x => x.At).ToList(),
             })
-            .OrderByDescending(x => x.Count)
+            .OrderByDescending(x => x.Amount).ThenByDescending(x => x.Count)
             .ToList();
 
-        List<object> Timeline(IEnumerable<DateTime> dates)
-        {
-            return dates.GroupBy(d => d.Date).OrderBy(g => g.Key)
-                .Select(g => (object)new { date = g.Key.ToString("yyyy-MM-dd"), count = g.Count() })
-                .ToList();
-        }
+        List<object> Timeline(IEnumerable<SignupEvent> src) => src
+            .GroupBy(e => e.At.Date).OrderBy(g => g.Key)
+            .Select(g => (object)new
+            {
+                date = g.Key.ToString("yyyy-MM-dd"),
+                count = g.Count(),
+                amount = g.Sum(x => x.Amount ?? 0),
+            }).ToList();
+
+        List<object> Details(IEnumerable<SignupEvent> src) => src
+            .OrderByDescending(x => x.At).Take(500)
+            .Select(e => (object)new
+            {
+                date = e.At.ToString("yyyy-MM-dd"),
+                student = e.Student,
+                studentNumber = e.StudentNumber,
+                amount = e.Amount,
+                currency = e.Currency,
+                note = e.Note,
+            }).ToList();
 
         if (isSuper)
         {
@@ -1029,8 +1162,8 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                         u.Id,
                         u.UserName,
                         u.PartnerId,
-                        Name = db.UserProfiles.Where(p => p.UserId == u.Id)
-                            .Select(p => ((p.FirstName ?? "") + " " + (p.LastName ?? "")).Trim())
+                        Name = db.UserProfiles.Where(pr => pr.UserId == u.Id)
+                            .Select(pr => ((pr.FirstName ?? "") + " " + (pr.LastName ?? "")).Trim())
                             .FirstOrDefault(),
                     })
                     .ToListAsync(ct))
@@ -1042,34 +1175,41 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
             return Results.Ok(new
             {
                 isSuper = true,
-                total = rows.Count,
-                selfSignups,
-                staffSignups = rows.Count - selfSignups,
+                metric = string.IsNullOrWhiteSpace(metric) ? "signup" : metric,
+                salesOnly,
+                total = events.Count,
+                selfSignups = selfCount,
+                staffSignups = attributed.Count,
+                totalAmount = attributed.Sum(e => e.Amount ?? 0),
                 leaderboard = byCreator.Select((x, i) => new
                 {
                     rank = i + 1,
                     name = names.TryGetValue(x.Id, out var n) ? n.Name : "?",
                     office = names.TryGetValue(x.Id, out var o) ? o.Office : "?",
                     count = x.Count,
+                    amount = x.Amount,
+                    details = Details(x.Events),
                 }).ToList(),
-                timeline = Timeline(rows.Select(r => r.CreatedAt)),
+                timeline = Timeline(events),
             });
         }
 
         var mineIndex = byCreator.FindIndex(x => x.Id == callerId);
         var mine = mineIndex >= 0 ? byCreator[mineIndex] : null;
+        var myEvents = events.Where(e => e.CreatedByUserId == callerId).ToList();
         return Results.Ok(new
         {
             isSuper = false,
+            metric = string.IsNullOrWhiteSpace(metric) ? "signup" : metric,
             me = new
             {
-                count = mine?.Count ?? 0,
+                count = myEvents.Count,
+                amount = myEvents.Sum(e => e.Amount ?? 0),
                 rank = mineIndex >= 0 ? mineIndex + 1 : (int?)null,
                 of = byCreator.Count,
+                details = Details(myEvents),
             },
-            timeline = Timeline(rows
-                .Where(r => r.CreatedByUserId == callerId)
-                .Select(r => r.CreatedAt)),
+            timeline = Timeline(myEvents),
         });
     }
 }
