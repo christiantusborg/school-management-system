@@ -105,8 +105,14 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
         if (httpContext.User.IsInRole("Sales"))
         {
             var salesUserId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var assignedPartnerIds = await db.SalesPartnerAssignments
+                .Where(a => a.UserId == salesUserId)
+                .Select(a => a.PartnerId)
+                .ToListAsync(cancellationToken);
             studentsQuery = studentsQuery.Where(s =>
-                s.CreatedByUserId == salesUserId || s.HandledByUserId == salesUserId);
+                s.CreatedByUserId == salesUserId
+                || s.HandledByUserId == salesUserId
+                || assignedPartnerIds.Contains(s.PartnerId));
         }
         if (programmeId is not null || specializationId is not null)
             studentsQuery = studentsQuery.Where(s => studentIds.Contains(s.StudentId));

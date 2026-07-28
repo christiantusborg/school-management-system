@@ -21,6 +21,21 @@
         <div class="grid-row"><span>Contract</span><strong>{{ contractSummary || '—' }}</strong></div>
         <div v-if="profile.internalNotes" class="grid-row"><span>Internal notes</span><strong class="multiline">{{ profile.internalNotes }}</strong></div>
 
+        <div class="sales-box">
+          <div class="sales-box-title">Sales staff assigned to this partner</div>
+          <p class="sales-hint">Assigned Sales logins see this partner and all its students.
+            <template v-if="!canAssignSales"> (Administrator level required to change.)</template></p>
+          <label v-for="u in salesStaff" :key="u.userId" class="sales-check">
+            <input type="checkbox" :value="u.userId" v-model="assignedSales" :disabled="!canAssignSales" />
+            {{ u.name }}</label>
+          <p v-if="!salesStaff.length" class="sales-hint">No Sales-level users exist yet (create them under Admin Users).</p>
+          <div style="margin-top:.4rem; display:flex; align-items:center; gap:.6rem;">
+            <button v-if="canAssignSales && salesStaff.length" class="btn-primary-sm" :disabled="savingSales" @click="saveSales">
+              {{ savingSales ? 'Saving…' : 'Save sales staff' }}</button>
+            <span v-if="salesOk" class="sales-ok">✓ Saved</span>
+            <span v-if="salesError" class="sales-err">{{ salesError }}</span>
+          </div>
+        </div>
         <div class="actions"><button class="btn-primary-sm" @click="startEdit">Edit</button></div>
       </div>
 
@@ -197,7 +212,38 @@ async function save() {
 }
 
 onMounted(load)
-watch(() => props.partnerId, load)
+// Sales-staff assignment (Administrator+ writes; everyone sees it).
+import { auth } from '../../../store/auth.js'
+const salesStaff = ref([])
+const assignedSales = ref([])
+const savingSales = ref(false)
+const salesOk = ref(false)
+const salesError = ref('')
+const canAssignSales = computed(() =>
+  ['SuperAdministrator', 'Administrator'].includes(auth.adminLevel))
+async function loadSales() {
+  try {
+    salesStaff.value = (await apiClient.get('/v1/admin/sales-staff')).data.items ?? []
+    assignedSales.value = (await apiClient.get(`/v1/admin/partners/${props.partnerId}/sales-staff`)).data.userIds ?? []
+  } catch { /* box stays empty */ }
+}
+loadSales()
+async function saveSales() {
+  if (savingSales.value) return
+  savingSales.value = true
+  salesError.value = ''
+  salesOk.value = false
+  try {
+    await apiClient.put(`/v1/admin/partners/${props.partnerId}/sales-staff`, { userIds: assignedSales.value })
+    salesOk.value = true
+    setTimeout(() => { salesOk.value = false }, 2500)
+  } catch (e) {
+    salesError.value = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    savingSales.value = false
+  }
+}
+watch(() => props.partnerId, () => { load(); loadSales() })
 </script>
 
 <style scoped>
@@ -220,4 +266,10 @@ watch(() => props.partnerId, load)
 .slug-url code { font-family: ui-monospace, monospace; }
 .field-hint  { font-size: .72rem; color: #5f6e85; margin: .2rem 0 0; }
 .field-error { font-size: .72rem; color: #b91c1c; margin: .2rem 0 0; }
+.sales-box { margin-top: 1rem; background: #f8fafd; border: 1px solid #e2e8f1; border-radius: 8px; padding: .8rem 1rem; }
+.sales-box-title { font-weight: 700; color: #003366; font-size: .92rem; margin-bottom: .2rem; }
+.sales-hint { font-size: .76rem; color: #6b7888; margin: .15rem 0 .4rem; }
+.sales-check { display: inline-flex; align-items: center; gap: .35rem; font-size: .85rem; color: #2c3e50; margin: .15rem 1rem .15rem 0; cursor: pointer; }
+.sales-ok { color: #1d7a3e; font-size: .8rem; font-weight: 600; }
+.sales-err { color: #b3261e; font-size: .8rem; }
 </style>

@@ -35,6 +35,8 @@
             </button>
           </td>
           <td class="actions">
+            <button v-if="u.level === 'Sales'" class="btn-sm" title="Assign which partners this Sales user can see"
+                    @click="openSalesPartners(u)">🤝 Partners</button>
             <button class="btn-sm" :title="refPartnerSlug ? 'Copy this user\'s personal signup link — students who sign up through it show them as Added by' : 'Pick a partner in the Referral links selector above first'"
                     :disabled="!refPartnerSlug" @click="copyRefLink(u)">
               {{ copiedRef === u.userId ? '✓ Copied' : '🔗 Ref link' }}</button>
@@ -88,10 +90,29 @@
       <button class="btn-tiny" @click="lastReset = null">Dismiss</button>
     </div>
   </div>
+  <Teleport to="body">
+    <div v-if="spDlg.open" class="sp-backdrop" @click.self="spDlg.open = false">
+      <div class="sp-dialog">
+        <h3 class="sp-title">Partners for {{ spDlg.userName }}</h3>
+        <p class="sp-hint">This Sales user sees only the ticked partners (plus students they added or handle).
+          Administrator level required to change.</p>
+        <label v-for="p in refPartners" :key="p.partnerId ?? p.slug" class="sp-check">
+          <input type="checkbox" :value="p.partnerId" v-model="spDlg.partnerIds" :disabled="!canAssignSales" />
+          {{ p.name }}</label>
+        <p v-if="spDlg.error" class="sp-err">{{ spDlg.error }}</p>
+        <div class="sp-actions">
+          <button type="button" class="btn-sm" @click="spDlg.open = false">Close</button>
+          <button v-if="canAssignSales" type="button" class="btn-add" :disabled="spDlg.busy" @click="saveSalesPartners">
+            {{ spDlg.busy ? 'Saving…' : 'Save' }}</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { auth } from '../../store/auth.js'
 import api from '../../api/client.js'
 
 const users = ref([])
@@ -108,6 +129,33 @@ async function loadRefPartners() {
   } catch { refPartners.value = [] }
 }
 loadRefPartners()
+// Sales↔partner assignment dialog (Administrator+ writes).
+const spDlg = reactive({ open: false, userId: '', userName: '', partnerIds: [], busy: false, error: '' })
+const canAssignSales = computed(() =>
+  ['SuperAdministrator', 'Administrator'].includes(auth.adminLevel))
+async function openSalesPartners(u) {
+  spDlg.userId = u.userId
+  spDlg.userName = u.username ?? u.userName ?? ''
+  spDlg.error = ''
+  try {
+    spDlg.partnerIds = (await api.get(`/v1/admin/sales-staff/${u.userId}/partners`)).data.partnerIds ?? []
+  } catch { spDlg.partnerIds = [] }
+  spDlg.open = true
+}
+async function saveSalesPartners() {
+  if (spDlg.busy) return
+  spDlg.busy = true
+  spDlg.error = ''
+  try {
+    await api.put(`/v1/admin/sales-staff/${spDlg.userId}/partners`, { partnerIds: spDlg.partnerIds })
+    spDlg.open = false
+  } catch (e) {
+    spDlg.error = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    spDlg.busy = false
+  }
+}
+
 async function copyRefLink(u) {
   const url = `${window.location.origin}/#/apply?partner=${encodeURIComponent(refPartnerSlug.value)}&ref=${encodeURIComponent(u.userId)}`
   try { await navigator.clipboard.writeText(url) } catch { prompt('Copy the link:', url) }
@@ -261,4 +309,17 @@ select { padding: .25rem .5rem; border: 1.5px solid #d0d7e0; border-radius: 5px;
 .ref-bar { display: flex; align-items: center; gap: .6rem; margin: .4rem 0 .8rem; flex-wrap: wrap; }
 .ref-lbl { font-size: .82rem; font-weight: 600; color: #44536a; }
 .ref-sel { padding: .35rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; background: #fff; }
+</style>
+
+<style>
+/* Sales-partner dialog is teleported to <body> — global styles required. */
+.sp-backdrop { position: fixed; inset: 0; background: rgba(15,30,55,.45); display: flex; align-items: flex-start; justify-content: center; padding: 5rem 1rem; z-index: 300; }
+.sp-dialog { background: #fff; border-radius: 10px; padding: 1.1rem 1.3rem; width: 100%; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.sp-dialog .sp-title { margin: 0 0 .4rem; font-size: 1.02rem; color: #003366; }
+.sp-dialog .sp-hint { font-size: .76rem; color: #6b7888; margin: 0 0 .5rem; }
+.sp-dialog .sp-check { display: block; font-size: .87rem; color: #2c3e50; margin: .25rem 0; cursor: pointer; }
+.sp-dialog .sp-err { color: #b3261e; font-size: .8rem; margin-top: .4rem; }
+.sp-dialog .sp-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
+.sp-dialog .btn-sm { background: #f2f5f9; border: 1px solid #cfd7e3; border-radius: 5px; padding: .3rem .6rem; font-size: .78rem; font-weight: 600; color: #2c3e50; cursor: pointer; }
+.sp-dialog .btn-add { background: #003366; border: 1px solid #003366; color: #fff; border-radius: 5px; padding: .35rem .8rem; font-size: .8rem; font-weight: 600; cursor: pointer; }
 </style>

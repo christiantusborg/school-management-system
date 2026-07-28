@@ -4,9 +4,11 @@
       <span class="brand-text">MGW Admin Portal</span>
       <div class="nav-links">
         <RouterLink to="/admin" class="nav-link active-link">Dashboard</RouterLink>
-        <RouterLink to="/admin/academic" class="nav-link">Academic</RouterLink>
-        <RouterLink to="/admin/questionnaires" class="nav-link">Questionnaires</RouterLink>
-        <RouterLink to="/admin/config" class="nav-link">System Config</RouterLink>
+        <template v-if="!isSales">
+          <RouterLink to="/admin/academic" class="nav-link">Academic</RouterLink>
+          <RouterLink to="/admin/questionnaires" class="nav-link">Questionnaires</RouterLink>
+          <RouterLink to="/admin/config" class="nav-link">System Config</RouterLink>
+        </template>
       </div>
       <div class="nav-right">
         <span class="nav-user">{{ auth.user?.displayName }}</span>
@@ -19,7 +21,7 @@
       <button :class="['tab-btn', { active: tab === 'students' }]" @click="tab = 'students'">Students</button>
       <button :class="['tab-btn', { active: tab === 'partners' }]" @click="tab = 'partners'">Partners</button>
       <button :class="['tab-btn', { active: tab === 'statistics' }]" @click="tab = 'statistics'">Statistics</button>
-      <button :class="['tab-btn', { active: tab === 'messages' }]" @click="tab = 'messages'">
+      <button v-if="!isSales" :class="['tab-btn', { active: tab === 'messages' }]" @click="tab = 'messages'">
         Messages
         <span v-if="pendingMsgCount" class="tab-badge">{{ pendingMsgCount }}</span>
       </button>
@@ -357,10 +359,12 @@
                 </template>
                 <template v-else>
                   <button class="btn-sm" @click="openManagePartner(p)">Manage</button>
-                  <button v-if="p.isEnabled" class="btn-sm btn-warn" @click="disablePartner(p)">Disable</button>
-                  <template v-else>
-                    <button class="btn-sm btn-ok" @click="enablePartner(p)">Enable</button>
-                    <button class="btn-sm btn-danger" @click="deletePartner(p)">Delete</button>
+                  <template v-if="!isSales">
+                    <button v-if="p.isEnabled" class="btn-sm btn-warn" @click="disablePartner(p)">Disable</button>
+                    <template v-else>
+                      <button class="btn-sm btn-ok" @click="enablePartner(p)">Enable</button>
+                      <button class="btn-sm btn-danger" @click="deletePartner(p)">Delete</button>
+                    </template>
                   </template>
                 </template>
               </td>
@@ -382,8 +386,8 @@
         </div>
 
         <div class="manage-tab-bar">
-          <button v-for="t in MANAGE_TABS" :key="t.k" :class="['manage-tab-btn', { active: manageTab === t.k }]" @click="manageTab = t.k; gearOpen = false">{{ t.label }}</button>
-          <div class="manage-gear-wrap">
+          <button v-for="t in visibleManageTabs" :key="t.k" :class="['manage-tab-btn', { active: manageTab === t.k }]" @click="manageTab = t.k; gearOpen = false">{{ t.label }}</button>
+          <div v-if="!isSales" class="manage-gear-wrap">
             <button :class="['manage-tab-btn', 'manage-gear-btn', { active: isGearTab }]" title="Partner setup: profile, users, programmes"
                     @click="gearOpen = !gearOpen">
               ⚙<span v-if="isGearTab" class="gear-current">{{ GEAR_TABS.find(t => t.k === manageTab)?.label }}</span>
@@ -878,6 +882,10 @@ const GEAR_TABS = [
 const manageTab = ref('students')
 const gearOpen = ref(false)
 const isGearTab = computed(() => GEAR_TABS.some(t => t.k === manageTab.value))
+// Sales logins get a trimmed portal: no Import tab, no gear config tabs.
+const isSales = computed(() => auth.adminLevel === 'Sales')
+const visibleManageTabs = computed(() =>
+  isSales.value ? MANAGE_TABS.filter(t => t.k !== 'import') : MANAGE_TABS)
 // Programmes tab sub-menu: Core ⇄ Custom.
 const progSubTab = ref('core')
 

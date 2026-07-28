@@ -7,7 +7,7 @@
           passed (grades approved), dropped out, deferred, still active. Drafts and rejected
           applications are excluded. Click a row to fold out its programmes and specializations.</p>
       </div>
-      <div class="st-report-btns">
+      <div v-if="!isSales" class="st-report-btns">
         <button type="button" class="btn-report" :disabled="!!busyDl" @click="download('/v1/admin/overview/full/file', 'pdf', 'mgw-statistics-report.pdf')">
           {{ busyDl === 'mgw-statistics-report.pdf' ? 'Preparing…' : '⤓ Full report (PDF)' }}</button>
         <button type="button" class="btn-report" :disabled="!!busyDl" @click="download('/v1/admin/overview/full/file', 'xlsx', 'mgw-statistics.xlsx')">
@@ -31,7 +31,7 @@
 
     <div v-if="dlError" class="err-banner">{{ dlError }}</div>
     <div class="st-subtabs">
-      <button v-for="t in SUB_TABS" :key="t.key" type="button"
+      <button v-for="t in VISIBLE_TABS" :key="t.key" type="button"
               :class="['st-subtab', { on: sub === t.key }]" @click="openSub(t.key)">{{ t.label }}</button>
     </div>
 
@@ -108,6 +108,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import api from '../../api/client.js'
+import { auth } from '../../store/auth.js'
 import GradesStats from './stats/GradesStats.vue'
 import TeacherStats from './stats/TeacherStats.vue'
 import DemographicsStats from './stats/DemographicsStats.vue'
@@ -126,8 +127,10 @@ const SUB_TABS = [
   { key: 'trends', label: 'Trends' },
   { key: 'signups', label: 'Signups' },
 ]
-const sub = ref('outcomes')
-const visited = reactive(new Set())
+const isSales = auth.adminLevel === 'Sales'
+const VISIBLE_TABS = isSales ? SUB_TABS.filter(t => t.key === 'signups') : SUB_TABS
+const sub = ref(isSales ? 'signups' : 'outcomes')
+const visited = reactive(new Set(isSales ? ['signups'] : []))
 function openSub(key) {
   sub.value = key
   if (key !== 'outcomes') visited.add(key)
