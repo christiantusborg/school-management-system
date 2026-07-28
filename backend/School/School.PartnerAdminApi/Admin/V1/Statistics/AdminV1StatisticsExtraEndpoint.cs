@@ -1009,7 +1009,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                     && (f == null || i.PaidDate >= f) && (t == null || i.PaidDate < t)
                 select new
                 {
-                    st.CreatedByUserId,
+                    CreatedByUserId = st.HandledByUserId ?? st.CreatedByUserId,
                     At = i.PaidDate!.Value,
                     st.StudentNumber,
                     Name = db.UserProfiles.Where(pr => pr.UserId == st.UserId)
@@ -1029,7 +1029,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                     && (f == null || a.PaidDate >= f) && (t == null || a.PaidDate < t)
                 select new
                 {
-                    st.CreatedByUserId,
+                    CreatedByUserId = st.HandledByUserId ?? st.CreatedByUserId,
                     At = a.PaidDate!.Value,
                     st.StudentNumber,
                     Name = db.UserProfiles.Where(pr => pr.UserId == st.UserId)
@@ -1073,7 +1073,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
                 select new
                 {
                     n.EnrollmentId,
-                    st.CreatedByUserId,
+                    CreatedByUserId = st.HandledByUserId ?? st.CreatedByUserId,
                     At = n.CreatedAt,
                     st.StudentNumber,
                     Name = db.UserProfiles.Where(pr => pr.UserId == st.UserId)

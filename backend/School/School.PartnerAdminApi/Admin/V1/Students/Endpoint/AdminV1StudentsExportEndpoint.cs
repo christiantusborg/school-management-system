@@ -40,9 +40,9 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> PreviewAsync(
-        [FromBody] ExportRequest body, OdinDbContext db, CancellationToken ct)
+        [FromBody] ExportRequest body, OdinDbContext db, HttpContext httpContext, CancellationToken ct)
     {
-        var count = await BuildBaseQuery(db, body).CountAsync(ct);
+        var count = await BuildBaseQuery(db, body, SalesScope(httpContext)).CountAsync(ct);
         return Results.Ok(new { count });
     }
 
@@ -51,13 +51,18 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
     // output expands to one row per (student × enrolment), so the table
     // returned here may have more than N entries — that's intentional, it
     // mirrors what the full file will look like.
+    private static string? SalesScope(HttpContext httpContext) =>
+        httpContext.User.IsInRole("Sales")
+            ? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            : null;
+
     private const int SampleStudentLimit = 10;
 
     private static async Task<IResult> SampleAsync(
-        [FromBody] ExportRequest body, OdinDbContext db, CancellationToken ct)
+        [FromBody] ExportRequest body, OdinDbContext db, HttpContext httpContext, CancellationToken ct)
     {
-        var count = await BuildBaseQuery(db, body).CountAsync(ct);
-        var rows = await BuildExportRowsAsync(db, body, ct, limit: SampleStudentLimit);
+        var count = await BuildBaseQuery(db, body, SalesScope(httpContext)).CountAsync(ct);
+        var rows = await BuildExportRowsAsync(db, body, ct, limit: SampleStudentLimit, salesScopeUserId: SalesScope(httpContext));
         var fields = (body.Fields ?? AllFieldIds().ToList()).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var active = Columns.Where(c => fields.Contains(c.Id)).ToList();
         var perEnrolment = active.Any(c => c.IsEnrolmentLevel);
@@ -86,9 +91,9 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> ExportAsync(
-        [FromBody] ExportRequest body, OdinDbContext db, CancellationToken ct)
+        [FromBody] ExportRequest body, OdinDbContext db, HttpContext httpContext, CancellationToken ct)
     {
-        var rows = await BuildExportRowsAsync(db, body, ct);
+        var rows = await BuildExportRowsAsync(db, body, ct, salesScopeUserId: SalesScope(httpContext));
         var fields = (body.Fields ?? AllFieldIds().ToList()).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var format = string.Equals(body.Format, "csv", StringComparison.OrdinalIgnoreCase) ? "csv" : "xlsx";
@@ -101,9 +106,12 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         return Results.File(dataBytes, dataContentType, dataFilename);
     }
 
-    private static IQueryable<Student> BuildBaseQuery(OdinDbContext db, ExportRequest body)
+    private static IQueryable<Student> BuildBaseQuery(OdinDbContext db, ExportRequest body, string? salesScopeUserId = null)
     {
         IQueryable<Student> q = db.Students.Where(s => s.DeletedAt == null);
+        // Sales logins export only their own students.
+        if (salesScopeUserId is not null)
+            q = q.Where(s => s.CreatedByUserId == salesScopeUserId || s.HandledByUserId == salesScopeUserId);
 
         if (body.PartnerIds is { Count: > 0 })
             q = q.Where(s => body.PartnerIds.Contains(s.PartnerId));
@@ -186,9 +194,9 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
         List<ExportEnrolment> Enrolments);
 
     private static async Task<List<ExportRow>> BuildExportRowsAsync(
-        OdinDbContext db, ExportRequest body, CancellationToken ct, int? limit = null)
+        OdinDbContext db, ExportRequest body, CancellationToken ct, int? limit = null, string? salesScopeUserId = null)
     {
-        var idQuery = BuildBaseQuery(db, body).Select(s => s.StudentId);
+        var idQuery = BuildBaseQuery(db, body, salesScopeUserId).Select(s => s.StudentId);
         if (limit is int n) idQuery = idQuery.Take(n);
         var studentIds = await idQuery.ToListAsync(ct);
 

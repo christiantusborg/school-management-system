@@ -358,6 +358,25 @@
                     <span v-if="legacyError" class="err-banner" style="display:block;margin-top:.4rem;">{{ legacyError }}</span>
                     <span v-else-if="legacyOk" class="ok-banner" style="display:block;margin-top:.4rem;">Saved — recorded in the Activity log</span>
                   </div>
+
+                  <div class="legacy-box" style="margin-top:.5rem;">
+                    <label class="legacy-check" style="margin-bottom:.3rem;">
+                      <span><strong>Handled by (Sales)</strong> — payments and status changes credit this
+                        person in the Signups statistics; signups stay with Added by.</span>
+                    </label>
+                    <div class="legacy-id-row">
+                      <select v-model="handledByDraft" class="legacy-id-input" :disabled="!canSetHandledBy"
+                              :title="canSetHandledBy ? '' : 'Requires Editor level or above'">
+                        <option :value="null">— none —</option>
+                        <option v-for="u in salesStaff" :key="u.userId" :value="u.userId">{{ u.name }}</option>
+                      </select>
+                      <button class="btn-row-details btn-row-details-sm" :disabled="!canSetHandledBy || savingHandledBy"
+                              @click="saveHandledBy">
+                        {{ savingHandledBy ? 'Saving…' : 'Save' }}</button>
+                    </div>
+                    <span v-if="handledByError" class="err-banner" style="display:block;margin-top:.4rem;">{{ handledByError }}</span>
+                    <span v-else-if="handledByOk" class="ok-banner" style="display:block;margin-top:.4rem;">Saved</span>
+                  </div>
                   <div class="reset-pw-row">
                     <button class="btn-row-details" :disabled="resettingStudentPw" @click="resetStudentPassword">
                       {{ resettingStudentPw ? 'Resetting…' : '🔑 Reset student password' }}
@@ -2310,6 +2329,7 @@ async function openStudentDetail(s, preselectEnrollmentId = null) {
     // Seed the legacy-ID editor from the loaded student.
     legacyDraft.isLegacy = !!res.data.isLegacyStudent
     legacyDraft.studentNumber = res.data.studentNumber ?? ''
+    handledByDraft.value = res.data.handledByUserId ?? null
     legacyError.value = ''
     legacyOk.value = false
     // Pin the active enrolment to the most-actionable / first one returned.
@@ -2610,6 +2630,38 @@ const REJECT_PRESETS = [
 ]
 
 const gradeModal = ref(null)
+// Handled by (Sales): admission assigns a student to a sales person —
+// payments/status switches then credit them (Signups tab) and the student
+// shows in that Sales login's scoped portal.
+const salesStaff = ref([])
+const handledByDraft = ref(null)
+const savingHandledBy = ref(false)
+const handledByError = ref('')
+const handledByOk = ref(false)
+const canSetHandledBy = computed(() =>
+  ['SuperAdministrator', 'Administrator', 'Manager', 'Editor'].includes(auth.adminLevel))
+async function loadSalesStaff() {
+  try { salesStaff.value = (await api.get('/v1/admin/sales-staff')).data.items ?? [] }
+  catch { salesStaff.value = [] }
+}
+loadSalesStaff()
+async function saveHandledBy() {
+  if (savingHandledBy.value || !detailModal.value?.data) return
+  savingHandledBy.value = true
+  handledByError.value = ''
+  handledByOk.value = false
+  try {
+    await api.patch(`/v1/admin/students/${detailModal.value.studentId}/handled-by`, { userId: handledByDraft.value })
+    detailModal.value.data.handledByUserId = handledByDraft.value
+    handledByOk.value = true
+    setTimeout(() => { handledByOk.value = false }, 2500)
+  } catch (e) {
+    handledByError.value = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    savingHandledBy.value = false
+  }
+}
+
 // "Continue signup": mint a wizard token for the unfinished application and
 // open the public wizard in a new tab exactly where the applicant stopped.
 async function continueSignup(s) {

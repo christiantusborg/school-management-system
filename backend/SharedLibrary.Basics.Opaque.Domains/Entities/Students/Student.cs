@@ -58,6 +58,12 @@ public class Student
     /// the student signed up themself.</summary>
     public string? CreatedByUserId { get; set; }
 
+    /// <summary>Sales-staff assignment set by Admission (Editor level and
+    /// above). For commission attribution payments and status switches credit
+    /// this user when set (falling back to CreatedByUserId); signups always
+    /// stay with CreatedByUserId. Also scopes what a Sales login can see.</summary>
+    public string? HandledByUserId { get; set; }
+
     // Identity / address (filled by the wizard)
     public int? NationalityId { get; set; }
 

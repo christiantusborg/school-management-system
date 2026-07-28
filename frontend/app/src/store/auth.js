@@ -148,7 +148,7 @@ export const auth = reactive({
   get isSuperAdmin() { return !!this.user?.roles?.includes('SuperAdministrator') },
   get adminLevel()   {
     const roles = this.user?.roles ?? []
-    const levels = ['SuperAdministrator', 'Administrator', 'Manager', 'Editor', 'Viewer']
+    const levels = ['SuperAdministrator', 'Administrator', 'Manager', 'Editor', 'Viewer', 'Sales']
     return levels.find(l => roles.includes(l)) ?? null
   },
 })

@@ -22,6 +22,7 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
 
     private static async Task<IResult> HandleAsync(
         OdinDbContext db,
+        HttpContext httpContext,
         CancellationToken cancellationToken,
         [FromQuery] Guid? partnerId = null,
         [FromQuery] Guid? programmeId = null,
@@ -99,6 +100,14 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
         // signups, unless a programme/specialization filter excludes them.
         var studentIds = enrollments.Select(e => e.StudentId).Distinct().ToList();
         var studentsQuery = db.Students.Where(s => s.DeletedAt == null);
+        // Sales logins see ONLY their own students (added by them or assigned
+        // to them via Handled by) — across the whole portal.
+        if (httpContext.User.IsInRole("Sales"))
+        {
+            var salesUserId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            studentsQuery = studentsQuery.Where(s =>
+                s.CreatedByUserId == salesUserId || s.HandledByUserId == salesUserId);
+        }
         if (programmeId is not null || specializationId is not null)
             studentsQuery = studentsQuery.Where(s => studentIds.Contains(s.StudentId));
         else if (partnerId is not null)

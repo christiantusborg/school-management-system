@@ -31,6 +31,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 s.UserId,
                 s.PassportId,
                 s.StudentCardId,
+                s.HandledByUserId,
                 s.DateOfBirth,
                 s.HighestDegree,
                 s.DegreeSpecialization,
@@ -274,6 +275,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
         {
             studentId = student.StudentId,
             studentNumber = student.StudentNumber,
+            handledByUserId = student.HandledByUserId,
             isLegacyStudent = student.IsLegacyStudent,
             moodleEnabled = student.MoodleEnabled,
             moodleUsername = student.MoodleUsername,
