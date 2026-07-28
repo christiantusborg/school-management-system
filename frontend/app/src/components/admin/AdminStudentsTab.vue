@@ -140,6 +140,7 @@
       </tbody>
     </table>
 
+    <Teleport to="body">
     <div v-if="viewMgr.open" class="vm-backdrop" @click.self="viewMgr.open = false">
       <div class="vm-dialog">
         <h3 class="vm-title">Column views</h3>
@@ -170,6 +171,7 @@
         </div>
       </div>
     </div>
+    </Teleport>
 
     <div v-if="pageCount > 1" class="pgn-bar">
       <button class="pgn-btn" :disabled="page === 1" @click="page = 1">«</button>
@@ -2704,6 +2706,7 @@ function colsFor(columns) {
           ...rest.map(k => ({ key: k, label: COLUMN_LABELS[k], on: false }))]
 }
 function openViewManager() {
+  console.log('[views] opening manager, views:', listViews.value.length)
   viewMgr.editingId = activeViewId.value
   seedViewEditor()
   viewMgr.error = ''
@@ -3922,4 +3925,22 @@ async function runExport() {
 .pgn-btn:not(:disabled):hover { background: #e8eef6; }
 .pgn-info { font-size: .8rem; color: #5f6e85; margin: 0 .4rem; }
 .pgn-size { margin-left: auto; padding: .3rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .8rem; background: #fff; }
+</style>
+
+<style>
+/* View-manager dialog is teleported to <body> — styles must be global. */
+.vm-backdrop { position: fixed; inset: 0; background: rgba(15,30,55,.45); display: flex; align-items: flex-start; justify-content: center; padding: 5rem 1rem; z-index: 300; }
+.vm-backdrop .vm-dialog { background: #fff; border-radius: 10px; padding: 1.1rem 1.3rem; width: 100%; max-width: 460px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.vm-backdrop .vm-title { margin: 0 0 .6rem; font-size: 1.05rem; color: #003366; }
+.vm-backdrop .vm-row { display: flex; gap: .5rem; margin-bottom: .4rem; }
+.vm-backdrop .vm-sel, .vm-backdrop .vm-inp { flex: 1; padding: .4rem .55rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .84rem; }
+.vm-backdrop .vm-hint { font-size: .76rem; color: #6b7888; margin: .3rem 0 .5rem; }
+.vm-backdrop .vm-col-row { display: flex; align-items: center; justify-content: space-between; padding: .22rem 0; border-bottom: 1px solid #f0f3f7; }
+.vm-backdrop .vm-col-check { display: flex; align-items: center; gap: .45rem; font-size: .85rem; color: #2c3e50; cursor: pointer; }
+.vm-backdrop .vm-col-btns { display: flex; gap: .25rem; }
+.vm-backdrop .vm-actions { display: flex; align-items: center; gap: .5rem; margin-top: .8rem; }
+.vm-backdrop .btn-sm { background: #f2f5f9; border: 1px solid #cfd7e3; border-radius: 5px; padding: .25rem .55rem; font-size: .78rem; font-weight: 600; color: #2c3e50; cursor: pointer; }
+.vm-backdrop .btn-sm:disabled { opacity: .45; cursor: default; }
+.vm-backdrop .btn-row-details { background: #003366; border: 1px solid #003366; color: #fff; border-radius: 5px; padding: .35rem .8rem; font-size: .8rem; font-weight: 600; cursor: pointer; }
+.vm-backdrop .err-banner { background: #fdf3f2; border: 1px solid #e2b8b5; color: #b3261e; padding: .45rem .7rem; border-radius: 6px; font-size: .8rem; }
 </style>
