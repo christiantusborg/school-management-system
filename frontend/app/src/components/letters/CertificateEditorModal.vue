@@ -227,6 +227,14 @@
                   <div><label>Y</label><input type="number" v-model.number="selectedField.y" /></div>
                 </div>
                 <div class="row">
+                  <div style="flex:1"><label>Font</label>
+                    <select v-model="selectedField.fontFamily" :style="{ fontFamily: selectedField.fontFamily || 'inherit' }">
+                      <option value="">Default</option>
+                      <option v-for="fnt in FONT_OPTIONS" :key="fnt" :value="fnt" :style="{ fontFamily: fnt }">{{ fnt }}</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row">
                   <div><label>Font size</label><input type="number" v-model.number="selectedField.fontSize" min="8" /></div>
                   <div><label>Align</label>
                     <select v-model="selectedField.align">
