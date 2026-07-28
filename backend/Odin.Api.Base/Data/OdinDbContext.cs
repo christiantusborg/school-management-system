@@ -59,6 +59,8 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<RubricTemplate> RubricTemplates => Set<RubricTemplate>();
     public DbSet<RubricRow> RubricRows => Set<RubricRow>();
     public DbSet<SubjectGradeRubricScore> SubjectGradeRubricScores => Set<SubjectGradeRubricScore>();
+    public DbSet<UserListView> UserListViews => Set<UserListView>();
+    public DbSet<UserListViewColumn> UserListViewColumns => Set<UserListViewColumn>();
     public DbSet<ModuleCohortQuestionnaire> ModuleCohortQuestionnaires => Set<ModuleCohortQuestionnaire>();
     public DbSet<CohortQuestionnaireResponse> CohortQuestionnaireResponses => Set<CohortQuestionnaireResponse>();
     public DbSet<CohortQuestionnaireCompletion> CohortQuestionnaireCompletions => Set<CohortQuestionnaireCompletion>();

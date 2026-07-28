@@ -121,6 +121,7 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                 s.UserId,
                 s.PartnerId,
                 s.CreatedByUserId,
+                s.HandledByUserId,
                 User = new { s.User.UserName, s.User.Email, s.User.EmailConfirmed },
                 Profile = db.UserProfiles.Where(p => p.UserId == s.UserId)
                     .Select(p => new { p.FirstName, p.LastName }).FirstOrDefault(),
@@ -131,8 +132,9 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
         var enrollmentsByStudent = enrollments.GroupBy(e => e.StudentId).ToDictionary(g => g.Key, g => g.ToList());
 
         // "Added by" labels: staff name + which office; null = self signup.
-        var creatorIds = students.Where(s => s.CreatedByUserId != null)
-            .Select(s => s.CreatedByUserId!).Distinct().ToList();
+        var creatorIds = students.Where(s => s.CreatedByUserId != null).Select(s => s.CreatedByUserId!)
+            .Concat(students.Where(s => s.HandledByUserId != null).Select(s => s.HandledByUserId!))
+            .Distinct().ToList();
         var creators = creatorIds.Count == 0
             ? new Dictionary<string, string>()
             : (await db.Users
@@ -163,6 +165,7 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                 studentId = s.StudentId,
                 studentNumber = s.StudentNumber,
                 createdBy = s.CreatedByUserId != null ? creators.GetValueOrDefault(s.CreatedByUserId) : null,
+                handledBy = s.HandledByUserId != null ? creators.GetValueOrDefault(s.HandledByUserId) : null,
                 wizardStep = s.WizardStep,
                 signingUp,
                 username = s.User.UserName,

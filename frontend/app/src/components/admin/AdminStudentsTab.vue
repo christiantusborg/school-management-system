@@ -32,6 +32,11 @@
         <option value="">All partners</option>
         <option v-for="p in partnersAvailable" :key="p" :value="p">{{ p }}</option>
       </select>
+      <select v-model="activeViewId" class="view-sel" title="Column view">
+        <option value="">Default view</option>
+        <option v-for="v in listViews" :key="v.id" :value="v.id">{{ v.name }}</option>
+      </select>
+      <button class="btn-refresh" title="Configure column views" @click="openViewManager">⚙</button>
       <button class="btn-refresh" :disabled="loading" @click="load">{{ loading ? 'Loading…' : '↻' }}</button>
       <button class="btn-export" @click="exportModal = makeExportModal()">📥 Export students</button>
       <button v-if="partnerId" class="btn-add-student" @click="emit('add-student')">➕ Add student</button>
@@ -41,56 +46,62 @@
     <table v-else-if="!loading" class="data-table">
       <thead>
         <tr>
-          <th>Student #</th><th>Paid</th><th>Name</th><th v-if="!partnerId">Partner</th>
-          <th>Email</th><th>Enrolments</th><th>Specialization</th><th>Status</th><th>Added by</th><th>Actions</th><th></th>
+          <th>Student #</th><th>Name</th>
+          <th v-for="key in activeColumns" :key="key">{{ COLUMN_LABELS[key] }}</th>
+          <th>Actions</th><th></th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="s in pagedRows" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
           <td class="mono">{{ s.studentNumber }}</td>
           <td>
-            <span v-if="payStage(s) === 'none'" class="muted">—</span>
-            <span v-else-if="payStage(s) === 'unpaid'" class="s-badge s-badge-overdue"
-                  title="A payment plan exists but nothing has been paid yet">Unpaid</span>
-            <span v-else-if="payStage(s) === 'partial'" class="s-badge s-badge-unpaid"
-                  title="There are outstanding installments or invoices">Paid partially</span>
-            <span v-else class="s-badge s-badge-paid" title="No outstanding installments or invoices">Paid full</span>
-          </td>
-          <td>
             <a class="s-name-link" @click.stop="openStudentDetail(s)">
               {{ s.firstName ?? '—' }} {{ s.lastName ?? '' }}
             </a>
             <br><small class="muted">@{{ s.username }}</small>
           </td>
-          <td v-if="!partnerId">{{ s.partnerName }}</td>
-          <td>{{ s.email ?? '—' }}<span v-if="!s.emailVerified" class="s-badge unverified">unverified</span></td>
-          <td>
-            <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
-              <span class="enr-prog">{{ e.programmeCode }}</span>
-            </div>
-            <div v-if="s.signingUp" class="enrol-line">&nbsp;</div>
-          </td>
-          <td>
-            <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
-              {{ e.specializationName || '—' }}
-            </div>
-            <div v-if="s.signingUp" class="enrol-line">&nbsp;</div>
-          </td>
-          <td>
-            <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
-              <span :class="['s-badge', statusClass(e.statusCode)]" :title="e.statusName">{{ simpleStatus(e.statusCode) }}</span>
-              <span v-if="e.paymentOverdue" class="s-badge s-badge-overdue"
-                    title="An installment or additional invoice is unpaid past its due date (Programs → Payment).">Payment overdue</span>
-            </div>
-            <div v-if="s.signingUp" class="enrol-line">
-              <span class="s-badge s-badge-signup"
-                    title="The signup wizard was started but never submitted. Re-entering the same email in the wizard continues where it stopped.">
-                Signing up — step {{ Math.max(s.wizardStep, 1) }} of 6</span>
-            </div>
-          </td>
-          <td>
-            <span :class="{ muted: !s.createdBy }">{{ s.createdBy ?? 'Student signup' }}</span>
-          </td>
+          <template v-for="key in activeColumns" :key="key">
+            <td v-if="key === 'paid'">
+              <span v-if="payStage(s) === 'none'" class="muted">—</span>
+              <span v-else-if="payStage(s) === 'unpaid'" class="s-badge s-badge-overdue"
+                    title="A payment plan exists but nothing has been paid yet">Unpaid</span>
+              <span v-else-if="payStage(s) === 'partial'" class="s-badge s-badge-unpaid"
+                    title="There are outstanding installments or invoices">Paid partially</span>
+              <span v-else class="s-badge s-badge-paid" title="No outstanding installments or invoices">Paid full</span>
+            </td>
+            <td v-else-if="key === 'partner'">{{ s.partnerName }}</td>
+            <td v-else-if="key === 'email'">{{ s.email ?? '—' }}<span v-if="!s.emailVerified" class="s-badge unverified">unverified</span></td>
+            <td v-else-if="key === 'enrolments'">
+              <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
+                <span class="enr-prog">{{ e.programmeCode }}</span>
+              </div>
+              <div v-if="s.signingUp" class="enrol-line">&nbsp;</div>
+            </td>
+            <td v-else-if="key === 'specialization'">
+              <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
+                {{ e.specializationName || '—' }}
+              </div>
+              <div v-if="s.signingUp" class="enrol-line">&nbsp;</div>
+            </td>
+            <td v-else-if="key === 'status'">
+              <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
+                <span :class="['s-badge', statusClass(e.statusCode)]" :title="e.statusName">{{ simpleStatus(e.statusCode) }}</span>
+                <span v-if="e.paymentOverdue" class="s-badge s-badge-overdue"
+                      title="An installment or additional invoice is unpaid past its due date (Programs → Payment).">Payment overdue</span>
+              </div>
+              <div v-if="s.signingUp" class="enrol-line">
+                <span class="s-badge s-badge-signup"
+                      title="The signup wizard was started but never submitted. Re-entering the same email in the wizard continues where it stopped.">
+                  Signing up — step {{ Math.max(s.wizardStep, 1) }} of 6</span>
+              </div>
+            </td>
+            <td v-else-if="key === 'addedBy'">
+              <span :class="{ muted: !s.createdBy }">{{ s.createdBy ?? 'Student signup' }}</span>
+            </td>
+            <td v-else-if="key === 'handledBy'">
+              <span :class="{ muted: !s.handledBy }">{{ s.handledBy ?? '—' }}</span>
+            </td>
+          </template>
           <td class="enrol-actions-cell">
             <div v-if="s.signingUp" class="enrol-actions">
               <button class="btn-review-sm btn-continue-signup" :disabled="s.openingSignup"
@@ -128,6 +139,37 @@
         </tr>
       </tbody>
     </table>
+
+    <div v-if="viewMgr.open" class="vm-backdrop" @click.self="viewMgr.open = false">
+      <div class="vm-dialog">
+        <h3 class="vm-title">Column views</h3>
+        <div class="vm-row">
+          <select v-model="viewMgr.editingId" class="vm-sel" @change="seedViewEditor">
+            <option value="">＋ New view…</option>
+            <option v-for="v in listViews" :key="v.id" :value="v.id">{{ v.name }}</option>
+          </select>
+          <input v-model="viewMgr.name" class="vm-inp" placeholder="View name" />
+        </div>
+        <p class="vm-hint">Student #, Name and Actions always show. Tick the columns for this view and
+          order them with ↑ / ↓.</p>
+        <div v-for="(c, i) in viewMgr.cols" :key="c.key" class="vm-col-row">
+          <label class="vm-col-check"><input type="checkbox" v-model="c.on" /> {{ c.label }}</label>
+          <span class="vm-col-btns">
+            <button type="button" class="btn-sm" :disabled="i === 0" @click="moveViewCol(i, -1)">↑</button>
+            <button type="button" class="btn-sm" :disabled="i === viewMgr.cols.length - 1" @click="moveViewCol(i, 1)">↓</button>
+          </span>
+        </div>
+        <p v-if="viewMgr.error" class="err-banner" style="margin-top:.5rem">{{ viewMgr.error }}</p>
+        <div class="vm-actions">
+          <button v-if="viewMgr.editingId" type="button" class="btn-sm" style="color:#b3261e"
+                  :disabled="viewMgr.busy" @click="deleteView">Delete view</button>
+          <span style="flex:1"></span>
+          <button type="button" class="btn-sm" @click="viewMgr.open = false">Close</button>
+          <button type="button" class="btn-row-details" :disabled="viewMgr.busy || !viewMgr.name.trim()" @click="saveView">
+            {{ viewMgr.busy ? 'Saving…' : (viewMgr.editingId ? 'Save view' : 'Create view') }}</button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="pageCount > 1" class="pgn-bar">
       <button class="pgn-btn" :disabled="page === 1" @click="page = 1">«</button>
@@ -2630,6 +2672,90 @@ const REJECT_PRESETS = [
 ]
 
 const gradeModal = ref(null)
+// ── Configurable column views (per user, server-stored) ─────────────────────
+const COLUMN_LABELS = {
+  paid: 'Paid', partner: 'Partner', email: 'Email', enrolments: 'Enrolments',
+  specialization: 'Specialization', status: 'Status', addedBy: 'Added by', handledBy: 'Handled by',
+}
+const DEFAULT_COLUMNS = ['paid', 'partner', 'email', 'enrolments', 'specialization', 'status', 'addedBy', 'handledBy']
+const listViews = ref([])
+const activeViewId = ref(localStorage.getItem('studentsViewId') ?? '')
+watch(activeViewId, v => localStorage.setItem('studentsViewId', v ?? ''))
+const activeColumns = computed(() => {
+  const view = listViews.value.find(v => v.id === activeViewId.value)
+  const cols = (view?.columns?.length ? view.columns : DEFAULT_COLUMNS)
+    .filter(k => COLUMN_LABELS[k])
+  // Partner-manage context has no Partner column.
+  return props.partnerId ? cols.filter(k => k !== 'partner') : cols
+})
+async function loadListViews() {
+  try {
+    listViews.value = ((await api.get('/v1/admin/list-views', { params: { page: 'students' } })).data.items ?? [])
+    if (activeViewId.value && !listViews.value.some(v => v.id === activeViewId.value)) activeViewId.value = ''
+  } catch { listViews.value = [] }
+}
+loadListViews()
+
+const viewMgr = reactive({ open: false, editingId: '', name: '', cols: [], error: '', busy: false })
+function colsFor(columns) {
+  const chosen = (columns ?? []).filter(k => COLUMN_LABELS[k])
+  const rest = DEFAULT_COLUMNS.filter(k => !chosen.includes(k))
+  return [...chosen.map(k => ({ key: k, label: COLUMN_LABELS[k], on: true })),
+          ...rest.map(k => ({ key: k, label: COLUMN_LABELS[k], on: false }))]
+}
+function openViewManager() {
+  viewMgr.editingId = activeViewId.value
+  seedViewEditor()
+  viewMgr.error = ''
+  viewMgr.open = true
+}
+function seedViewEditor() {
+  const v = listViews.value.find(x => x.id === viewMgr.editingId)
+  viewMgr.name = v?.name ?? ''
+  viewMgr.cols = colsFor(v?.columns ?? DEFAULT_COLUMNS)
+}
+function moveViewCol(i, delta) {
+  const j = i + delta
+  const arr = viewMgr.cols
+  ;[arr[i], arr[j]] = [arr[j], arr[i]]
+}
+async function saveView() {
+  if (viewMgr.busy) return
+  viewMgr.busy = true
+  viewMgr.error = ''
+  try {
+    const columns = viewMgr.cols.filter(c => c.on).map(c => c.key)
+    if (viewMgr.editingId) {
+      await api.put(`/v1/admin/list-views/${viewMgr.editingId}`, { name: viewMgr.name, columns })
+    } else {
+      const res = await api.post('/v1/admin/list-views', { page: 'students', name: viewMgr.name, columns })
+      viewMgr.editingId = res.data.id
+    }
+    await loadListViews()
+    activeViewId.value = viewMgr.editingId
+    viewMgr.open = false
+  } catch (e) {
+    viewMgr.error = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    viewMgr.busy = false
+  }
+}
+async function deleteView() {
+  if (viewMgr.busy || !viewMgr.editingId) return
+  viewMgr.busy = true
+  try {
+    await api.delete(`/v1/admin/list-views/${viewMgr.editingId}`)
+    if (activeViewId.value === viewMgr.editingId) activeViewId.value = ''
+    viewMgr.editingId = ''
+    await loadListViews()
+    seedViewEditor()
+  } catch (e) {
+    viewMgr.error = e.response?.data?.error ?? e.message ?? 'Delete failed'
+  } finally {
+    viewMgr.busy = false
+  }
+}
+
 // Handled by (Sales): admission assigns a student to a sales person —
 // payments/status switches then credit them (Signups tab) and the student
 // shows in that Sales login's scoped portal.
