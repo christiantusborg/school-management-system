@@ -577,7 +577,6 @@
     <!-- Module Cohorts — schedule runs of modules; teachers see their own read-only -->
     <div v-show="mainTab === 'invoices'" class="container">
       <PartnerInvoicesTab v-if="mainTab === 'invoices'" mode="partner" />
-      <p v-if="mainTab === 'invoices'" class="muted" style="font-size:.7rem; opacity:.5;">invoices v2</p>
     </div>
 
     <div v-show="mainTab === 'import'" class="container">
@@ -1324,6 +1323,7 @@ import { gradesStore, saveGrades, isGraded } from '../store/grades.js'
 import { absences } from '../mock/absences.js'
 import { tickets } from '../mock/tickets.js'
 import PartnerStudentsTab from '../components/partner/tabs/PartnerStudentsTab.vue'
+import PartnerInvoicesTab from '../components/partner/tabs/PartnerInvoicesTab.vue'
 import PartnerUsersTab from '../components/partner/tabs/PartnerUsersTab.vue'
 import IntakeFillPanel from '../components/intake/IntakeFillPanel.vue'
 import PartnerFacultyPanel from '../components/partner/PartnerFacultyPanel.vue'
