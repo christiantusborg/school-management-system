@@ -196,6 +196,7 @@ public sealed class LetterPdfRenderer
                                     var span = t.Span(text);
                                     span.FontSize(fontSize);
                                     span.FontColor(color);
+                                    if (MapFontFamily(field.FontFamily) is { } fontFamily) span.FontFamily(fontFamily);
                                     if (field.Bold) span.Bold();
                                     if (field.Italic) span.Italic();
                                 });
@@ -213,6 +214,38 @@ public sealed class LetterPdfRenderer
     /// draft transcript a student can download mid-grading so it can't be
     /// mistaken for the official one. No-op when null/blank.
     /// </summary>
+    /// <summary>Designer font names → families installed in the container.
+    /// Liberation = Arial/Times/Courier metric clones, Carlito = Calibri
+    /// clone, URW base35 covers the classic PostScript families. Unknown
+    /// names pass through (fontconfig picks the closest match).</summary>
+    private static readonly Dictionary<string, string> FontMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Arial"] = "Liberation Sans",
+        ["Helvetica"] = "Liberation Sans",
+        ["Franklin Gothic"] = "Liberation Sans",
+        ["Segoe UI"] = "Liberation Sans",
+        ["Trebuchet MS"] = "Liberation Sans",
+        ["Times New Roman"] = "Liberation Serif",
+        ["Cambria"] = "Liberation Serif",
+        ["Georgia"] = "Noto Serif",
+        ["Garamond"] = "P052",
+        ["Palatino"] = "P052",
+        ["Book Antiqua"] = "P052",
+        ["Bookman"] = "URW Bookman",
+        ["Century Schoolbook"] = "C059",
+        ["Courier New"] = "Liberation Mono",
+        ["Consolas"] = "DejaVu Sans Mono",
+        ["Calibri"] = "Carlito",
+        ["Verdana"] = "DejaVu Sans",
+        ["Tahoma"] = "DejaVu Sans",
+        ["Century Gothic"] = "URW Gothic",
+        ["Avant Garde"] = "URW Gothic",
+        ["Zapf Chancery"] = "Z003",
+    };
+
+    internal static string? MapFontFamily(string? name) =>
+        string.IsNullOrWhiteSpace(name) ? null : FontMap.GetValueOrDefault(name.Trim(), name.Trim());
+
     private static void ApplyWatermark(PageDescriptor page, string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;

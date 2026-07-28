@@ -194,6 +194,14 @@
                   <div><label>Y</label><input type="number" v-model.number="selectedField.y" /></div>
                 </div>
                 <div class="row">
+                  <div style="flex:1"><label>Font</label>
+                    <select v-model="selectedField.fontFamily" :style="{ fontFamily: selectedField.fontFamily || 'inherit' }">
+                      <option value="">Default</option>
+                      <option v-for="fnt in FONT_OPTIONS" :key="fnt" :value="fnt" :style="{ fontFamily: fnt }">{{ fnt }}</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row">
                   <div><label>Font size</label><input type="number" v-model.number="selectedField.fontSize" min="6" /></div>
                   <div><label>Width</label><input type="number" v-model.number="selectedField.width" min="50" /></div>
                 </div>
@@ -709,6 +717,18 @@ function removeSelected() {
   selectedFieldId.value = null
 }
 
+// Top 25 common fonts; the PDF renderer maps each to an installed
+// equivalent (Liberation/Carlito/Noto/URW clones), so what you pick here is
+// what prints.
+const FONT_OPTIONS = [
+  'Arial', 'Helvetica', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI',
+  'Calibri', 'Franklin Gothic', 'Century Gothic', 'Avant Garde',
+  'Times New Roman', 'Georgia', 'Garamond', 'Palatino', 'Book Antiqua',
+  'Cambria', 'Bookman', 'Century Schoolbook',
+  'Courier New', 'Consolas',
+  'Noto Sans', 'Noto Serif', 'DejaVu Sans', 'DejaVu Serif', 'Zapf Chancery',
+]
+
 function fontStyle(f) {
   const parts = []
   if (f.italic) parts.push('italic')
@@ -723,6 +743,7 @@ function textConfig(f) {
     fontSize: sz,
     fill: f.color || '#000',
     fontStyle: fontStyle(f),
+    fontFamily: f.fontFamily || 'Arial',
     align: f.align || 'left',
     listening: true,
   }
@@ -1164,6 +1185,7 @@ async function load() {
         x: f.x ?? 0,
         y: f.y ?? 0,
         fontSize: f.fontSize ?? 24,
+        fontFamily: f.fontFamily ?? '',
         color: f.color ?? '#000000',
         align: f.align ?? 'left',
         bold: !!f.bold,

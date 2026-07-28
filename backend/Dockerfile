@@ -42,6 +42,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         tesseract-ocr-nor tesseract-ocr-swe ghostscript \
     && rm -rf /var/lib/apt/lists/*
 
+# Common document fonts for the letter designer: Liberation (Arial/Times/
+# Courier metric clones), Carlito (Calibri clone), DejaVu, Noto, URW base35.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        fontconfig fonts-liberation fonts-crosextra-carlito fonts-dejavu-core \
+        fonts-noto-core fonts-urw-base35 \
+    && rm -rf /var/lib/apt/lists/* && fc-cache -f
+
 COPY --from=build /out ./
 COPY --from=seed-deps /Odin.Web /Odin.Web
 

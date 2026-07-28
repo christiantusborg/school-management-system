@@ -149,6 +149,12 @@ public sealed class CertificateField
     [JsonPropertyName("italic")]
     public bool Italic { get; set; }
 
+    /// <summary>Font family name from the designer's list (e.g. "Arial",
+    /// "Georgia"); null/empty = the renderer's default. Mapped server-side to
+    /// an installed equivalent (Liberation/Noto/URW clones).</summary>
+    [JsonPropertyName("fontFamily")]
+    public string? FontFamily { get; set; }
+
     /// <summary>Asset id for image fields (kind == "image").</summary>
     [JsonPropertyName("imageAssetId")]
     public Guid? ImageAssetId { get; set; }
