@@ -1,10 +1,10 @@
 <template>
   <div>
-    <!-- Partner: pick open items and combine -->
-    <template v-if="mode === 'partner'">
+    <!-- Admission: pick open items and combine on the partner's behalf -->
+    <template v-if="mode === 'admin'">
       <h2 class="inv-title">Open payment items</h2>
-      <p class="inv-sub">Every unpaid installment and additional invoice across your students.
-        Tick any number and generate ONE combined invoice to pay on their behalf.
+      <p class="inv-sub">Every unpaid installment and additional invoice across this partner's students.
+        Tick any number and generate ONE combined invoice for the partner to pay.
         Items already on a combined invoice are not listed.</p>
       <div v-if="itemsError" class="err-banner">{{ itemsError }}</div>
       <div v-if="itemsLoading" class="loading-row">Loading…</div>
@@ -37,9 +37,12 @@
     </template>
 
     <!-- Both: the combined invoices -->
-    <h2 class="inv-title" :style="mode === 'partner' ? 'margin-top:1.4rem' : ''">Combined invoices</h2>
-    <p v-if="mode === 'admin'" class="inv-sub">Invoices this partner generated to pay on their students'
-      behalf. Marking one paid marks every underlying student installment/invoice paid.</p>
+    <h2 class="inv-title" :style="mode === 'admin' ? 'margin-top:1.4rem' : ''">Combined invoices</h2>
+    <p v-if="mode === 'admin'" class="inv-sub">Marking one paid marks every underlying student
+      installment/invoice paid. Delete is possible for 1 hour after creation (SuperAdministrator: any
+      time, but never while Paid); SuperAdministrator can revert Paid to Open.</p>
+    <p v-else class="inv-sub">Invoices the Admission Office combined for you to pay on your students'
+      behalf — download the PDF for your bookkeeping.</p>
     <div v-if="listError" class="err-banner">{{ listError }}</div>
     <div v-if="listLoading" class="loading-row">Loading…</div>
     <table v-else-if="invoices.length" class="data-table">
@@ -63,6 +66,12 @@
               <button v-if="mode === 'admin' && inv.status !== 'Paid' && canMarkPaid" class="btn-sm inv-markpaid"
                       :disabled="markingId === inv.id" @click="markPaid(inv)">
                 {{ markingId === inv.id ? 'Marking…' : '✓ Mark paid' }}</button>
+              <button v-if="mode === 'admin' && inv.status === 'Paid' && auth.isSuperAdmin" class="btn-sm"
+                      :disabled="markingId === inv.id" @click="unmarkPaid(inv)">↺ Mark unpaid</button>
+              <button v-if="mode === 'admin' && inv.status !== 'Paid' && canDelete(inv)" class="btn-sm inv-del"
+                      :disabled="deletingId === inv.id"
+                      :title="auth.isSuperAdmin ? 'Delete this invoice (items return to the pick list)' : 'Deletable within 1 hour of creation'"
+                      @click="deleteInv(inv)">🗑</button>
             </td>
           </tr>
           <tr v-if="openInv[inv.id]">
@@ -128,11 +137,11 @@ const listUrl = computed(() => props.mode === 'admin'
   : '/v1/partner/my/invoices')
 
 async function loadItems() {
-  if (props.mode !== 'partner') return
+  if (props.mode !== 'admin') return
   itemsLoading.value = true
   itemsError.value = ''
   try {
-    items.value = ((await api.get('/v1/partner/my/invoices/items')).data.items ?? [])
+    items.value = ((await api.get(`/v1/admin/partners/${props.partnerId}/invoices/items`)).data.items ?? [])
       .map(i => ({ ...i, checked: false }))
   } catch (e) {
     itemsError.value = e.response?.data?.error ?? e.message ?? 'Failed to load items'
@@ -156,7 +165,7 @@ async function generate() {
   generating.value = true
   itemsError.value = ''
   try {
-    await api.post('/v1/partner/my/invoices', {
+    await api.post(`/v1/admin/partners/${props.partnerId}/invoices`, {
       installmentIds: selected.value.filter(i => i.installmentId).map(i => i.installmentId),
       invoiceIds: selected.value.filter(i => i.invoiceId).map(i => i.invoiceId),
     })
@@ -187,6 +196,37 @@ async function downloadPdf(inv) {
     downloadingId.value = ''
   }
 }
+function canDelete(inv) {
+  if (auth.isSuperAdmin) return true
+  return (Date.now() - new Date(inv.createdAt).getTime()) < 3600_000
+}
+const deletingId = ref('')
+async function deleteInv(inv) {
+  if (!confirm(`Delete ${inv.number}? Its items return to the open pick list.`)) return
+  deletingId.value = inv.id
+  listError.value = ''
+  try {
+    await api.delete(`/v1/admin/partners/${props.partnerId}/invoices/${inv.id}`)
+    await Promise.all([loadItems(), loadInvoices()])
+  } catch (e) {
+    listError.value = e.response?.data?.error ?? e.message ?? 'Delete failed'
+  } finally {
+    deletingId.value = ''
+  }
+}
+async function unmarkPaid(inv) {
+  if (!confirm(`Mark ${inv.number} UNPAID again? Every underlying student item becomes unpaid.`)) return
+  markingId.value = inv.id
+  listError.value = ''
+  try {
+    await api.post(`/v1/admin/partners/${props.partnerId}/invoices/${inv.id}/unmark-paid`)
+    await loadInvoices()
+  } catch (e) {
+    listError.value = e.response?.data?.error ?? e.message ?? 'Failed'
+  } finally {
+    markingId.value = ''
+  }
+}
 async function markPaid(inv) {
   if (!confirm(`Mark ${inv.number} as PAID? Every underlying student installment/invoice will be marked paid.`)) return
   markingId.value = inv.id
@@ -215,6 +255,7 @@ onMounted(() => { loadItems(); loadInvoices() })
 .inv-open { background: #fdf3e5; color: #a8641e; border: 1px solid #ecc9a0; }
 .inv-paid { background: #e7f0e9; color: #1d7a3e; border: 1px solid #9dc4a8; }
 .inv-markpaid { color: #1d7a3e; margin-left: .3rem; }
+.inv-del { color: #b3261e; margin-left: .3rem; }
 .mono { font-family: ui-monospace, monospace; font-size: .82rem; }
 .data-table { width: 100%; border-collapse: collapse; font-size: .85rem; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 .data-table th { text-align: left; padding: .5rem .7rem; color: #6b7888; font-size: .74rem; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1.5px solid #e8edf4; background: #fafbfd; }

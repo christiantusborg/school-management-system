@@ -21,14 +21,19 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
 {
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
-        app.MapGet("/v1/partner/my/invoices/items", ItemsAsync).RequireAuthorization("PartnerOnly");
+        // Partner: read-only — sees and downloads what Admission combined.
         app.MapGet("/v1/partner/my/invoices", ListPartnerAsync).RequireAuthorization("PartnerOnly");
-        app.MapPost("/v1/partner/my/invoices", CreateAsync).RequireAuthorization("PartnerOnly");
         app.MapGet("/v1/partner/my/invoices/{invoiceId:guid}/pdf", PdfPartnerAsync).RequireAuthorization("PartnerOnly");
 
+        // Admission: picks the items, combines, deletes (1h window; SuperAdmin
+        // always, never while Paid), marks paid, and SuperAdmin may revert.
+        app.MapGet("/v1/admin/partners/{partnerId:guid}/invoices/items", ItemsAdminAsync).RequireAuthorization("AdminOnly");
+        app.MapPost("/v1/admin/partners/{partnerId:guid}/invoices", CreateAdminAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/partners/{partnerId:guid}/invoices", ListAdminAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/partners/{partnerId:guid}/invoices/{invoiceId:guid}/pdf", PdfAdminAsync).RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/partners/{partnerId:guid}/invoices/{invoiceId:guid}/mark-paid", MarkPaidAsync).RequireAuthorization("AdminOnly");
+        app.MapPost("/v1/admin/partners/{partnerId:guid}/invoices/{invoiceId:guid}/unmark-paid", UnmarkPaidAsync).RequireAuthorization("AdminOnly");
+        app.MapDelete("/v1/admin/partners/{partnerId:guid}/invoices/{invoiceId:guid}", DeleteAsync).RequireAuthorization("AdminOnly");
         return app;
     }
 
@@ -123,11 +128,9 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
             .ToList();
     }
 
-    private static async Task<IResult> ItemsAsync(HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> ItemsAdminAsync(Guid partnerId, OdinDbContext db, CancellationToken ct)
     {
-        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
-        if (fail is not null || partnerId is null) return fail ?? Results.StatusCode(403);
-        var items = await LoadOpenItemsAsync(db, partnerId.Value, ct);
+        var items = await LoadOpenItemsAsync(db, partnerId, ct);
         return Results.Ok(new
         {
             items = items.Select(x => new
@@ -199,11 +202,12 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
         public List<Guid>? InvoiceIds { get; init; }
     }
 
-    private static async Task<IResult> CreateAsync(
-        HttpContext httpContext, [FromBody] CreateBody body, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> CreateAdminAsync(
+        Guid partnerId, HttpContext httpContext, [FromBody] CreateBody body, OdinDbContext db, CancellationToken ct)
     {
-        var (callerId, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
-        if (fail is not null || partnerId is null) return fail ?? Results.StatusCode(403);
+        if (!await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct))
+            return Results.NotFound();
+        var callerId = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
         var wantedInst = (body.InstallmentIds ?? []).ToHashSet();
         var wantedInv = (body.InvoiceIds ?? []).ToHashSet();
@@ -212,7 +216,7 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
 
         // Validate against the CURRENT open-item set: guarantees partner
         // ownership, unpaid state and not-already-combined in one sweep.
-        var open = await LoadOpenItemsAsync(db, partnerId.Value, ct);
+        var open = await LoadOpenItemsAsync(db, partnerId, ct);
         var lines = open.Where(x =>
             (x.InstallmentId is { } ii && wantedInst.Contains(ii))
             || (x.InvoiceId is { } vi && wantedInv.Contains(vi))).ToList();
@@ -228,7 +232,7 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
 
         var invoice = new CombinedInvoice
         {
-            PartnerId = partnerId.Value,
+            PartnerId = partnerId,
             Number = $"INV-{condensed}-{seq:D3}",
             CreatedByUserId = callerId,
         };
@@ -278,6 +282,58 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
         invoice.PaidByUserId = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { id = invoiceId, status = invoice.Status, itemsMarked = installments.Count + addInvoices.Count });
+    }
+
+    /// <summary>Delete rules: never while Paid (SuperAdmin must revert
+    /// first); SuperAdministrator always; every other admission user only
+    /// within 1 hour of creation. Soft delete unlocks the underlying items
+    /// back into the pick list.</summary>
+    private static async Task<IResult> DeleteAsync(
+        Guid partnerId, Guid invoiceId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        var invoice = await db.CombinedInvoices.FirstOrDefaultAsync(i =>
+            i.CombinedInvoiceId == invoiceId && i.PartnerId == partnerId && i.DeletedAt == null, ct);
+        if (invoice is null) return Results.NotFound();
+        if (invoice.Status == CombinedInvoice.StatusPaid)
+            return Results.BadRequest(new { error = "A paid invoice cannot be deleted — mark it unpaid first (SuperAdministrator only)." });
+        var isSuper = httpContext.User.IsInRole("SuperAdministrator");
+        if (!isSuper && DateTime.UtcNow - invoice.CreatedAt > TimeSpan.FromHours(1))
+            return Results.Json(new { error = "Only a SuperAdministrator can delete an invoice older than 1 hour." },
+                statusCode: StatusCodes.Status403Forbidden);
+        invoice.DeletedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = invoiceId, deleted = true });
+    }
+
+    /// <summary>SuperAdministrator only: reverts Paid → Open and un-pays the
+    /// underlying items that this invoice settled.</summary>
+    private static async Task<IResult> UnmarkPaidAsync(
+        Guid partnerId, Guid invoiceId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+    {
+        if (!httpContext.User.IsInRole("SuperAdministrator"))
+            return Results.Json(new { error = "Only a SuperAdministrator can mark an invoice unpaid." },
+                statusCode: StatusCodes.Status403Forbidden);
+        var invoice = await db.CombinedInvoices.FirstOrDefaultAsync(i =>
+            i.CombinedInvoiceId == invoiceId && i.PartnerId == partnerId && i.DeletedAt == null, ct);
+        if (invoice is null) return Results.NotFound();
+        if (invoice.Status != CombinedInvoice.StatusPaid)
+            return Results.BadRequest(new { error = "This invoice is not marked paid." });
+
+        var lines = await db.CombinedInvoiceLines
+            .Where(l => l.CombinedInvoiceId == invoiceId)
+            .ToListAsync(ct);
+        var instIds = lines.Where(l => l.PaymentInstallmentId != null).Select(l => l.PaymentInstallmentId!.Value).ToList();
+        foreach (var i in await db.PaymentInstallments.Where(x => instIds.Contains(x.PaymentInstallmentId)).ToListAsync(ct))
+        { i.IsPaid = false; i.PaidDate = null; }
+        var invIds = lines.Where(l => l.AdditionalInvoiceId != null).Select(l => l.AdditionalInvoiceId!.Value).ToList();
+        foreach (var a in await db.AdditionalInvoices.Where(x => invIds.Contains(x.AdditionalInvoiceId)).ToListAsync(ct))
+        { a.IsPaid = false; a.PaidDate = null; }
+
+        invoice.Status = CombinedInvoice.StatusOpen;
+        invoice.PaidAt = null;
+        invoice.PaidByUserId = null;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { id = invoiceId, status = invoice.Status });
     }
 
     // ── PDF ────────────────────────────────────────────────────────────────
