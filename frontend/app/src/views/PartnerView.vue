@@ -29,6 +29,7 @@
       <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Partnership Documents</button>
       <button :class="['main-tab-btn', { active: mainTab === 'faculties' }]" @click="mainTab = 'faculties'">Faculties</button>
       <button :class="['main-tab-btn', { active: mainTab === 'cohorts' }]" @click="mainTab = 'cohorts'">Module Cohorts</button>
+      <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'invoices' }]" @click="mainTab = 'invoices'">Invoices</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'import' }]" @click="mainTab = 'import'">Import</button>
     </div>
 
@@ -574,6 +575,10 @@
     </div>
 
     <!-- Module Cohorts — schedule runs of modules; teachers see their own read-only -->
+    <div v-show="mainTab === 'invoices'" class="container">
+      <PartnerInvoicesTab v-if="mainTab === 'invoices'" mode="partner" />
+    </div>
+
     <div v-show="mainTab === 'import'" class="container">
       <StudentImportTab v-if="mainTab === 'import'"
         api-prefix="/v1/partner/students/import"

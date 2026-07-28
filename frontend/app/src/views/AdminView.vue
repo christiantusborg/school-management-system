@@ -514,6 +514,10 @@
         <div v-show="manageTab === 'students'" class="manage-section">
           <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" @add-student="openAddStudentForManagedPartner" />
         </div>
+
+        <div v-show="manageTab === 'invoices'" class="manage-section">
+          <PartnerInvoicesTab v-if="manageTab === 'invoices' && managingPartner" mode="admin" :partner-id="managingPartner.partnerId" />
+        </div>
       </div>
     </div>
 
@@ -699,6 +703,7 @@ import {
 import CreatePartnerWizard from '../components/partner/CreatePartnerWizard.vue'
 import PartnerProfileTab from '../components/partner/tabs/PartnerProfileTab.vue'
 import PartnerCoreProgrammesTab from '../components/partner/tabs/PartnerCoreProgrammesTab.vue'
+import PartnerInvoicesTab from '../components/partner/tabs/PartnerInvoicesTab.vue'
 import PartnerCustomProgrammesTab from '../components/partner/tabs/PartnerCustomProgrammesTab.vue'
 import PartnerCertificatesTab from '../components/admin/PartnerCertificatesTab.vue'
 import FacultyTeachersTab from '../components/admin/FacultyTeachersTab.vue'
@@ -870,6 +875,7 @@ const showPartnerWizard = ref(false)
 const MANAGE_TABS = [
   { k: 'students', label: 'Students' },
   { k: 'cohorts',  label: 'Module Cohorts' },
+  { k: 'invoices', label: 'Invoices' },
   { k: 'import',   label: 'Import' },
 ]
 const GEAR_TABS = [

@@ -62,6 +62,8 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<UserListView> UserListViews => Set<UserListView>();
     public DbSet<UserListViewColumn> UserListViewColumns => Set<UserListViewColumn>();
     public DbSet<SalesPartnerAssignment> SalesPartnerAssignments => Set<SalesPartnerAssignment>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.CombinedInvoice> CombinedInvoices => Set<SharedLibrary.Basics.Opaque.Domains.Payments.CombinedInvoice>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.CombinedInvoiceLine> CombinedInvoiceLines => Set<SharedLibrary.Basics.Opaque.Domains.Payments.CombinedInvoiceLine>();
     public DbSet<ModuleCohortQuestionnaire> ModuleCohortQuestionnaires => Set<ModuleCohortQuestionnaire>();
     public DbSet<CohortQuestionnaireResponse> CohortQuestionnaireResponses => Set<CohortQuestionnaireResponse>();
     public DbSet<CohortQuestionnaireCompletion> CohortQuestionnaireCompletions => Set<CohortQuestionnaireCompletion>();
