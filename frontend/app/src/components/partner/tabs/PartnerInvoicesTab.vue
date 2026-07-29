@@ -2,7 +2,10 @@
   <div>
     <!-- Admission: pick open items and combine on the partner's behalf -->
     <template v-if="mode === 'admin'">
-      <h2 class="inv-title">Open payment items</h2>
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <h2 class="inv-title">Open payment items</h2>
+        <button class="btn-sm" @click="templateOpen = true">🎨 Invoice template</button>
+      </div>
       <p class="inv-sub">Every unpaid installment and additional invoice across this partner's students.
         Tick any number and generate ONE combined invoice for the partner to pay.
         Items already on a combined invoice are not listed.</p>
@@ -94,6 +97,9 @@
       </tbody>
     </table>
     <p v-else class="inv-sub">No combined invoices yet.</p>
+
+    <CertificateEditorModal v-if="mode === 'admin'" :open="templateOpen" letter-type="CombinedInvoice"
+      :invoice-partner-id="partnerId" @close="templateOpen = false" @saved="templateOpen = false" />
   </div>
 </template>
 
@@ -101,6 +107,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import api from '../../../api/client.js'
 import { auth } from '../../../store/auth.js'
+import CertificateEditorModal from '../../letters/CertificateEditorModal.vue'
 
 const props = defineProps({
   mode: { type: String, default: 'partner' },   // 'partner' | 'admin'
@@ -117,6 +124,7 @@ const generating = ref(false)
 const downloadingId = ref('')
 const markingId = ref('')
 const openInv = reactive({})
+const templateOpen = ref(false)
 
 const canMarkPaid = computed(() => auth.adminLevel !== 'Sales' && auth.adminLevel !== null)
 const selected = computed(() => items.value.filter(i => i.checked))

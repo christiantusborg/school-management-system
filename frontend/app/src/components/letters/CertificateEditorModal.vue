@@ -37,6 +37,7 @@
           <button v-if="letterType === 'StudentIdCard'" class="tb-btn" @click="addStudentPhotoField"
                   title="Placeholder filled with the student's uploaded Student Card Picture at generation time">+ Student photo</button>
           <span v-if="letterType === 'Transcript' || letterType === 'PrintableTranscript'" class="tb-range-wrap">
+            <button v-if="invoicePartnerId" type="button" class="tb-btn" @click="addInvoiceTableField">+ Invoice lines</button>
             <button type="button" class="tb-btn" @click="rangeMenuOpen = !rangeMenuOpen">+ Grades Table ▾</button>
             <div v-if="rangeMenuOpen" class="tb-range-menu" @click.stop>
               <button type="button" v-for="r in GRADE_RANGES" :key="r[0]" class="tb-range-item"
@@ -74,7 +75,7 @@
                         <KRect :config="placeholderRectConfig(f)" />
                         <KText :config="placeholderLabelConfig(f)" />
                       </template>
-                      <template v-else-if="f.kind === 'transcriptTable' || f.kind === 'gradeStandardTable' || f.kind === 'transcriptTotals'">
+                      <template v-else-if="f.kind === 'transcriptTable' || f.kind === 'gradeStandardTable' || f.kind === 'transcriptTotals' || f.kind === 'invoiceTable'">
                         <KRect :config="placeholderRectConfig(f)" />
                         <KText :config="placeholderLabelConfig(f)" />
                       </template>
@@ -328,6 +329,9 @@ const props = defineProps({
   // template at /v1/admin/partner-document-types/{id} instead of programme
   // letter templates. letterType should carry the type name for the title.
   partnerDocTypeId: { type: String, default: '' },
+  // Combined-invoice TEMPLATE mode: per-partner design used for that
+  // partner's combined invoices (loads/saves at /invoice-template).
+  invoicePartnerId: { type: String, default: '' },
 })
 const emit = defineEmits(['close', 'saved'])
 
@@ -597,6 +601,22 @@ function addTotalsField() {
 
 // Grade standard legend (school/UK/US/ECTS scale). Content is fixed and
 // rendered by the PDF renderer; the editor only places the block.
+// Invoice lines block: rendered from the combined invoice's lines at
+// generation time; the editor only places the region.
+function addInvoiceTableField() {
+  const f = {
+    id: uid(),
+    kind: 'invoiceTable',
+    tag: null, text: 'Invoice Lines', prefix: '', suffix: '',
+    x: 40, y: 260,
+    fontSize: 9, color: '#000000', align: 'left',
+    bold: false, italic: false, imageAssetId: null,
+    width: 515, height: 380,
+  }
+  currentPage.value.fields.push(f)
+  selectedFieldId.value = f.id
+}
+
 function addGradeStandardField() {
   const f = {
     id: uid(),
@@ -819,7 +839,9 @@ function placeholderRectConfig(f) {
   }
 }
 function placeholderLabelConfig(f) {
-  const label = f.imageAssetId === STUDENT_PHOTO_ASSET_ID
+  const label = f.kind === 'invoiceTable'
+    ? 'Invoice Lines Table (auto)'
+    : f.imageAssetId === STUDENT_PHOTO_ASSET_ID
     ? 'Student Card Photo'
     : f.kind === 'transcriptTotals'
       ? 'Total / GPA (auto)'
@@ -1143,16 +1165,18 @@ async function load() {
   loadError.value = ''
   try {
     const [tplRes, tagRes, assetRes] = await Promise.all([
-      props.partnerDocTypeId
-        ? apiClient.get(`/v1/admin/partner-document-types/${props.partnerDocTypeId}`)
-        : apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`, {
-            params: { partnerId: props.partnerId },
-          }),
+      props.invoicePartnerId
+        ? apiClient.get(`/v1/admin/partners/${props.invoicePartnerId}/invoice-template`)
+        : props.partnerDocTypeId
+          ? apiClient.get(`/v1/admin/partner-document-types/${props.partnerDocTypeId}`)
+          : apiClient.get(`/v1/admin/programmes/${props.programmeId}/letter-templates`, {
+              params: { partnerId: props.partnerId },
+            }),
       apiClient.get('/v1/admin/letter-tags'),
       apiClient.get('/v1/admin/letter-assets'),
     ])
     // Document types bring their own tag palette (base tags + custom fields).
-    tags.value = props.partnerDocTypeId ? (tplRes.data.tags ?? []) : (tagRes.data.items ?? [])
+    tags.value = (props.partnerDocTypeId || props.invoicePartnerId) ? (tplRes.data.tags ?? []) : (tagRes.data.items ?? [])
     assets.value = assetRes.data.items ?? []
     const urlMap = { ...assetUrls.value }
     await Promise.all(assets.value.map(async (a) => {
@@ -1160,10 +1184,11 @@ async function load() {
       catch { urlMap[a.letterAssetId] = '' }
     }))
     assetUrls.value = urlMap
-    const existing = props.partnerDocTypeId
+    let existing = props.partnerDocTypeId
       ? tplRes.data
       : (tplRes.data.items ?? []).find(t => t.letterType === props.letterType)
-    isPublished.value = props.partnerDocTypeId ? true : !!existing?.isPublished
+    if (props.invoicePartnerId) existing = tplRes.data
+    isPublished.value = (props.partnerDocTypeId || props.invoicePartnerId) ? true : !!existing?.isPublished
     let next
     try { next = JSON.parse(existing?.certificateLayoutJson ?? 'null') } catch { next = null }
     layout.width = next?.width ?? 2000
@@ -1249,9 +1274,11 @@ async function onPreview() {
   previewing.value = true
   saveError.value = ''
   try {
-    const previewUrl = props.partnerDocTypeId
-      ? `/v1/admin/partner-document-types/${props.partnerDocTypeId}/preview`
-      : `/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}/preview`
+    const previewUrl = props.invoicePartnerId
+      ? `/v1/admin/partners/${props.invoicePartnerId}/invoice-template/preview`
+      : props.partnerDocTypeId
+        ? `/v1/admin/partner-document-types/${props.partnerDocTypeId}/preview`
+        : `/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}/preview`
     const res = await apiClient.post(previewUrl, buildLayoutPayload(), { responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
     window.open(url, '_blank')
@@ -1276,7 +1303,9 @@ async function onSave() {
   saveError.value = ''
   try {
     const payload = buildLayoutPayload()
-    if (props.partnerDocTypeId) {
+    if (props.invoicePartnerId) {
+      await apiClient.put(`/v1/admin/partners/${props.invoicePartnerId}/invoice-template`, payload)
+    } else if (props.partnerDocTypeId) {
       await apiClient.put(`/v1/admin/partner-document-types/${props.partnerDocTypeId}`, payload)
     } else {
       await apiClient.put(`/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}`, payload,
@@ -1296,7 +1325,8 @@ watch(() => props.open, (open) => {
   if (open) {
     copyFromProgrammeId.value = ''
     copyFromCertId.value = ''
-    if (props.partnerDocTypeId) loadCertCopySources()
+    if (props.invoicePartnerId) { /* no copy sources for invoice templates */ }
+    else if (props.partnerDocTypeId) loadCertCopySources()
     else loadProgrammes()
     load()
     resizeHandler = () => fitStage()

@@ -2,6 +2,8 @@ using System.Security.Claims;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using Odin.Api.Base.Letters;
+using Odin.Api.Base.Storage;
 using School.PartnerAdminApi.Partner.V1.MyUsers;
 using SharedLibrary.Basics.Opaque.Domains.Payments;
 
@@ -34,6 +36,11 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
         app.MapPost("/v1/admin/partners/{partnerId:guid}/invoices/{invoiceId:guid}/mark-paid", MarkPaidAsync).RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/partners/{partnerId:guid}/invoices/{invoiceId:guid}/unmark-paid", UnmarkPaidAsync).RequireAuthorization("AdminOnly");
         app.MapDelete("/v1/admin/partners/{partnerId:guid}/invoices/{invoiceId:guid}", DeleteAsync).RequireAuthorization("AdminOnly");
+
+        // Per-partner invoice design template (letter-designer layout).
+        app.MapGet("/v1/admin/partners/{partnerId:guid}/invoice-template", GetTemplateAsync).RequireAuthorization("AdminOnly");
+        app.MapPut("/v1/admin/partners/{partnerId:guid}/invoice-template", SaveTemplateAsync).RequireAuthorization("AdminOnly");
+        app.MapPost("/v1/admin/partners/{partnerId:guid}/invoice-template/preview", PreviewTemplateAsync).RequireAuthorization("AdminOnly");
         return app;
     }
 
@@ -336,20 +343,144 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
         return Results.Ok(new { id = invoiceId, status = invoice.Status });
     }
 
+    // ── Per-partner invoice template (designer layout) ─────────────────────
+
+    private static readonly object[] InvoiceTags =
+    [
+        new { tag = "[partner name]", description = "The partner's name" },
+        new { tag = "[invoice number]", description = "Combined invoice number (INV-…)" },
+        new { tag = "[invoice date]", description = "Date the invoice was created" },
+        new { tag = "[invoice status]", description = "Open or Paid (with paid date)" },
+        new { tag = "[invoice total]", description = "Grand total per currency" },
+        new { tag = "[invoice item count]", description = "Number of bundled items" },
+        new { tag = "[invoice student count]", description = "Number of distinct students" },
+        new { tag = "[date]", description = "Today's date" },
+    ];
+
+    private static async Task<IResult> GetTemplateAsync(Guid partnerId, OdinDbContext db, CancellationToken ct)
+    {
+        var template = await db.CombinedInvoiceTemplates
+            .FirstOrDefaultAsync(t => t.PartnerId == partnerId, ct);
+        return Results.Ok(new
+        {
+            certificateLayoutJson = template?.CertificateLayoutJson,
+            tags = InvoiceTags,
+        });
+    }
+
+    public sealed class TemplateBody { public string? CertificateLayoutJson { get; init; } }
+
+    private static async Task<IResult> SaveTemplateAsync(
+        Guid partnerId, [FromBody] TemplateBody body, OdinDbContext db, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.CertificateLayoutJson))
+            return Results.BadRequest(new { error = "Layout missing." });
+        var template = await db.CombinedInvoiceTemplates
+            .FirstOrDefaultAsync(t => t.PartnerId == partnerId, ct);
+        if (template is null)
+        {
+            template = new CombinedInvoiceTemplate { PartnerId = partnerId };
+            db.CombinedInvoiceTemplates.Add(template);
+        }
+        template.CertificateLayoutJson = body.CertificateLayoutJson;
+        template.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { saved = true });
+    }
+
+    private static Dictionary<string, string> InvoiceTagValues(
+        CombinedInvoice invoice, IReadOnlyList<CombinedInvoiceLine> lines, string partnerName)
+    {
+        var totals = string.Join(" · ", lines.GroupBy(l => l.Currency)
+            .Select(g => $"{g.Sum(x => x.Amount):N2} {g.Key}"));
+        return new Dictionary<string, string>
+        {
+            ["[partner name]"] = partnerName,
+            ["[invoice number]"] = invoice.Number,
+            ["[invoice date]"] = invoice.CreatedAt.ToString("yyyy-MM-dd"),
+            ["[invoice status]"] = invoice.Status + (invoice.PaidAt is { } p ? $" ({p:yyyy-MM-dd})" : ""),
+            ["[invoice total]"] = totals,
+            ["[invoice item count]"] = lines.Count.ToString(),
+            ["[invoice student count]"] = lines.Select(l => l.StudentNumber).Distinct().Count().ToString(),
+            ["[date]"] = DateTime.UtcNow.ToString("yyyy-MM-dd"),
+        };
+    }
+
+    private static async Task<Dictionary<Guid, byte[]>> LoadLayoutAssetsAsync(
+        OdinDbContext db, IFileStorage storage, CertificateLayout layout, CancellationToken ct)
+    {
+        var ids = new HashSet<Guid>();
+        foreach (var page in layout.Pages ?? [])
+        {
+            if (page.BackgroundAssetId is { } bg) ids.Add(bg);
+            foreach (var f in page.Fields ?? [])
+                if (f.ImageAssetId is { } img) ids.Add(img);
+        }
+        var dict = new Dictionary<Guid, byte[]>();
+        foreach (var id in ids)
+        {
+            var path = await db.LetterAssets
+                .Where(a => a.LetterAssetId == id && a.DeletedAt == null)
+                .Select(a => a.StoragePath)
+                .FirstOrDefaultAsync(ct);
+            if (path is null) continue;
+            try
+            {
+                using var stream = await storage.OpenReadAsync(path, ct);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms, ct);
+                dict[id] = ms.ToArray();
+            }
+            catch { /* missing asset renders as blank */ }
+        }
+        return dict;
+    }
+
+    private static async Task<IResult> PreviewTemplateAsync(
+        Guid partnerId, [FromBody] TemplateBody body, OdinDbContext db,
+        IFileStorage storage, LetterPdfRenderer renderer, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.CertificateLayoutJson))
+            return Results.BadRequest(new { error = "Layout missing." });
+        CertificateLayout? layout;
+        try { layout = System.Text.Json.JsonSerializer.Deserialize<CertificateLayout>(body.CertificateLayoutJson); }
+        catch { return Results.BadRequest(new { error = "Invalid layout." }); }
+        if (layout is null) return Results.BadRequest(new { error = "Invalid layout." });
+
+        var partnerName = await db.Partners.Where(p => p.PartnerId == partnerId)
+            .Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "Partner";
+        var sampleInvoice = new CombinedInvoice { Number = "INV-SAMPLE-001", CreatedAt = DateTime.UtcNow };
+        var sampleLines = new List<CombinedInvoiceLine>
+        {
+            new() { StudentName = "Sample Student", StudentNumber = "ST-20260101-AAAA", ProgrammeCode = "MBA-IBAS", ItemLabel = "Installment 1", Amount = 1500m, Currency = "USD" },
+            new() { StudentName = "Second Student", StudentNumber = "ST-20260101-BBBB", ProgrammeCode = "BBA-IBSS", ItemLabel = "Installment 2", Amount = 900m, Currency = "USD" },
+            new() { StudentName = "Third Student", StudentNumber = "ST-20260101-CCCC", ProgrammeCode = "DBA-IBSS", ItemLabel = "Additional invoice 1", Amount = 250m, Currency = "USD" },
+        };
+        var assets = await LoadLayoutAssetsAsync(db, storage, layout, ct);
+        var pdf = renderer.RenderCertificate(layout, assets,
+            InvoiceTagValues(sampleInvoice, sampleLines, partnerName), invoiceLines: sampleLines);
+        return Results.File(pdf, "application/pdf", "invoice-template-preview.pdf");
+    }
+
     // ── PDF ────────────────────────────────────────────────────────────────
 
     private static async Task<IResult> PdfPartnerAsync(
-        Guid invoiceId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid invoiceId, HttpContext httpContext, OdinDbContext db,
+        IFileStorage storage, LetterPdfRenderer renderer, CancellationToken ct)
     {
         var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
         if (fail is not null || partnerId is null) return fail ?? Results.StatusCode(403);
-        return await BuildPdfAsync(db, partnerId.Value, invoiceId, ct);
+        return await BuildPdfAsync(db, storage, renderer, partnerId.Value, invoiceId, ct);
     }
 
-    private static Task<IResult> PdfAdminAsync(Guid partnerId, Guid invoiceId, OdinDbContext db, CancellationToken ct) =>
-        BuildPdfAsync(db, partnerId, invoiceId, ct);
+    private static Task<IResult> PdfAdminAsync(
+        Guid partnerId, Guid invoiceId, OdinDbContext db,
+        IFileStorage storage, LetterPdfRenderer renderer, CancellationToken ct) =>
+        BuildPdfAsync(db, storage, renderer, partnerId, invoiceId, ct);
 
-    private static async Task<IResult> BuildPdfAsync(OdinDbContext db, Guid partnerId, Guid invoiceId, CancellationToken ct)
+    private static async Task<IResult> BuildPdfAsync(
+        OdinDbContext db, IFileStorage storage, LetterPdfRenderer renderer,
+        Guid partnerId, Guid invoiceId, CancellationToken ct)
     {
         var invoice = await db.CombinedInvoices.FirstOrDefaultAsync(i =>
             i.CombinedInvoiceId == invoiceId && i.PartnerId == partnerId && i.DeletedAt == null, ct);
@@ -360,6 +491,26 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
             .ToListAsync(ct);
         var partnerName = await db.Partners.Where(p => p.PartnerId == partnerId)
             .Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "";
+
+        // Partner-specific designer template wins over the built-in document.
+        var template = await db.CombinedInvoiceTemplates
+            .FirstOrDefaultAsync(t => t.PartnerId == partnerId, ct);
+        if (template is not null && !string.IsNullOrWhiteSpace(template.CertificateLayoutJson)
+            && template.CertificateLayoutJson != "{}")
+        {
+            try
+            {
+                var tplLayout = System.Text.Json.JsonSerializer.Deserialize<CertificateLayout>(template.CertificateLayoutJson);
+                if (tplLayout is not null)
+                {
+                    var tplAssets = await LoadLayoutAssetsAsync(db, storage, tplLayout, ct);
+                    var tplPdf = renderer.RenderCertificate(tplLayout, tplAssets,
+                        InvoiceTagValues(invoice, lines, partnerName), invoiceLines: lines);
+                    return Results.File(tplPdf, "application/pdf", $"{invoice.Number}.pdf");
+                }
+            }
+            catch { /* fall through to the built-in document */ }
+        }
 
         var pdf = Document.Create(doc =>
         {

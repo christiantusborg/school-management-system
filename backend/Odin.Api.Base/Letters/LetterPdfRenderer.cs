@@ -19,7 +19,8 @@ public sealed class LetterPdfRenderer
         IReadOnlyDictionary<Guid, byte[]> assetBytes,
         IReadOnlyDictionary<string, string> tagValues,
         IReadOnlyList<TranscriptGradeRow>? transcriptRows = null,
-        string? watermark = null)
+        string? watermark = null,
+        IReadOnlyList<SharedLibrary.Basics.Opaque.Domains.Payments.CombinedInvoiceLine>? invoiceLines = null)
     {
         var lw = layout.Width <= 0 ? 2000 : layout.Width;
         var lh = layout.Height <= 0 ? 1414 : layout.Height;
@@ -117,6 +118,11 @@ public sealed class LetterPdfRenderer
                             if (kind == "transcripttotals")
                             {
                                 RenderTranscriptTotals(layers, field, sx, sy, allRows, schoolName);
+                                continue;
+                            }
+                            if (kind == "invoicetable")
+                            {
+                                RenderInvoiceTable(layers, field, sx, sy, invoiceLines ?? []);
                                 continue;
                             }
                             if (kind == "gradestandardtable")
@@ -624,6 +630,54 @@ public sealed class LetterPdfRenderer
     /// (computed over ALL grades) are appended directly below the slice — used
     /// to glue the total to the last populated range table.
     /// </summary>
+    /// <summary>Combined-invoice lines block: one row per bundled student
+    /// payment item, followed by per-currency totals.</summary>
+    private static void RenderInvoiceTable(
+        QuestPDF.Fluent.LayersDescriptor layers,
+        CertificateField field,
+        float sx, float sy,
+        IReadOnlyList<SharedLibrary.Basics.Opaque.Domains.Payments.CombinedInvoiceLine> lines)
+    {
+        var x = (float)field.X * sx;
+        var y = (float)field.Y * sy;
+        var w = Math.Max(50f, (float)(field.Width <= 0 ? 800 : field.Width) * sx);
+        var fontSize = Math.Max(6f, field.FontSize <= 0 ? 9f : field.FontSize * sy);
+        var color = string.IsNullOrWhiteSpace(field.Color) ? "#000000" : field.Color;
+
+        layers.Layer().PaddingTop(y).PaddingLeft(x).Width(w).Element(c =>
+        {
+            c.Column(col =>
+            {
+                col.Item().Table(table =>
+                {
+                    table.ColumnsDefinition(cd =>
+                    {
+                        cd.RelativeColumn(3);
+                        cd.RelativeColumn(2);
+                        cd.RelativeColumn(2);
+                        cd.RelativeColumn(2.2f);
+                        cd.RelativeColumn(1.6f);
+                    });
+                    foreach (var h in new[] { "Student", "Student #", "Programme", "Item", "Amount" })
+                        table.Cell().BorderBottom(1).BorderColor(Color.FromHex("#999999")).Padding(3)
+                            .Text(h).Bold().FontSize(fontSize).FontColor(color);
+                    foreach (var l in lines)
+                    {
+                        table.Cell().Padding(3).Text(l.StudentName).FontSize(fontSize).FontColor(color);
+                        table.Cell().Padding(3).Text(l.StudentNumber).FontSize(fontSize).FontColor(color);
+                        table.Cell().Padding(3).Text(l.ProgrammeCode).FontSize(fontSize).FontColor(color);
+                        table.Cell().Padding(3).Text(l.ItemLabel).FontSize(fontSize).FontColor(color);
+                        table.Cell().Padding(3).AlignRight().Text($"{l.Amount:N2} {l.Currency}").FontSize(fontSize).FontColor(color);
+                    }
+                });
+                foreach (var g in lines.GroupBy(l => l.Currency))
+                    col.Item().PaddingTop(4).AlignRight()
+                        .Text($"Total {g.Key}: {g.Sum(v => v.Amount):N2}")
+                        .Bold().FontSize(fontSize + 1).FontColor(color);
+            });
+        });
+    }
+
     private static void RenderTranscriptTableSlice(
         QuestPDF.Fluent.LayersDescriptor layers,
         CertificateField field,
