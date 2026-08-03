@@ -33,8 +33,10 @@ public sealed class PartnerCatalogueV1Endpoint : IEndpointMarker
             .FirstOrDefaultAsync(ct);
         if (partner is null) return Results.NotFound(new { error = "Partner not found." });
 
-        // Core programmes (no owner) ∪ programmes explicitly granted to this
-        // partner ∪ the partner's own approved-and-active custom programmes.
+        // ONLY programmes this partner has access to: core programmes
+        // explicitly granted via ProgrammePartners ∪ the partner's own
+        // approved-and-active custom programmes. Ungranted core programmes
+        // must NOT appear in the signup wizard.
         var grantedProgrammeIds = await db.ProgrammePartners
             .Where(pp => pp.PartnerId == partner.PartnerId && pp.IsActive != null)
             .Select(pp => pp.ProgrammeId)
@@ -52,8 +54,7 @@ public sealed class PartnerCatalogueV1Endpoint : IEndpointMarker
 
         var programmes = await db.Programmes
             .Where(p => p.DeletedAt == null
-                        && (p.OwnerId == null
-                            || grantedProgrammeIds.Contains(p.ProgrammeId)
+                        && (grantedProgrammeIds.Contains(p.ProgrammeId)
                             || ownedLiveProgrammeIds.Contains(p.ProgrammeId)))
             .OrderBy(p => p.Code)
             .Select(p => new
