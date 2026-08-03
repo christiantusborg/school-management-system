@@ -356,7 +356,14 @@
                   <h4>Account</h4>
                   <dl>
                     <dt>Username</dt><dd>@{{ detailModal.data.account?.username }}</dd>
-                    <dt>Email</dt><dd>{{ detailModal.data.account?.email ?? '—' }}<span v-if="!detailModal.data.account?.emailVerified" class="s-badge unverified">unverified</span></dd>
+                    <dt>Email</dt><dd>
+                      <input v-model="emailDraft" class="email-inline" type="email" />
+                      <button class="btn-sm" :disabled="savingEmail || !emailDraft.trim()" @click="saveEmail">
+                        {{ savingEmail ? 'Saving…' : 'Save' }}</button>
+                      <span v-if="!detailModal.data.account?.emailVerified" class="s-badge unverified">unverified</span>
+                      <span v-if="emailError" class="email-err">{{ emailError }}</span>
+                      <span v-else-if="emailOk" class="email-ok">✓ Saved</span>
+                    </dd>
                     <dt>First name</dt><dd>{{ detailModal.data.account?.firstName ?? '—' }}</dd>
                     <dt>Last name</dt><dd>{{ detailModal.data.account?.lastName ?? '—' }}</dd>
                   </dl>
@@ -926,6 +933,36 @@ const LETTER_TYPES = [
 const visibleLetterTypes = computed(() => LETTER_TYPES.filter(t =>
   !t.onlyWhenIssued || !!activeEnrollment.value?.letters?.[t.key]))
 const detailModal = ref(null)
+
+const EMAIL_URL = id => `/v1/partner/my-students/${id}/email`
+// Editable student email (login username follows; returns to unverified).
+const emailDraft = ref('')
+const savingEmail = ref(false)
+const emailError = ref('')
+const emailOk = ref(false)
+watch(() => detailModal.value?.data?.account?.email, v => { emailDraft.value = v ?? ''; emailError.value = '' })
+async function saveEmail() {
+  if (savingEmail.value || !detailModal.value?.data) return
+  savingEmail.value = true
+  emailError.value = ''
+  emailOk.value = false
+  try {
+    const res = await api.patch(EMAIL_URL(detailModal.value.studentId), { email: emailDraft.value.trim() })
+    const acct = detailModal.value.data.account
+    if (acct) {
+      acct.email = res.data.email
+      acct.username = res.data.username
+      acct.emailVerified = res.data.emailVerified
+    }
+    emailOk.value = true
+    setTimeout(() => { emailOk.value = false }, 2500)
+  } catch (e) {
+    emailError.value = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    savingEmail.value = false
+  }
+}
+
 const detailEnrollments = computed(() => detailModal.value?.data?.enrollments ?? [])
 
 // ── Payment tab (read-only view of the Admission-Office plan) ────────────────
@@ -2033,6 +2070,10 @@ function confirmSubStatus() {
 .s-badge-signup { background: #fdf3e5; color: #a8641e; border: 1px solid #ecc9a0; }
 .btn-continue-signup { background: #b8860b; border-color: #b8860b; color: #fff; }
 .pay-filter { padding: .4rem .55rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; background: #fff; color: #2c3e50; }
+.email-inline { padding: .3rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .84rem; width: 240px; margin-right: .35rem; }
+.email-err { color: #b3261e; font-size: .78rem; margin-left: .4rem; }
+.email-ok { color: #1d7a3e; font-size: .78rem; margin-left: .4rem; font-weight: 600; }
+.btn-sm { background: #f2f5f9; border: 1px solid #cfd7e3; border-radius: 5px; padding: .25rem .55rem; font-size: .78rem; font-weight: 600; color: #2c3e50; cursor: pointer; }
 </style>
 
 <style scoped>

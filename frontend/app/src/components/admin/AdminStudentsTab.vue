@@ -372,7 +372,14 @@
                   <h4>Account</h4>
                   <dl>
                     <dt>Username</dt><dd>@{{ detailModal.data.account?.username }}</dd>
-                    <dt>Email</dt><dd>{{ detailModal.data.account?.email ?? '—' }}<span v-if="!detailModal.data.account?.emailVerified" class="s-badge unverified">unverified</span></dd>
+                    <dt>Email</dt><dd>
+                      <input v-model="emailDraft" class="email-inline" type="email" />
+                      <button class="btn-sm" :disabled="savingEmail || !emailDraft.trim()" @click="saveEmail">
+                        {{ savingEmail ? 'Saving…' : 'Save' }}</button>
+                      <span v-if="!detailModal.data.account?.emailVerified" class="s-badge unverified">unverified</span>
+                      <span v-if="emailError" class="email-err">{{ emailError }}</span>
+                      <span v-else-if="emailOk" class="email-ok">✓ Saved</span>
+                    </dd>
                     <dt>First name</dt><dd>{{ detailModal.data.account?.firstName ?? '—' }}</dd>
                     <dt>Last name</dt><dd>{{ detailModal.data.account?.lastName ?? '—' }}</dd>
                     <dt>Student ID</dt>
@@ -1435,6 +1442,36 @@ async function saveAddProg() {
 }
 
 const detailModal = ref(null)
+
+const EMAIL_URL = id => `/v1/admin/students/${id}/email`
+// Editable student email (login username follows; returns to unverified).
+const emailDraft = ref('')
+const savingEmail = ref(false)
+const emailError = ref('')
+const emailOk = ref(false)
+watch(() => detailModal.value?.data?.account?.email, v => { emailDraft.value = v ?? ''; emailError.value = '' })
+async function saveEmail() {
+  if (savingEmail.value || !detailModal.value?.data) return
+  savingEmail.value = true
+  emailError.value = ''
+  emailOk.value = false
+  try {
+    const res = await api.patch(EMAIL_URL(detailModal.value.studentId), { email: emailDraft.value.trim() })
+    const acct = detailModal.value.data.account
+    if (acct) {
+      acct.email = res.data.email
+      acct.username = res.data.username
+      acct.emailVerified = res.data.emailVerified
+    }
+    emailOk.value = true
+    setTimeout(() => { emailOk.value = false }, 2500)
+  } catch (e) {
+    emailError.value = e.response?.data?.error ?? e.message ?? 'Save failed'
+  } finally {
+    savingEmail.value = false
+  }
+}
+
 const detailEnrollments = computed(() => detailModal.value?.data?.enrollments ?? [])
 const activeEnrollment = computed(() =>
   detailEnrollments.value.find(e => e.studentEnrollmentId === detailModal.value?.activeEnrollmentId)
@@ -3897,6 +3934,9 @@ async function runExport() {
 .export-preview-table tr:nth-child(even) td { background: #fbfdff; }
 .ai-badge-none { background:#fff !important; color:#888 !important; border:1px solid #ccc; }
 .ai-badge { display: inline-block; margin-right: .35rem; padding: .1rem .4rem; border-radius: 9px; color: #fff; font-size: .68rem; font-weight: 800; cursor: help; }
+.email-inline { padding: .3rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .84rem; width: 240px; margin-right: .35rem; }
+.email-err { color: #b3261e; font-size: .78rem; margin-left: .4rem; }
+.email-ok { color: #1d7a3e; font-size: .78rem; margin-left: .4rem; font-weight: 600; }
 </style>
 
 <style scoped>
