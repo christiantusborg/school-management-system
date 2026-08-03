@@ -399,7 +399,8 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                 PathwayId = 0,
                 StatusId = statusId,
                 CommencementDate = plan.CommencementDate,
-                ApprovedDurationMonths = plan.DurationMonths,
+                ApprovedDurationValue = plan.DurationMonths,
+                ApprovedDurationUnit = plan.DurationMonths is null ? null : SharedLibrary.Basics.Opaque.Domains.DurationDays.UnitMonth,
                 InstructionLanguageOverride = plan.InstructionLanguage,
             });
             db.EnrollmentStatusNotes.Add(new SharedLibrary.Basics.Opaque.Domains.EnrollmentStatusNote

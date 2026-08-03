@@ -24,7 +24,9 @@ public sealed class AdminV1StudentsEnrolmentDurationEndpoint : IEndpointMarker
 
     public sealed class DurationBody
     {
-        public int? ApprovedDurationMonths { get; init; }
+        public int? ApprovedDurationValue { get; init; }
+        /// <summary>"Month" or "Day"; defaults to Month when a value is sent.</summary>
+        public string? ApprovedDurationUnit { get; init; }
     }
 
     private static async Task<IResult> HandleAsync(
@@ -53,32 +55,40 @@ public sealed class AdminV1StudentsEnrolmentDurationEndpoint : IEndpointMarker
                 && e.DeletedAt == null, ct);
         if (enrolment is null) return Results.NotFound();
 
-        if (body.ApprovedDurationMonths is null)
+        if (body.ApprovedDurationValue is null)
         {
-            enrolment.ApprovedDurationMonths = null;
+            enrolment.ApprovedDurationValue = null;
+            enrolment.ApprovedDurationUnit = null;
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { approvedDurationMonths = (int?)null, warning = (string?)null });
+            return Results.Ok(new { approvedDurationValue = (int?)null, approvedDurationUnit = (string?)null, warning = (string?)null });
         }
 
-        var months = body.ApprovedDurationMonths.Value;
-        if (months < 1)
-            return Results.BadRequest(new { error = "Duration must be at least 1 month." });
+        var value = body.ApprovedDurationValue.Value;
+        var unit = string.Equals(body.ApprovedDurationUnit, SharedLibrary.Basics.Opaque.Domains.DurationDays.UnitDay, StringComparison.OrdinalIgnoreCase)
+            ? SharedLibrary.Basics.Opaque.Domains.DurationDays.UnitDay
+            : SharedLibrary.Basics.Opaque.Domains.DurationDays.UnitMonth;
+        if (value < 1)
+            return Results.BadRequest(new { error = "Duration must be at least 1." });
 
         // Out-of-range is allowed for admins; report it as a warning only.
+        // Compare in days (months converted via the commencement calendar).
         string? warning = null;
         var range = await db.Specializations
             .Where(s => s.SpecializationId == enrolment.SpecializationId)
             .Select(s => new { s.Programmes.MinDurationMonths, s.Programmes.MaxDurationMonths })
             .FirstOrDefaultAsync(ct);
-        if (range is not null
-            && range.MaxDurationMonths > 0
-            && (months < range.MinDurationMonths || months > range.MaxDurationMonths))
+        if (range is not null && range.MaxDurationMonths > 0)
         {
-            warning = $"Duration {months} months is outside the programme range ({range.MinDurationMonths}–{range.MaxDurationMonths}).";
+            var days = SharedLibrary.Basics.Opaque.Domains.DurationDays.ToDays(enrolment.CommencementDate, value, unit)!.Value;
+            var minDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.MonthsToDays(enrolment.CommencementDate, range.MinDurationMonths);
+            var maxDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.MonthsToDays(enrolment.CommencementDate, range.MaxDurationMonths);
+            if (days < minDays || days > maxDays)
+                warning = $"Duration {SharedLibrary.Basics.Opaque.Domains.DurationDays.Display(value, unit)} is outside the programme range ({range.MinDurationMonths}–{range.MaxDurationMonths} months).";
         }
 
-        enrolment.ApprovedDurationMonths = months;
+        enrolment.ApprovedDurationValue = value;
+        enrolment.ApprovedDurationUnit = unit;
         await db.SaveChangesAsync(ct);
-        return Results.Ok(new { approvedDurationMonths = (int?)months, warning });
+        return Results.Ok(new { approvedDurationValue = (int?)value, approvedDurationUnit = (string?)unit, warning });
     }
 }

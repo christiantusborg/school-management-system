@@ -628,6 +628,7 @@ import RubricGradeCell from '../../admin/RubricGradeCell.vue'
 import Fuse from 'fuse.js'
 import api from '../../../api/client.js'
 import { auth } from '../../../store/auth.js'
+import { monthsToDays } from '../../../lib/duration.js'
 import StudentReviewWizard from '../StudentReviewWizard.vue'
 import StudentLogNotesPanel from '../../admin/StudentLogNotesPanel.vue'
 import EnrollmentActivityLog from '../../letters/EnrollmentActivityLog.vue'
@@ -1490,7 +1491,8 @@ function adaptForWizard(d, targetEnrollmentId = null) {
         modeOfStudy: e.modeOfStudyName,
         selectedPathway: e.pathwayName ?? null,
         commencementDate: e.commencementDate?.slice(0, 10) ?? '',
-        durationMonths: e.approvedDurationMonths ?? e.durationOfStudyMonths ?? null,
+        durationValue: e.approvedDurationValue ?? e.durationOfStudyMonths ?? null,
+        durationUnit: e.approvedDurationValue != null ? (e.approvedDurationUnit ?? 'Month') : 'Month',
         programmeMinDurationMonths: e.programmeMinDurationMonths ?? null,
         programmeMaxDurationMonths: e.programmeMaxDurationMonths ?? null,
         tuitionFeeUsd: Number(e.tuitionFeeUsd ?? 0),

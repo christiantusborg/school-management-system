@@ -657,9 +657,13 @@
                     <dd v-else>—</dd>
                     <dt>Approved duration</dt>
                     <dd v-if="canEditDuration">
-                      <input type="number" class="dur-input" min="1"
-                             v-model.number="approvedDurationDraft" />
-                      months
+                      <span class="dur-toggle">
+                        <button type="button" :class="['dur-unit', { on: durationUnit === 'months' }]" @click="setDurationUnit('months')">Months</button>
+                        <button type="button" :class="['dur-unit', { on: durationUnit === 'days' }]" @click="setDurationUnit('days')">Days</button>
+                      </span>
+                      <input type="number" class="dur-input" min="1" :step="1"
+                             v-model.number="durationValue" />
+                      {{ durationUnit }}
                       <button class="btn-row-details btn-row-details-sm" :disabled="savingDuration"
                               @click="saveApprovedDuration">
                         {{ savingDuration ? 'Saving…' : 'Save' }}
@@ -676,7 +680,8 @@
                       </div>
                     </dd>
                     <dd v-else>
-                      {{ activeEnrollment.approvedDurationMonths ?? activeEnrollment.durationOfStudyMonths ?? '—' }} months
+                      {{ displayDuration(activeEnrollment.approvedDurationValue, activeEnrollment.approvedDurationUnit)
+                         || (activeEnrollment.durationOfStudyMonths ? `${activeEnrollment.durationOfStudyMonths} months` : '—') }}
                       <span class="muted">(Administrator level required to change)</span>
                     </dd>
                     <dt>Expected completion</dt>
@@ -1274,6 +1279,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue'
 import RubricGradeCell from './RubricGradeCell.vue'
+import { monthsToDays, displayDuration, durationToDays, isDayUnit } from '../../lib/duration.js'
 import Fuse from 'fuse.js'
 import api from '../../api/client.js'
 import StudentLogNotesPanel from './StudentLogNotesPanel.vue'
@@ -1512,16 +1518,30 @@ watch(() => [detailModal.value?.activeTab, programSubTab.value, activeEnrollment
   })
 
 
-const approvedDurationDraft = computed({
-  get() {
-    return activeEnrollment.value?.approvedDurationMonths
-      ?? activeEnrollment.value?.durationOfStudyMonths
-      ?? null
-  },
-  set(v) {
-    if (activeEnrollment.value) activeEnrollment.value.approvedDurationMonths = v
-  },
-})
+// Month/Day toggle: DB stores DAYS; months convert via the commencement
+// calendar. Seeds to Months when the stored day span is a clean month
+// multiple (or from the specialization default), otherwise Days.
+const durationUnit = ref('months')
+const durationValue = ref(null)
+watch(activeEnrollment, e => {
+  const v = e?.approvedDurationValue ?? null
+  if (v == null) {
+    durationUnit.value = 'months'
+    durationValue.value = e?.durationOfStudyMonths ?? null
+    return
+  }
+  durationUnit.value = isDayUnit(e?.approvedDurationUnit) ? 'days' : 'months'
+  durationValue.value = v
+}, { immediate: true })
+function setDurationUnit(unit) {
+  if (unit === durationUnit.value) return
+  // Switching unit clears the field: the number must be re-entered in the
+  // new unit (months are always whole months, never converted fractions).
+  durationValue.value = null
+  durationUnit.value = unit
+}
+const durationAsDays = computed(() =>
+  durationToDays(activeEnrollment.value?.commencementDate, durationValue.value, durationUnit.value))
 const savingDuration = ref(false)
 const durationSaveError = ref('')
 const durationSaveOk = ref(false)
@@ -2114,7 +2134,9 @@ const canRegenerateLetters = canEditDuration
 // Admins may save outside the programme range; warn but don't block.
 const durationRangeWarning = computed(() => {
   const e = activeEnrollment.value
-  const v = approvedDurationDraft.value
+  const v = durationUnit.value === 'months'
+    ? durationValue.value
+    : (durationValue.value ? durationValue.value / 30.44 : null)
   if (!e || !v || !e.programmeMaxDurationMonths) return ''
   if (v < e.programmeMinDurationMonths || v > e.programmeMaxDurationMonths)
     return `Outside the programme range (${e.programmeMinDurationMonths}–${e.programmeMaxDurationMonths} months). You can still save.`
@@ -2123,11 +2145,13 @@ const durationRangeWarning = computed(() => {
 
 const expectedCompletion = computed(() => {
   const e = activeEnrollment.value
-  const months = e?.approvedDurationMonths ?? e?.durationOfStudyMonths
-  if (!e?.commencementDate || !months) return ''
+  if (!e?.commencementDate) return ''
+  const days = e?.approvedDurationValue != null
+    ? durationToDays(e.commencementDate, e.approvedDurationValue, e.approvedDurationUnit)
+    : (e?.durationOfStudyMonths ? monthsToDays(e.commencementDate, e.durationOfStudyMonths) : null)
+  if (!days) return ''
   const d = new Date(e.commencementDate)
-  d.setMonth(d.getMonth() + months)
-  d.setDate(d.getDate() - 1) // last day of study, not the first day after
+  d.setDate(d.getDate() + days - 1) // last day of study, not the first day after
   return formatDate(d.toISOString())
 })
 
@@ -2153,9 +2177,13 @@ async function saveApprovedDuration() {
   durationSaveOk.value = false
   regenResult.value = ''
   try {
+    const unitOut = durationUnit.value === 'days' ? 'Day' : 'Month'
+    const valueOut = durationValue.value ? Math.round(durationValue.value) : null
     await api.patch(
       `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/duration`,
-      { approvedDurationMonths: activeEnrollment.value.approvedDurationMonths })
+      { approvedDurationValue: valueOut, approvedDurationUnit: valueOut == null ? null : unitOut })
+    activeEnrollment.value.approvedDurationValue = valueOut
+    activeEnrollment.value.approvedDurationUnit = valueOut == null ? null : unitOut
     durationSaveOk.value = true
     setTimeout(() => { durationSaveOk.value = false }, 2500)
     showRegenOffer.value = isAdmittedOrLater.value && hasReleasedLetters.value
@@ -3296,7 +3324,8 @@ function adaptForWizard(d, targetEnrollmentId = null) {
         modeOfStudy: e.modeOfStudyName,
         selectedPathway: e.pathwayName ?? null,
         commencementDate: e.commencementDate?.slice(0, 10) ?? '',
-        durationMonths: e.approvedDurationMonths ?? e.durationOfStudyMonths ?? null,
+        durationValue: e.approvedDurationValue ?? e.durationOfStudyMonths ?? null,
+        durationUnit: e.approvedDurationValue != null ? (e.approvedDurationUnit ?? 'Month') : 'Month',
         programmeMinDurationMonths: e.programmeMinDurationMonths ?? null,
         programmeMaxDurationMonths: e.programmeMaxDurationMonths ?? null,
         tuitionFeeUsd: Number(e.tuitionFeeUsd ?? 0),
@@ -3408,7 +3437,7 @@ const EXPORT_FIELD_GROUPS = [
     { id: 'durationMonths',      label: 'Duration (months, default)' },
     { id: 'programmeMinDurationMonths', label: 'Programme min duration (months)' },
     { id: 'programmeMaxDurationMonths', label: 'Programme max duration (months)' },
-    { id: 'approvedDurationMonths', label: 'Approved duration (months)' },
+    { id: 'approvedDuration', label: 'Approved duration' },
     { id: 'applicationDate',     label: 'Application date' },
     { id: 'daysSinceApplication',label: 'Days since application' },
     { id: 'approvedDate',        label: 'Approved date' },
@@ -3889,6 +3918,9 @@ async function runExport() {
 .email-send-card input { width: 100%; padding: .4rem .5rem; border: 1px solid #d8dde5; border-radius: 5px; font-size: .82rem; }
 .esp-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .8rem; }
 
+.dur-toggle { display: inline-flex; margin-right: .4rem; border: 1px solid #cfd7e3; border-radius: 5px; overflow: hidden; }
+.dur-unit { background: #f2f5f9; border: none; padding: .25rem .55rem; font-size: .74rem; font-weight: 600; color: #6b7888; cursor: pointer; }
+.dur-unit.on { background: #003366; color: #fff; }
 .dur-input { width: 70px; padding: .2rem .35rem; border: 1px solid #d8dde5; border-radius: 4px; font-size: .82rem; }
 .dur-warn { margin-top: .3rem; color: #b45309; font-size: .8rem; }
 .dur-regen { margin-top: .4rem; padding: .4rem .55rem; background: #fff7ed; border: 1px solid #fdba74; border-radius: 5px; font-size: .8rem; color: #7c2d12; }

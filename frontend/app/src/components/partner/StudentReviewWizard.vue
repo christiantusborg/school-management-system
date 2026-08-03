@@ -265,9 +265,12 @@
           <div class="rw-field"><label>Commencement date <span class="rw-req">*</span></label>
             <input type="date" v-model="enrolmentDraft.commencementDate" />
           </div>
-          <div class="rw-field"><label>Duration (months) <span class="rw-req">*</span></label>
-            <input type="number" :min="durationMin" :max="durationMax"
-                   v-model.number="enrolmentDraft.durationMonths" />
+          <div class="rw-field"><label>Duration <span class="rw-req">*</span></label>
+            <span class="rw-dur-toggle">
+              <button type="button" :class="['rw-dur-unit', { on: enrolmentDraft.durationUnit === 'months' }]" @click="setDurationUnit('months')">Months</button>
+              <button type="button" :class="['rw-dur-unit', { on: enrolmentDraft.durationUnit === 'days' }]" @click="setDurationUnit('days')">Days</button>
+            </span>
+            <input type="number" min="1" :step="1" v-model.number="enrolmentDraft.durationValue" /> {{ enrolmentDraft.durationUnit }}
             <span class="rw-note">
               Programme allows {{ durationMin }}–{{ durationMax }} months.
               Installment plan (next step) will be capped at {{ maxInstallmentMonths }} months.
@@ -298,7 +301,7 @@
             </div>
             <div class="rw-summary-row">
               <span class="rw-summary-label">Commencement</span>
-              <span>{{ enrolmentDraft.commencementDate || '—' }} · {{ enrolmentDraft.durationMonths || '—' }} months</span>
+              <span>{{ enrolmentDraft.commencementDate || '—' }} · {{ enrolmentDraft.durationValue || '—' }} {{ enrolmentDraft.durationUnit }}</span>
             </div>
           </div>
           <label class="rw-attest">
@@ -332,6 +335,7 @@
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
+import { monthsToDays, durationToDays, isDayUnit } from '../../lib/duration.js'
 import DocPreview from './DocPreview.vue'
 import DecisionPanel from './DecisionPanel.vue'
 import { markReviewComplete } from '../../store/partnerReviewState.js'
@@ -536,19 +540,39 @@ const enrollment = computed(() => props.student.enrollments?.[0] ?? null)
 // pre-fills with the existing approvedDurationMonths (if any) falling back
 // to the specialisation's default. Total tuition still comes from the
 // specialisation (server-owned).
+const seedValue = enrollment.value?.durationValue ?? null
+const seedCommencement = enrollment.value?.commencementDate?.slice(0, 10) ?? ''
 const enrolmentDraft = reactive({
-  commencementDate: enrollment.value?.commencementDate?.slice(0, 10) ?? '',
-  durationMonths: enrollment.value?.durationMonths ?? 0,
+  commencementDate: seedCommencement,
+  // Month/Day toggle — DB stores value+unit; Months is the default entry unit.
+  durationUnit: seedValue != null && isDayUnit(enrollment.value?.durationUnit) ? 'days' : 'months',
+  durationValue: seedValue ?? 0,
   instructionLanguage: enrollment.value?.instructionLanguageOverride ?? '',
 })
+function setDurationUnit(unit) {
+  if (unit === enrolmentDraft.durationUnit) return
+  // Switching unit clears the field: the number must be re-entered in the
+  // new unit (months are always whole months, never converted fractions).
+  enrolmentDraft.durationValue = null
+  enrolmentDraft.durationUnit = unit
+}
+const draftDurationDays = computed(() =>
+  durationToDays(enrolmentDraft.commencementDate, enrolmentDraft.durationValue, enrolmentDraft.durationUnit))
+const draftMonthsEq = computed(() => enrolmentDraft.durationValue
+  ? (enrolmentDraft.durationUnit === 'months'
+      ? Math.round(enrolmentDraft.durationValue)
+      : enrolmentDraft.durationValue / 30.44)
+  : 0)
 
 const durationMin = computed(() => enrollment.value?.programmeMinDurationMonths || 1)
 const durationMax = computed(() => enrollment.value?.programmeMaxDurationMonths || 999)
 const durationError = computed(() => {
-  const v = enrolmentDraft.durationMonths
-  if (!v) return ''
-  if (v < durationMin.value) return `Minimum is ${durationMin.value} months for this programme.`
-  if (v > durationMax.value) return `Maximum is ${durationMax.value} months for this programme.`
+  const days = draftDurationDays.value
+  if (!days) return ''
+  const minDays = monthsToDays(enrolmentDraft.commencementDate, durationMin.value)
+  const maxDays = monthsToDays(enrolmentDraft.commencementDate, durationMax.value)
+  if (days < minDays) return `Minimum is ${durationMin.value} months for this programme.`
+  if (days > maxDays) return `Maximum is ${durationMax.value} months for this programme.`
   return ''
 })
 
@@ -562,7 +586,7 @@ const contractAccepted = ref(false)
 
 // ── Derived validation ───────────────────────────────────────────────────────
 const maxInstallmentMonths = computed(() =>
-  Math.max(2, (enrolmentDraft.durationMonths || 0) - 2)
+  Math.max(2, Math.round(draftMonthsEq.value || 0) - 2)
 )
 
 const monthlyAmount = computed(() => {
@@ -589,8 +613,7 @@ function canAdvanceFromStep(n) {
     return draft[key].status !== 'pending'
   }
   if (n === 6) return !!enrolmentDraft.commencementDate
-    && enrolmentDraft.durationMonths >= durationMin.value
-    && enrolmentDraft.durationMonths <= durationMax.value
+    && !!draftDurationDays.value && !durationError.value
   return true
 }
 const canAdvance = computed(() => canAdvanceFromStep(step.value))
@@ -603,7 +626,7 @@ const validationErrors = computed(() => {
       errs.push(`${s.label}: rejection reason must be at least 10 characters.`)
   }
   if (!enrolmentDraft.commencementDate) errs.push('Commencement date is required.')
-  if (!enrolmentDraft.durationMonths || enrolmentDraft.durationMonths < 3)
+  if (!draftDurationDays.value || draftMonthsEq.value < 3)
     errs.push('Specialization is missing a study duration — fix it on the specialization before reviewing.')
   if (!contractAccepted.value) errs.push('You must attest to the MGW partnership contract.')
   return errs
@@ -707,7 +730,8 @@ async function submit() {
         documents,
         enrolment: {
           commencementDate: enrolmentDraft.commencementDate || null,
-          durationMonths: enrolmentDraft.durationMonths || null,
+          durationValue: enrolmentDraft.durationValue ? Math.round(enrolmentDraft.durationValue) : null,
+          durationUnit: enrolmentDraft.durationUnit === 'days' ? 'Day' : 'Month',
           instructionLanguageOverride: enrolmentDraft.instructionLanguage?.trim() || null,
         },
         // Payment block deliberately omitted — payments aren't a flow yet.
@@ -732,7 +756,10 @@ async function submit() {
   s.docsVerified.cv       = draft.cv.status === 'approved'
   if (e) {
     e.commencementDate = enrolmentDraft.commencementDate
-    e.durationMonths = enrolmentDraft.durationMonths
+    e.durationValue = enrolmentDraft.durationValue ? Math.round(enrolmentDraft.durationValue) : null
+    e.durationUnit = enrolmentDraft.durationUnit === 'days' ? 'Day' : 'Month'
+    e.approvedDurationValue = e.durationValue
+    e.approvedDurationUnit = e.durationValue == null ? null : e.durationUnit
   }
   markReviewComplete(s.studentId)
   submitting.value = false
@@ -853,4 +880,7 @@ async function submit() {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 .slide-enter-active, .slide-leave-active { transition: transform 0.2s ease, opacity 0.2s; }
 .slide-enter-from, .slide-leave-to { transform: translate(-50%, -12px); opacity: 0; }
+.rw-dur-toggle { display: inline-flex; margin-right: .4rem; border: 1px solid #cfd7e3; border-radius: 5px; overflow: hidden; vertical-align: middle; }
+.rw-dur-unit { background: #f2f5f9; border: none; padding: .25rem .55rem; font-size: .74rem; font-weight: 600; color: #6b7888; cursor: pointer; }
+.rw-dur-unit.on { background: #003366; color: #fff; }
 </style>

@@ -43,6 +43,11 @@ public sealed class PartnerV1MyStudentsReviewEndpoint : IEndpointMarker
     {
         public DateTime? CommencementDate { get; init; }
         public int? DurationMonths { get; init; }
+        /// <summary>Legacy: duration in days (implies Day unit).</summary>
+        public int? DurationDays { get; init; }
+        /// <summary>Preferred: duration value + unit ("Month"/"Day") exactly as entered.</summary>
+        public int? DurationValue { get; init; }
+        public string? DurationUnit { get; init; }
         /// <summary>Optional manual teaching-language override for this enrolment.</summary>
         public string? InstructionLanguageOverride { get; init; }
     }
@@ -175,22 +180,36 @@ public sealed class PartnerV1MyStudentsReviewEndpoint : IEndpointMarker
             enrollment.CommencementDate = commencement;
         }
 
-        if (!anyRejected && body.Enrolment?.DurationMonths is int months)
+        int? durValue = body.Enrolment?.DurationValue;
+        string? durUnit = body.Enrolment?.DurationUnit;
+        if (durValue is null && body.Enrolment?.DurationDays is int legacyDays)
+        { durValue = legacyDays; durUnit = SharedLibrary.Basics.Opaque.Domains.DurationDays.UnitDay; }
+        if (durValue is null && body.Enrolment?.DurationMonths is int legacyMonths)
+        { durValue = legacyMonths; durUnit = SharedLibrary.Basics.Opaque.Domains.DurationDays.UnitMonth; }
+        durUnit = string.Equals(durUnit, SharedLibrary.Basics.Opaque.Domains.DurationDays.UnitDay, StringComparison.OrdinalIgnoreCase)
+            ? SharedLibrary.Basics.Opaque.Domains.DurationDays.UnitDay : SharedLibrary.Basics.Opaque.Domains.DurationDays.UnitMonth;
+        if (!anyRejected && durValue is int dv)
         {
-            var programmeRange = await db.Specializations
+            if (dv < 1) return Results.BadRequest(new { error = "Duration must be at least 1." });
+            var range = await db.Specializations
                 .Where(s => s.SpecializationId == enrollment.SpecializationId)
                 .Select(s => new { s.Programmes.MinDurationMonths, s.Programmes.MaxDurationMonths })
                 .FirstOrDefaultAsync(ct);
-            if (programmeRange is not null
-                && programmeRange.MaxDurationMonths > 0
-                && (months < programmeRange.MinDurationMonths || months > programmeRange.MaxDurationMonths))
+            if (range is not null && range.MaxDurationMonths > 0)
             {
-                return Results.BadRequest(new
+                var days = SharedLibrary.Basics.Opaque.Domains.DurationDays.ToDays(enrollment.CommencementDate, dv, durUnit)!.Value;
+                var minDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.MonthsToDays(enrollment.CommencementDate, range.MinDurationMonths);
+                var maxDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.MonthsToDays(enrollment.CommencementDate, range.MaxDurationMonths);
+                if (days < minDays || days > maxDays)
                 {
-                    error = $"Duration {months} months is outside the programme range ({programmeRange.MinDurationMonths}–{programmeRange.MaxDurationMonths}).",
-                });
+                    return Results.BadRequest(new
+                    {
+                        error = $"Duration {SharedLibrary.Basics.Opaque.Domains.DurationDays.Display(dv, durUnit)} is outside the programme range ({range.MinDurationMonths}–{range.MaxDurationMonths} months).",
+                    });
+                }
             }
-            enrollment.ApprovedDurationMonths = months;
+            enrollment.ApprovedDurationValue = dv;
+            enrollment.ApprovedDurationUnit = durUnit;
         }
 
         if (!anyRejected && body.Enrolment is not null)

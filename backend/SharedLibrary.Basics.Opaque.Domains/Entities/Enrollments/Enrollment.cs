@@ -24,14 +24,16 @@ public class Enrollment : IDeletedAtEntity
     public Guid PartnerId { get; set; }
     public DateTime? DeletedAt { get; set; }
 
-    /// <summary>
-    /// Duration in months the partner agreed to during the review flow.
-    /// Must fall between <see cref="Programme.MinDurationMonths"/> and
-    /// <see cref="Programme.MaxDurationMonths"/>. Null means the partner
-    /// hasn't picked one yet; consumers should fall back to
-    /// <see cref="Specialization.DurationOfStudyMonths"/>.
-    /// </summary>
-    public int? ApprovedDurationMonths { get; set; }
+    /// <summary>Admin/partner-approved duration override VALUE, interpreted
+    /// via <see cref="ApprovedDurationUnit"/> ("Month" or "Day"). Months are
+    /// always whole months. Null = the specialization's month default.
+    /// See <see cref="DurationDays"/>.</summary>
+    public int? ApprovedDurationValue { get; set; }
+
+    /// <summary>Unit for <see cref="ApprovedDurationValue"/>:
+    /// <see cref="DurationDays.UnitMonth"/> or <see cref="DurationDays.UnitDay"/>.
+    /// Null when no override is set.</summary>
+    public string? ApprovedDurationUnit { get; set; }
 
     /// <summary>
     /// Per-enrolment override of the teaching/instruction language, set by admin

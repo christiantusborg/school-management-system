@@ -50,7 +50,8 @@ public sealed class PublicStudentVerifyV1Endpoint : IEndpointMarker
                 e.StatusId,
                 e.GraduationDate,
                 e.CommencementDate,
-                e.ApprovedDurationMonths,
+                e.ApprovedDurationValue,
+                e.ApprovedDurationUnit,
                 StudentNumber = db.Students.Where(s => s.StudentId == e.StudentId)
                     .Select(s => s.StudentNumber).FirstOrDefault(),
                 UserId = db.Students.Where(s => s.StudentId == e.StudentId)
@@ -79,11 +80,9 @@ public sealed class PublicStudentVerifyV1Endpoint : IEndpointMarker
             DateTime? completion = null;
             if (graduated)
             {
-                var months = r.ApprovedDurationMonths ?? r.SpecializationMonths;
                 completion = r.GraduationDate
-                    ?? (r.CommencementDate is { } start && months is { } m
-                        ? start.AddMonths(m).AddDays(-1)
-                        : null);
+                    ?? SharedLibrary.Basics.Opaque.Domains.DurationDays.ExpectedCompletion(
+                        r.CommencementDate, r.ApprovedDurationValue, r.ApprovedDurationUnit, r.SpecializationMonths);
             }
 
             items.Add(new

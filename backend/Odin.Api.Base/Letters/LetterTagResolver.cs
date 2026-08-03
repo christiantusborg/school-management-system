@@ -76,7 +76,8 @@ public sealed class LetterTagResolver(OdinDbContext db)
                 e.ProjectTitle,
                 e.CommencementDate,
                 e.ModeOfStudyId,
-                e.ApprovedDurationMonths,
+                e.ApprovedDurationValue,
+                e.ApprovedDurationUnit,
                 Student = db.Students
                     .Where(s => s.StudentId == e.StudentId)
                     .Select(s => new
@@ -175,13 +176,16 @@ public sealed class LetterTagResolver(OdinDbContext db)
         }
         result["[date]"]              = issuanceDate.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture);
         result["[commencement date]"] = enrollment.CommencementDate?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
-        // Approved (per-enrolment) duration wins over the specialization
-        // default, so an admin override shifts the completion date too.
-        var durationMonths = enrollment.ApprovedDurationMonths
-            ?? enrollment.Specialization?.DurationOfStudyMonths;
-        result["[duration of study]"] = durationMonths is { } dm
-            ? $"{dm} months"
-            : string.Empty;
+        // Approved (per-enrolment) duration override — stored as value+unit
+        // ("Month"/"Day") — wins over the specialization's month default and
+        // shifts completion too. Prints exactly what was entered: months as
+        // "N months", days as "N days".
+        var overrideValue = enrollment.ApprovedDurationValue;
+        var overrideUnit = enrollment.ApprovedDurationUnit;
+        var specMonths = enrollment.Specialization?.DurationOfStudyMonths;
+        result["[duration of study]"] = overrideValue is not null
+            ? SharedLibrary.Basics.Opaque.Domains.DurationDays.Display(overrideValue, overrideUnit)
+            : specMonths is { } dm ? $"{dm} months" : string.Empty;
         // Per-enrolment override wins over the specialization's language.
         result["[instruction language]"] = !string.IsNullOrWhiteSpace(enrollment.InstructionLanguageOverride)
             ? enrollment.InstructionLanguageOverride!
@@ -190,9 +194,8 @@ public sealed class LetterTagResolver(OdinDbContext db)
         // that commences 18 Jun 2026 runs through 17 Jun 2027 — the day before
         // the anniversary. Subtract one day so the printed completion (and
         // graduation) date is the last day of study, not the first day after.
-        var calculatedCompletion = (enrollment.CommencementDate is { } start && durationMonths is { } months)
-            ? start.AddMonths(months).AddDays(-1)
-            : (DateTime?)null;
+        var calculatedCompletion = SharedLibrary.Basics.Opaque.Domains.DurationDays.ExpectedCompletion(
+            enrollment.CommencementDate, overrideValue, overrideUnit, specMonths);
         result["[completion date]"] = calculatedCompletion?.ToString("dd MMMM yyyy", CultureInfo.InvariantCulture) ?? string.Empty;
         // Graduation defaults to the expected completion date; an Admission-Office
         // override on the enrolment wins when set.
