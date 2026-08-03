@@ -33,13 +33,16 @@ public sealed class PartnerCatalogueV1Endpoint : IEndpointMarker
             .FirstOrDefaultAsync(ct);
         if (partner is null) return Results.NotFound(new { error = "Partner not found." });
 
-        // ONLY programmes this partner has access to: core programmes
-        // explicitly granted via ProgrammePartners ∪ the partner's own
+        // ONLY programmes this partner has access to: core programmes with
+        // at least one specialization granted per-spec (SpecializationPartner,
+        // not switched off by the partner) ∪ the partner's own
         // approved-and-active custom programmes. Ungranted core programmes
         // must NOT appear in the signup wizard.
-        var grantedProgrammeIds = await db.ProgrammePartners
-            .Where(pp => pp.PartnerId == partner.PartnerId && pp.IsActive != null)
-            .Select(pp => pp.ProgrammeId)
+        var grantedProgrammeIds = await db.SpecializationPartners
+            .Where(g => g.PartnerId == partner.PartnerId && !g.DisabledByPartner
+                && g.Specialization.DeletedAt == null)
+            .Select(g => g.Specialization.ProgrammeId)
+            .Distinct()
             .ToListAsync(ct);
 
         // Owned custom programmes that are live: status Approved (2), active,
@@ -71,12 +74,16 @@ public sealed class PartnerCatalogueV1Endpoint : IEndpointMarker
 
         var programmeIds = programmes.Select(p => p.ProgrammeId).ToList();
 
-        // Core specs are implicitly approved; specs of the partner's own
-        // programmes must have passed spec-level admission approval.
+        // Core specs must be granted to this partner (and not switched off
+        // by the partner); specs of the partner's own programmes must have
+        // passed spec-level admission approval.
         var specs = await db.Specializations
             .Where(s => s.DeletedAt == null && programmeIds.Contains(s.ProgrammeId)
                 && (s.Programmes.OwnerId == null
-                    || db.PartnerSpecializationStatuses.Any(ps =>
+                    ? db.SpecializationPartners.Any(g =>
+                        g.SpecializationId == s.SpecializationId
+                        && g.PartnerId == partner.PartnerId && !g.DisabledByPartner)
+                    : db.PartnerSpecializationStatuses.Any(ps =>
                         ps.SpecializationId == s.SpecializationId && ps.Status == StatusApproved)))
             .OrderBy(s => s.Code)
             .Select(s => new

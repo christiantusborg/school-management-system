@@ -1,17 +1,15 @@
+using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
+
 namespace School.PartnerAdminApi.Admin.V1.Partners.ProgrammeAccess;
 
 /// <summary>
 /// Drives the Admin → Partners → Manage → "Core Programmes" tab.
 ///
-/// Frontend toggles access at the SPECIALIZATION level. The domain stores
-/// access at the PROGRAMME level via `ProgrammePartner`. We bridge: granting
-/// a specialization grants the parent programme to the partner; the GET
-/// returns every specialization under each granted programme.
-///
-/// Lossy on partial revoke: removing one specialization removes the whole
-/// programme grant (no per-spec storage exists). The frontend currently only
-/// removes one at a time, so this is acceptable until you ask for finer
-/// granularity.
+/// Grants are stored per SPECIALIZATION (`SpecializationPartner`); ticking
+/// or unticking one spec affects only that spec. The programme-level
+/// `ProgrammePartner` row is maintained as a derived umbrella (present
+/// while the partner holds at least one spec grant) because enrolment,
+/// import and cohort validation check the programme grant.
 /// </summary>
 [Route("/v1/admin/school/partners/{partnerId:guid}/programme-access")]
 [EndpointTag("Admin.Partners.ProgrammeAccess")]
@@ -39,19 +37,15 @@ public sealed class AdminPartnersV1ProgrammeAccessEndpoint : IEndpointMarker
         if (!await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct))
             return Results.NotFound();
 
-        var grantedProgrammeIds = await db.ProgrammePartners
-            .Where(pp => pp.PartnerId == partnerId && pp.IsActive != null)
-            .Select(pp => pp.ProgrammeId)
-            .ToListAsync(ct);
-
-        var items = await db.Specializations
-            .Where(s => s.DeletedAt == null && grantedProgrammeIds.Contains(s.ProgrammeId))
-            .Select(s => new
+        var items = await db.SpecializationPartners
+            .Where(g => g.PartnerId == partnerId && g.Specialization.DeletedAt == null)
+            .Select(g => new
             {
-                specializationId = s.SpecializationId,
-                programmeId = s.ProgrammeId,
-                code = s.Code,
-                name = s.Name,
+                specializationId = g.SpecializationId,
+                programmeId = g.Specialization.ProgrammeId,
+                code = g.Specialization.Code,
+                name = g.Specialization.Name,
+                disabledByPartner = g.DisabledByPartner,
             })
             .ToListAsync(ct);
 
@@ -66,22 +60,40 @@ public sealed class AdminPartnersV1ProgrammeAccessEndpoint : IEndpointMarker
         var ids = body.SpecializationIds ?? Array.Empty<Guid>();
         if (ids.Count == 0) return Results.Ok(new { granted = 0 });
 
-        var programmeIds = await db.Specializations
+        var specs = await db.Specializations
             .Where(s => ids.Contains(s.SpecializationId) && s.DeletedAt == null)
-            .Select(s => s.ProgrammeId)
-            .Distinct()
+            .Select(s => new { s.SpecializationId, s.ProgrammeId })
             .ToListAsync(ct);
 
+        var existingSpecGrants = await db.SpecializationPartners
+            .Where(g => g.PartnerId == partnerId && ids.Contains(g.SpecializationId))
+            .ToListAsync(ct);
+        var existingSpecIds = existingSpecGrants.Select(g => g.SpecializationId).ToHashSet();
+        foreach (var g in existingSpecGrants.Where(g => g.DisabledByPartner))
+            g.DisabledByPartner = false; // admin re-grant overrides a partner opt-out
+
+        foreach (var spec in specs.Where(x => !existingSpecIds.Contains(x.SpecializationId)))
+        {
+            db.SpecializationPartners.Add(new SpecializationPartner
+            {
+                SpecializationId = spec.SpecializationId,
+                PartnerId = partnerId,
+                DisabledByPartner = false,
+                GrantedAt = DateTime.UtcNow,
+            });
+        }
+
+        // Maintain the programme-level umbrella row.
+        var programmeIds = specs.Select(x => x.ProgrammeId).Distinct().ToList();
         var existing = await db.ProgrammePartners
             .Where(pp => pp.PartnerId == partnerId && programmeIds.Contains(pp.ProgrammeId))
             .ToListAsync(ct);
         var existingProgrammeIds = existing.Select(e => e.ProgrammeId).ToHashSet();
         foreach (var pp in existing.Where(e => e.IsActive == null))
             pp.IsActive = DateTime.UtcNow;
-
         foreach (var newProgrammeId in programmeIds.Where(p => !existingProgrammeIds.Contains(p)))
         {
-            db.ProgrammePartners.Add(new SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.ProgrammePartner
+            db.ProgrammePartners.Add(new ProgrammePartner
             {
                 ProgrammePartnerId = Guid.NewGuid(),
                 PartnerId = partnerId,
@@ -91,7 +103,7 @@ public sealed class AdminPartnersV1ProgrammeAccessEndpoint : IEndpointMarker
         }
 
         await db.SaveChangesAsync(ct);
-        return Results.Ok(new { granted = programmeIds.Count });
+        return Results.Ok(new { granted = specs.Count });
     }
 
     private static async Task<IResult> RevokeAsync(
@@ -103,12 +115,24 @@ public sealed class AdminPartnersV1ProgrammeAccessEndpoint : IEndpointMarker
             .FirstOrDefaultAsync(ct);
         if (programmeId is null) return Results.NotFound();
 
-        var rows = await db.ProgrammePartners
-            .Where(pp => pp.PartnerId == partnerId && pp.ProgrammeId == programmeId.Value)
+        var rows = await db.SpecializationPartners
+            .Where(g => g.PartnerId == partnerId && g.SpecializationId == specializationId)
             .ToListAsync(ct);
-        if (rows.Count == 0) return Results.Ok(new { revoked = 0 });
+        db.SpecializationPartners.RemoveRange(rows);
 
-        db.ProgrammePartners.RemoveRange(rows);
+        // Drop the programme umbrella when this was the last spec grant.
+        var siblingsLeft = await db.SpecializationPartners
+            .AnyAsync(g => g.PartnerId == partnerId
+                && g.SpecializationId != specializationId
+                && g.Specialization.ProgrammeId == programmeId.Value, ct);
+        if (!siblingsLeft)
+        {
+            var umbrella = await db.ProgrammePartners
+                .Where(pp => pp.PartnerId == partnerId && pp.ProgrammeId == programmeId.Value)
+                .ToListAsync(ct);
+            db.ProgrammePartners.RemoveRange(umbrella);
+        }
+
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { revoked = rows.Count });
     }
