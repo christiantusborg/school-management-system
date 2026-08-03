@@ -35,7 +35,7 @@
 
     <div v-if="!loading && filtered.length === 0" class="empty">No students match.</div>
     <table v-else-if="!loading" class="data-table">
-      <thead><tr><th>Student #</th><th>Paid</th><th>Name</th><th>Email</th><th>Enrolments</th><th>Specialization</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Student #</th><th>Paid</th><th>Name</th><th>Email</th><th>Commencement date</th><th>Enrolments</th><th>Specialization</th><th>Graduation date</th><th>Status</th><th></th></tr></thead>
       <tbody>
         <tr v-for="s in pagedRows" :key="s.studentId" class="data-row" @click="openStudentDetail(s)">
           <td class="mono">{{ s.studentNumber }}</td>
@@ -56,12 +56,22 @@
           <td>{{ s.email ?? '—' }}<span v-if="!s.emailVerified" class="s-badge unverified">unverified</span></td>
           <td>
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
+              {{ e.commencementDate ? String(e.commencementDate).slice(0, 10) : '—' }}
+            </div>
+          </td>
+          <td>
+            <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
               <span class="enr-prog">{{ e.programmeCode }}</span>
             </div>
           </td>
           <td>
             <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
               {{ e.specializationName || '—' }}
+            </div>
+          </td>
+          <td>
+            <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
+              {{ e.graduationDate ? String(e.graduationDate).slice(0, 10) : '—' }}
             </div>
           </td>
           <td class="td-status-col">

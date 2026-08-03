@@ -71,6 +71,18 @@
             </td>
             <td v-else-if="key === 'partner'">{{ s.partnerName }}</td>
             <td v-else-if="key === 'email'">{{ s.email ?? '—' }}<span v-if="!s.emailVerified" class="s-badge unverified">unverified</span></td>
+            <td v-else-if="key === 'commencement'">
+              <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
+                {{ e.commencementDate ? String(e.commencementDate).slice(0, 10) : '—' }}
+              </div>
+              <div v-if="s.signingUp" class="enrol-line">&nbsp;</div>
+            </td>
+            <td v-else-if="key === 'graduation'">
+              <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
+                {{ e.graduationDate ? String(e.graduationDate).slice(0, 10) : '—' }}
+              </div>
+              <div v-if="s.signingUp" class="enrol-line">&nbsp;</div>
+            </td>
             <td v-else-if="key === 'enrolments'">
               <div v-for="e in s.enrollments" :key="e.studentEnrollmentId" class="enrol-line">
                 <span class="enr-prog">{{ e.programmeCode }}</span>
@@ -2741,10 +2753,11 @@ const REJECT_PRESETS = [
 const gradeModal = ref(null)
 // ── Configurable column views (per user, server-stored) ─────────────────────
 const COLUMN_LABELS = {
-  paid: 'Paid', partner: 'Partner', email: 'Email', enrolments: 'Enrolments',
-  specialization: 'Specialization', status: 'Status', addedBy: 'Added by', handledBy: 'Handled by',
+  paid: 'Paid', partner: 'Partner', email: 'Email', commencement: 'Commencement date',
+  enrolments: 'Enrolments', specialization: 'Specialization', graduation: 'Graduation date',
+  status: 'Status', addedBy: 'Added by', handledBy: 'Handled by',
 }
-const DEFAULT_COLUMNS = ['paid', 'partner', 'email', 'enrolments', 'specialization', 'status', 'addedBy', 'handledBy']
+const DEFAULT_COLUMNS = ['paid', 'partner', 'email', 'commencement', 'enrolments', 'specialization', 'graduation', 'status', 'addedBy', 'handledBy']
 const listViews = ref([])
 const activeViewId = ref(localStorage.getItem('studentsViewId') ?? '')
 watch(activeViewId, v => localStorage.setItem('studentsViewId', v ?? ''))

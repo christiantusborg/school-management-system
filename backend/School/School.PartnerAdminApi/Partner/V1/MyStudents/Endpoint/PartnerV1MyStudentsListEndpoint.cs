@@ -51,6 +51,7 @@ public sealed class PartnerV1MyStudentsListEndpoint : IEndpointMarker
                 SpecializationName = e.Specialization.Name,
                 ModeName = e.ModeOfStudy.Name,
                 e.CommencementDate,
+                e.GraduationDate,
                 StatusCode = e.Status.Code,
                 StatusName = e.Status.Name,
             })
@@ -128,6 +129,7 @@ public sealed class PartnerV1MyStudentsListEndpoint : IEndpointMarker
                     specializationName = e.SpecializationName,
                     modeOfStudyName = e.ModeName,
                     commencementDate = e.CommencementDate,
+                    graduationDate = e.GraduationDate,
                     statusCode = e.StatusCode,
                     statusName = e.StatusName,
                     paymentOverdue = overdueIds.Contains(e.StudentEnrollmentId),
