@@ -414,7 +414,7 @@
           <!-- ── EDITABLE (draft / rejected / approved-no-enrolments) ── -->
           <template v-if="isProgEditable(clone)">
             <div v-if="clone.status === 'approved'" class="prog-readonly-notice" style="background:#fff7e0;color:#8a6d00">
-              &#9888; Editing will flip this approved programme back to Pending MGW review.
+              &#9888; Editing an approved specialization sends that specialization back to Pending MGW review.
             </div>
             <div class="prog-edit-row">
               <label class="prog-edit-label">Programme Name</label>
@@ -466,10 +466,18 @@
               <div v-for="maj in clone.specializations" :key="maj.id" class="prog-maj-block">
                 <div class="prog-maj-header" @click="toggleMajEdit(clone.id + maj.id)">
                   <span class="arrow-sm">{{ expandedMaj === clone.id + maj.id ? '▾' : '▸' }}</span>
-                  <input v-model="maj.name" class="prog-maj-name-input" placeholder="Specialization name…" @click.stop />
+                  <input v-model="maj.name" class="prog-maj-name-input" placeholder="Specialization name…" @click.stop
+                         :disabled="maj.status === 'pending'" />
                   <span class="badge-count-p">{{ maj.subjects.length }} subjects</span>
+                  <span v-if="isServerId(maj.id)" :class="['spec-status-chip', `sp-${maj.status || 'draft'}`]">{{ maj.status || 'draft' }}</span>
+                  <button v-if="isServerId(maj.id) && (maj.status === 'draft' || maj.status === 'rejected')"
+                          class="btn-act-p btn-submit-p btn-spec-submit" :disabled="specSubmitBusy.has(maj.id)"
+                          @click.stop="submitSpecForApproval(clone, maj)">Submit</button>
                   <button class="btn-del-maj" @click.stop="removeMajFromClone(clone, maj.id)"
                     title="Remove specialization">✕</button>
+                </div>
+                <div v-if="maj.status === 'rejected' && maj.rejectionReason" class="prog-rejection-note">
+                  Rejected: {{ maj.rejectionReason }}
                 </div>
                 <div v-if="expandedMaj === clone.id + maj.id" class="prog-subj-block">
                   <!-- Column headers -->
@@ -500,6 +508,26 @@
                 <input v-model="newMajNameForms[clone.id]" class="prog-edit-input" placeholder="New specialization name…" />
                 <button class="btn-add-maj" @click="addMajToClone(clone)">+ Add Specialization</button>
               </div>
+              <div class="prog-add-maj-row">
+                <select v-model="specCloneSel[clone.id]" class="prog-edit-input">
+                  <option value="">— clone a specialization from… —</option>
+                  <optgroup label="This programme">
+                    <option v-for="src in specSourcesFor(clone.id, 'self')" :key="src.specializationId" :value="src.specializationId">
+                      {{ src.name }} ({{ src.code }})
+                    </option>
+                  </optgroup>
+                  <optgroup label="Core programmes (same award level)">
+                    <option v-for="src in specSourcesFor(clone.id, 'core')" :key="src.specializationId" :value="src.specializationId">
+                      {{ src.programmeCode }} · {{ src.name }} ({{ src.code }})
+                    </option>
+                  </optgroup>
+                </select>
+                <button class="btn-add-maj" :disabled="!specCloneSel[clone.id] || specCloneBusy.has(clone.id)"
+                        @click="cloneSpecIntoProg(clone)">
+                  {{ specCloneBusy.has(clone.id) ? 'Cloning…' : '⎘ Clone Specialization' }}
+                </button>
+              </div>
+              <p class="muted" style="font-size:.76rem;margin:.2rem 0 0;">Cloned specializations start as Draft and must be submitted for MGW approval.</p>
             </div>
 
             <div class="drawer-actions" style="margin-top:.8rem">
@@ -530,6 +558,10 @@
                   <span class="arrow-sm">{{ expandedMaj === clone.id + maj.id ? '▾' : '▸' }}</span>
                   <span class="prog-maj-name-ro">{{ maj.name }}</span>
                   <span class="badge-count-p">{{ maj.subjects.length }} subjects</span>
+                  <span :class="['spec-status-chip', `sp-${maj.status || 'draft'}`]">{{ maj.status || 'draft' }}</span>
+                </div>
+                <div v-if="maj.status === 'rejected' && maj.rejectionReason" class="prog-rejection-note">
+                  Rejected: {{ maj.rejectionReason }}
                 </div>
                 <div v-if="expandedMaj === clone.id + maj.id" class="prog-subj-block">
                   <div class="subj-col-header">
@@ -1534,6 +1566,9 @@ async function loadProgDetail(clone) {
   clone.specializations = (d.specializations ?? []).map(m => ({
     id: m.specializationId,
     name: m.name,
+    code: m.code ?? null,
+    status: (m.status ?? 'Draft').toLowerCase(),
+    rejectionReason: m.rejectionReason ?? null,
     subjects: (m.subjects ?? []).map(s => ({
       id: s.subjectId,
       code: s.code,
@@ -1545,6 +1580,49 @@ async function loadProgDetail(clone) {
     })),
   }))
   clone._detailLoaded = true
+  loadSpecCloneSources(clone)
+}
+
+// ── Spec-level workflow (approval + clone happen per specialization) ─────────
+const specCloneSources = reactive({})   // programmeId -> [{...}]
+const specCloneSel = reactive({})       // programmeId -> chosen source spec id
+const specCloneBusy = reactive(new Set())
+const specSubmitBusy = reactive(new Set())
+
+async function loadSpecCloneSources(clone) {
+  try {
+    const res = await apiClient.get(`/v1/partner/my-programs/${clone.id}/spec-clone-sources`)
+    specCloneSources[clone.id] = res.data.items ?? []
+  } catch { specCloneSources[clone.id] = [] }
+}
+function specSourcesFor(cloneId, kind) {
+  return (specCloneSources[cloneId] ?? []).filter(x => x.source === kind)
+}
+async function cloneSpecIntoProg(clone) {
+  const src = specCloneSel[clone.id]
+  if (!src || specCloneBusy.has(clone.id)) return
+  specCloneBusy.add(clone.id)
+  try {
+    await apiClient.post(`/v1/partner/my-programs/${clone.id}/specializations/clone`, { sourceSpecializationId: src })
+    specCloneSel[clone.id] = ''
+    await loadProgDetail(clone)
+  } catch (e) {
+    myProgError.value = e.response?.data?.error ?? e.message ?? 'Clone failed'
+  } finally {
+    specCloneBusy.delete(clone.id)
+  }
+}
+async function submitSpecForApproval(clone, maj) {
+  if (specSubmitBusy.has(maj.id)) return
+  specSubmitBusy.add(maj.id)
+  try {
+    await apiClient.post(`/v1/partner/my-programs/${clone.id}/specializations/${maj.id}/submit`)
+    await Promise.all([loadProgDetail(clone), loadMyPrograms()])
+  } catch (e) {
+    myProgError.value = e.response?.data?.error ?? e.message ?? 'Failed to submit'
+  } finally {
+    specSubmitBusy.delete(maj.id)
+  }
 }
 
 // ── My Programs tab state ─────────────────────────────────────────────────────
@@ -2892,4 +2970,11 @@ function logout() { auth.logout(); router.push('/login') }
 .ro-subj-name { flex: 1; color: #444; }
 .ro-subj-cr { width: 50px; flex-shrink: 0; text-align: center; color: #666; font-size: 0.82rem; font-weight: 600; }
 .ro-empty { color: #bbb; font-style: italic; font-size: 0.82rem; margin: 0.3rem 0; }
+
+.spec-status-chip { font-size: .66rem; padding: 1px 8px; border-radius: 10px; text-transform: uppercase; font-weight: 700; }
+.sp-draft    { background: #ecf0f6; color: #5f6e85; }
+.sp-pending  { background: #fff1cc; color: #8a6b16; }
+.sp-approved { background: #d7f0df; color: #1c7a4a; }
+.sp-rejected { background: #fde7e5; color: #a8241e; }
+.btn-spec-submit { padding: .15rem .5rem; font-size: .72rem; }
 </style>

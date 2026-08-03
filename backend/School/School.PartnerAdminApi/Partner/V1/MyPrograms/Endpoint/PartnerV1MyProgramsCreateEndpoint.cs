@@ -123,6 +123,14 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
             foreach (var s in sourceSpecs)
             {
                 var newSpecId = Guid.NewGuid();
+                // Spec-level approval: every cloned spec starts its own Draft
+                // workflow row.
+                db.PartnerSpecializationStatuses.Add(new PartnerSpecializationStatus
+                {
+                    SpecializationId = newSpecId,
+                    Status = MyProgramsHelpers.StatusDraft,
+                    UpdatedAt = DateTime.UtcNow,
+                });
                 db.Specializations.Add(new Specialization
                 {
                     SpecializationId = newSpecId,

@@ -1,3 +1,4 @@
+using Odin.Api.Base.Programmes;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 using School.PartnerAdminApi.Partner.V1.MyUsers;
 
@@ -60,8 +61,14 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
             return Results.BadRequest(new { error = "Programme is disabled by admin and cannot be edited." });
         if (await MyProgramsHelpers.HasEnrolmentsAsync(db, programmeId, ct))
             return Results.BadRequest(new { error = "Programme has enrolled students and cannot be edited." });
-        if (status.Status is MyProgramsHelpers.StatusPending)
-            return Results.BadRequest(new { error = "Programme is pending approval and cannot be edited." });
+
+        // Approval is per specialization: spec workflow states are loaded so
+        // the sync below can block edits to specs under review and flip
+        // edited Approved specs back to Pending.
+        var specStatusRows = await db.PartnerSpecializationStatuses
+            .Where(x => x.Specialization.ProgrammeId == programmeId)
+            .ToListAsync(ct);
+        var specStatusById = specStatusRows.ToDictionary(x => x.SpecializationId);
 
         if (!string.IsNullOrWhiteSpace(body.Name)) programme.Name = body.Name.Trim();
         if (!string.IsNullOrWhiteSpace(body.Code)) programme.Code = body.Code.Trim();
@@ -106,11 +113,15 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
                 var name = (input.Name ?? string.Empty).Trim();
                 if (string.IsNullOrEmpty(name)) continue;
 
+                var specChanged = false;
                 Specialization spec;
                 if (input.SpecializationId is { } sid && existingSpecs.FirstOrDefault(e => e.SpecializationId == sid) is { } existing)
                 {
                     spec = existing;
-                    spec.Name = name;
+                    if (specStatusById.TryGetValue(sid, out var st) && st.Status == MyProgramsHelpers.StatusPending
+                        && spec.Name != name)
+                        return Results.BadRequest(new { error = $"Specialization '{spec.Name}' is pending approval and cannot be edited." });
+                    if (spec.Name != name) { spec.Name = name; specChanged = true; }
                 }
                 else
                 {
@@ -124,9 +135,19 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
                         InstructionLanguage = "English", // IBSS is English-medium
                     };
                     db.Specializations.Add(spec);
+                    db.PartnerSpecializationStatuses.Add(new PartnerSpecializationStatus
+                    {
+                        SpecializationId = spec.SpecializationId,
+                        Status = MyProgramsHelpers.StatusDraft,
+                        UpdatedAt = DateTime.UtcNow,
+                    });
                 }
 
-                if (input.Subjects is null) continue;
+                if (input.Subjects is null)
+                {
+                    FlipIfApproved(spec.SpecializationId, specChanged);
+                    continue;
+                }
                 var existingSubs = await db.Subjects
                     .Where(s => s.SpecializationId == spec.SpecializationId && s.DeletedAt == null)
                     .ToListAsync(ct);
@@ -143,13 +164,18 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
                     if (string.IsNullOrEmpty(subName)) continue;
                     if (subInput.SubjectId is { } subId && existingSubs.FirstOrDefault(s => s.SubjectId == subId) is { } existingSub)
                     {
-                        existingSub.Code = (subInput.Code ?? string.Empty).Trim();
+                        var subCode = (subInput.Code ?? string.Empty).Trim();
+                        if (existingSub.Code != subCode || existingSub.Name != subName
+                            || existingSub.Ects != subInput.Ects || existingSub.IsThesis != subInput.IsThesis)
+                            specChanged = true;
+                        existingSub.Code = subCode;
                         existingSub.Name = subName;
                         existingSub.Ects = subInput.Ects;
                         existingSub.IsThesis = subInput.IsThesis;
                     }
                     else
                     {
+                        specChanged = true;
                         db.Subjects.Add(new Subject
                         {
                             SubjectId = Guid.NewGuid(),
@@ -162,6 +188,20 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
                         });
                     }
                 }
+                if (existingSubs.Any(sub => !keepSubIds.Contains(sub.SubjectId))) specChanged = true;
+                FlipIfApproved(spec.SpecializationId, specChanged);
+            }
+        }
+
+        // Editing the content of an Approved spec sends it back to review,
+        // mirroring the old programme-level "edit flips Approved → Pending".
+        void FlipIfApproved(Guid specId, bool changed)
+        {
+            if (!changed) return;
+            if (specStatusById.TryGetValue(specId, out var st) && st.Status == MyProgramsHelpers.StatusApproved)
+            {
+                st.Status = MyProgramsHelpers.StatusPending;
+                st.UpdatedAt = DateTime.UtcNow;
             }
         }
 
@@ -186,15 +226,11 @@ public sealed class PartnerV1MyProgramsUpdateEndpoint : IEndpointMarker
             }
         }
 
-        // Editing an Approved programme flips it back to Pending review.
-        if (status.Status == MyProgramsHelpers.StatusApproved)
-        {
-            status.Status = MyProgramsHelpers.StatusPending;
-            status.IsActive = false;
-        }
         status.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(ct);
+        // Programme status is derived from its specs.
+        await SpecApproval.RecomputeProgrammeAsync(db, programmeId, ct);
         return Results.Ok(new { programmeId });
     }
 }

@@ -30,20 +30,7 @@
         </div>
 
         <div class="clone-actions">
-          <template v-if="c.status === 'Pending'">
-            <button class="btn-sm btn-ok" :disabled="busy.has(c.programmeId)" @click="approve(c)">Approve</button>
-            <button v-if="rejectingId !== c.programmeId" class="btn-sm btn-warn" @click="openReject(c)">Reject</button>
-            <template v-else>
-              <input v-model="rejectReason" class="inp-add" placeholder="Reason for rejection…" />
-              <button class="btn-sm btn-warn" :disabled="!rejectReason.trim() || busy.has(c.programmeId)" @click="confirmReject(c)">Confirm</button>
-              <button class="btn-sm" @click="cancelReject">Cancel</button>
-            </template>
-          </template>
-          <template v-else-if="c.status === 'Rejected'">
-            <span class="reject-reason">Rejected: {{ c.rejectionReason || '—' }}</span>
-            <button class="btn-sm btn-ok" :disabled="busy.has(c.programmeId)" @click="approve(c)">Approve</button>
-            <button class="btn-sm" :disabled="busy.has(c.programmeId)" @click="reopen(c)">Move to Pending</button>
-          </template>
+          <span class="muted" v-if="c.status === 'Pending'">Review the specializations below</span>
           <button class="btn-sm" :disabled="busy.has(c.programmeId)" @click="toggleDisable(c)">
             {{ c.isDisabledByAdmin ? 'Enable' : 'Disable' }}
           </button>
@@ -110,6 +97,25 @@
               <span class="pill" :class="(s.offerAcceptanceMode === 'AutoAccept') ? 'pill-auto' : 'pill-student'">
                 {{ s.offerAcceptanceMode === 'AutoAccept' ? 'auto-accept' : 'student-accept' }}
               </span>
+              <span :class="['status-pill', `s-${specStatus(s).toLowerCase()}`]">{{ specStatus(s) }}</span>
+              <span class="spec-actions" @click.stop>
+                <template v-if="specStatus(s) === 'Pending' || specStatus(s) === 'Draft'">
+                  <button class="btn-sm btn-ok" :disabled="specBusy.has(s.specializationId)" @click="approveSpec(s)">Approve</button>
+                  <template v-if="specStatus(s) === 'Pending'">
+                    <button v-if="rejectingSpecId !== s.specializationId" class="btn-sm btn-warn" @click="openRejectSpec(s)">Reject</button>
+                    <template v-else>
+                      <input v-model="specRejectReason" class="inp-add" placeholder="Reason for rejection…" />
+                      <button class="btn-sm btn-warn" :disabled="!specRejectReason.trim() || specBusy.has(s.specializationId)" @click="confirmRejectSpec(s)">Confirm</button>
+                      <button class="btn-sm" @click="cancelRejectSpec">Cancel</button>
+                    </template>
+                  </template>
+                </template>
+                <template v-else-if="specStatus(s) === 'Rejected'">
+                  <span class="reject-reason">{{ s.approvalRejectionReason || '' }}</span>
+                  <button class="btn-sm btn-ok" :disabled="specBusy.has(s.specializationId)" @click="approveSpec(s)">Approve</button>
+                  <button class="btn-sm" :disabled="specBusy.has(s.specializationId)" @click="reopenSpec(s)">Move to Pending</button>
+                </template>
+              </span>
             </div>
             <div v-if="openSpecs.has(s.specializationId)" class="subj-table">
               <div class="subj-header">
@@ -134,6 +140,28 @@
               </div>
               <p v-if="thesisErr[s.specializationId]" class="card-toggle-err" style="margin:.2rem 0 0;">{{ thesisErr[s.specializationId] }}</p>
             </div>
+          </div>
+
+          <div class="clone-spec-row">
+            <select v-model="cloneSelection[c.programmeId]" class="inp-status">
+              <option value="">— clone a specialization from… —</option>
+              <optgroup label="This programme">
+                <option v-for="src in cloneSources(c.programmeId, 'self')" :key="src.specializationId" :value="src.specializationId">
+                  {{ src.name }} ({{ src.code }})
+                </option>
+              </optgroup>
+              <optgroup label="Core programmes (same award level)">
+                <option v-for="src in cloneSources(c.programmeId, 'core')" :key="src.specializationId" :value="src.specializationId">
+                  {{ src.programmeCode }} · {{ src.name }} ({{ src.code }})
+                </option>
+              </optgroup>
+            </select>
+            <button class="btn-sm btn-ok" :disabled="!cloneSelection[c.programmeId] || cloneBusy.has(c.programmeId)"
+                    @click="cloneSpec(c)">
+              {{ cloneBusy.has(c.programmeId) ? 'Cloning…' : 'Clone specialization' }}
+            </button>
+            <span class="muted">Admin clones are approved immediately.</span>
+            <span v-if="cloneErr[c.programmeId]" class="reject-reason">{{ cloneErr[c.programmeId] }}</span>
           </div>
         </div>
 
@@ -193,6 +221,7 @@ const openSpecs = reactive(new Set()) // specializationId
 
 function toggleExpand(id) {
   expanded.has(id) ? expanded.delete(id) : expanded.add(id)
+  if (expanded.has(id) && !cloneSourceMap[id]) loadCloneSources(id)
 }
 function toggleSpec(id) {
   openSpecs.has(id) ? openSpecs.delete(id) : openSpecs.add(id)
@@ -253,6 +282,72 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+// ── Spec-level review (approval moved down from programme level) ────────────
+const specBusy = ref(new Set())
+const rejectingSpecId = ref(null)
+const specRejectReason = ref('')
+const cloneSourceMap = reactive({})
+const cloneSelection = reactive({})
+const cloneBusy = ref(new Set())
+const cloneErr = reactive({})
+
+function specStatus(s) {
+  // approvalStatus: 0 Draft, 1 Pending, 2 Approved, 3 Rejected; null = Draft
+  return ['Draft', 'Pending', 'Approved', 'Rejected'][s.approvalStatus ?? 0] ?? 'Draft'
+}
+async function approveSpec(s) {
+  if (specBusy.value.has(s.specializationId)) return
+  specBusy.value.add(s.specializationId)
+  try {
+    await apiClient.post(`/v1/school/specializations/${s.specializationId}/approve`)
+    await load()
+  } catch (e) { loadError.value = e.response?.data?.error ?? e.message ?? 'Approve failed' }
+  finally { specBusy.value.delete(s.specializationId) }
+}
+function openRejectSpec(s) { rejectingSpecId.value = s.specializationId; specRejectReason.value = '' }
+function cancelRejectSpec() { rejectingSpecId.value = null; specRejectReason.value = '' }
+async function confirmRejectSpec(s) {
+  const reason = specRejectReason.value.trim()
+  if (!reason || specBusy.value.has(s.specializationId)) return
+  specBusy.value.add(s.specializationId)
+  try {
+    await apiClient.post(`/v1/school/specializations/${s.specializationId}/reject`, { reason })
+    cancelRejectSpec()
+    await load()
+  } catch (e) { loadError.value = e.response?.data?.error ?? e.message ?? 'Reject failed' }
+  finally { specBusy.value.delete(s.specializationId) }
+}
+async function reopenSpec(s) {
+  if (specBusy.value.has(s.specializationId)) return
+  specBusy.value.add(s.specializationId)
+  try {
+    await apiClient.post(`/v1/school/specializations/${s.specializationId}/reopen`)
+    await load()
+  } catch (e) { loadError.value = e.response?.data?.error ?? e.message ?? 'Reopen failed' }
+  finally { specBusy.value.delete(s.specializationId) }
+}
+async function loadCloneSources(programmeId) {
+  try {
+    const res = await apiClient.get(`/v1/school/programmes/${programmeId}/spec-clone-sources`)
+    cloneSourceMap[programmeId] = res.data.items ?? []
+  } catch { cloneSourceMap[programmeId] = [] }
+}
+function cloneSources(programmeId, kind) {
+  return (cloneSourceMap[programmeId] ?? []).filter(x => x.source === kind)
+}
+async function cloneSpec(c) {
+  const src = cloneSelection[c.programmeId]
+  if (!src || cloneBusy.value.has(c.programmeId)) return
+  cloneBusy.value.add(c.programmeId)
+  cloneErr[c.programmeId] = ''
+  try {
+    await apiClient.post(`/v1/school/programmes/${c.programmeId}/specializations/clone`, { sourceSpecializationId: src })
+    cloneSelection[c.programmeId] = ''
+    await Promise.all([load(), loadCloneSources(c.programmeId)])
+  } catch (e) { cloneErr[c.programmeId] = e.response?.data?.error ?? e.message ?? 'Clone failed' }
+  finally { cloneBusy.value.delete(c.programmeId) }
 }
 
 async function approve(c) {
@@ -449,6 +544,8 @@ async function toggleStudentCard(prog, checked) {
 .empty-note { font-size: .8rem; color: #8a93a4; padding: .25rem 0 .5rem; font-style: italic; }
 
 .spec-card { border: 1px solid #e8edf3; border-radius: 5px; margin-bottom: .35rem; }
+.spec-actions { display: flex; align-items: center; gap: .35rem; margin-left: auto; }
+.clone-spec-row { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
 .spec-row { display: flex; align-items: center; gap: .5rem; padding: .45rem .65rem; cursor: pointer; user-select: none; background: #f7fafd; }
 .pill { font-size: .68rem; padding: 1px 7px; border-radius: 10px; background: #ecf0f6; color: #5f6e85; }
 .pill-student { background: #eef3fb; color: #1a4d8c; }

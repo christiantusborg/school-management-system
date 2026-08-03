@@ -1,3 +1,4 @@
+using Odin.Api.Base.Programmes;
 using School.PartnerAdminApi.Partner.V1.MyUsers;
 
 namespace School.PartnerAdminApi.Partner.V1.MyPrograms.Endpoint;
@@ -27,13 +28,31 @@ public sealed class PartnerV1MyProgramsSubmitEndpoint : IEndpointMarker
 
         if (status.IsDisabledByAdmin)
             return Results.BadRequest(new { error = "Programme is disabled by admin." });
-        if (status.Status is not (MyProgramsHelpers.StatusDraft or MyProgramsHelpers.StatusRejected))
-            return Results.BadRequest(new { error = "Programme can only be submitted from Draft or Rejected." });
 
-        status.Status = MyProgramsHelpers.StatusPending;
-        status.RejectionReason = null;
-        status.UpdatedAt = DateTime.UtcNow;
+        // Approval is per specialization now: programme-level submit is a
+        // convenience that sends every Draft/Rejected spec to review at once.
+        var specIds = await db.Specializations
+            .Where(s => s.ProgrammeId == programmeId && s.DeletedAt == null)
+            .Select(s => s.SpecializationId)
+            .ToListAsync(ct);
+        if (specIds.Count == 0)
+            return Results.BadRequest(new { error = "Add at least one specialization before submitting." });
+
+        var submitted = 0;
+        foreach (var specId in specIds)
+        {
+            var row = await SpecApproval.EnsureAsync(db, specId, ct);
+            if (row.Status is not (SpecApproval.StatusDraft or SpecApproval.StatusRejected)) continue;
+            row.Status = SpecApproval.StatusPending;
+            row.RejectionReason = null;
+            row.UpdatedAt = DateTime.UtcNow;
+            submitted++;
+        }
+        if (submitted == 0)
+            return Results.BadRequest(new { error = "No Draft or Rejected specializations to submit." });
+
         await db.SaveChangesAsync(ct);
-        return Results.Ok(new { programmeId, status = MyProgramsHelpers.StatusLabel(status.Status) });
+        await SpecApproval.RecomputeProgrammeAsync(db, programmeId, ct);
+        return Results.Ok(new { programmeId, submitted });
     }
 }

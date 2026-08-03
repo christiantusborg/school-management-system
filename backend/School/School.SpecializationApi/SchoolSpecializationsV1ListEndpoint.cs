@@ -36,6 +36,14 @@ public sealed class SchoolSpecializationsV1ListEndpoint : IEndpointMarker
                 offerAcceptanceMode = s.OfferAcceptanceMode.ToString(),
                 instructionLanguage = s.InstructionLanguage,
                 deletedAt = s.DeletedAt,
+                // Spec-level approval workflow (partner-owned programmes only;
+                // null for core specs, which are implicitly approved).
+                approvalStatus = db.PartnerSpecializationStatuses
+                    .Where(x => x.SpecializationId == s.SpecializationId)
+                    .Select(x => (int?)x.Status).FirstOrDefault(),
+                approvalRejectionReason = db.PartnerSpecializationStatuses
+                    .Where(x => x.SpecializationId == s.SpecializationId)
+                    .Select(x => x.RejectionReason).FirstOrDefault(),
             })
             .ToListAsync(cancellationToken);
 

@@ -71,8 +71,13 @@ public sealed class PartnerCatalogueV1Endpoint : IEndpointMarker
 
         var programmeIds = programmes.Select(p => p.ProgrammeId).ToList();
 
+        // Core specs are implicitly approved; specs of the partner's own
+        // programmes must have passed spec-level admission approval.
         var specs = await db.Specializations
-            .Where(s => s.DeletedAt == null && programmeIds.Contains(s.ProgrammeId))
+            .Where(s => s.DeletedAt == null && programmeIds.Contains(s.ProgrammeId)
+                && (s.Programmes.OwnerId == null
+                    || db.PartnerSpecializationStatuses.Any(ps =>
+                        ps.SpecializationId == s.SpecializationId && ps.Status == StatusApproved)))
             .OrderBy(s => s.Code)
             .Select(s => new
             {

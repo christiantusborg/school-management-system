@@ -82,6 +82,7 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<ProgrammePathway> ProgrammePathways => Set<ProgrammePathway>();
     public DbSet<ProgrammeDocumentRequirement> ProgrammeDocumentRequirements => Set<ProgrammeDocumentRequirement>();
     public DbSet<PartnerProgrammeStatus> PartnerProgrammeStatuses => Set<PartnerProgrammeStatus>();
+    public DbSet<PartnerSpecializationStatus> PartnerSpecializationStatuses => Set<PartnerSpecializationStatus>();
     public DbSet<SpecializationModeOfStudy> SpecializationModesOfStudy => Set<SpecializationModeOfStudy>();
     public DbSet<LetterTemplate> LetterTemplates => Set<LetterTemplate>();
     public DbSet<LetterEmailTemplate> LetterEmailTemplates => Set<LetterEmailTemplate>();

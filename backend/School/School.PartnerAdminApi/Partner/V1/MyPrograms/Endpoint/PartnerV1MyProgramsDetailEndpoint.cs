@@ -51,6 +51,13 @@ public sealed class PartnerV1MyProgramsDetailEndpoint : IEndpointMarker
             {
                 specializationId = s.SpecializationId,
                 name = s.Name,
+                code = s.Code,
+                status = db.PartnerSpecializationStatuses
+                    .Where(x => x.SpecializationId == s.SpecializationId)
+                    .Select(x => (int?)x.Status).FirstOrDefault(),
+                rejectionReason = db.PartnerSpecializationStatuses
+                    .Where(x => x.SpecializationId == s.SpecializationId)
+                    .Select(x => x.RejectionReason).FirstOrDefault(),
                 subjects = db.Subjects
                     .Where(sub => sub.SpecializationId == s.SpecializationId && sub.DeletedAt == null)
                     .OrderBy(sub => sub.Code)
@@ -88,7 +95,15 @@ public sealed class PartnerV1MyProgramsDetailEndpoint : IEndpointMarker
             canDelete = !hasEnrolments
                 && (status?.Status ?? MyProgramsHelpers.StatusDraft) is MyProgramsHelpers.StatusDraft or MyProgramsHelpers.StatusRejected,
             pathwayIds,
-            specializations,
+            specializations = specializations.Select(s => new
+            {
+                s.specializationId,
+                s.name,
+                s.code,
+                status = MyProgramsHelpers.StatusLabel(s.status ?? MyProgramsHelpers.StatusDraft),
+                s.rejectionReason,
+                s.subjects,
+            }),
         });
     }
 }
