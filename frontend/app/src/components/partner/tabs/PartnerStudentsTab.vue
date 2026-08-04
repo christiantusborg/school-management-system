@@ -560,17 +560,21 @@
                 <p v-if="partnerPay.loading" class="muted">Loading…</p>
                 <template v-else-if="partnerPay.exists">
                   <table class="pp-table">
-                    <thead><tr><th>#</th><th>Amount</th><th>Due date</th><th>Status</th><th></th></tr></thead>
+                    <thead><tr><th>#</th><th>Amount</th><th>Due date</th><th>Status</th><th>Amount paid</th><th></th></tr></thead>
                     <tbody>
                       <tr v-for="i in partnerPay.installments" :key="'i' + i.sequence">
                         <td>{{ i.sequence }}</td>
                         <td>{{ partnerPay.currency }} {{ fmtMoneyP(i.amount) }}</td>
                         <td>{{ formatDateD(i.dueDate) || '—' }}</td>
                         <td>
-                          <span :class="['pp-pill', i.isPaid ? 'pp-paid' : 'pp-unpaid']">
-                            {{ i.isPaid ? `Paid${i.paidDate ? ' · ' + formatDateD(i.paidDate) : ''}` : 'Unpaid' }}
+                          <span :class="['pp-pill', i.isPaid ? 'pp-paid' : ((i.amountPaid || 0) > 0 ? 'pp-part' : 'pp-unpaid')]">
+                            {{ i.isPaid ? `Paid${i.paidDate ? ' · ' + formatDateD(i.paidDate) : ''}` : ((i.amountPaid || 0) > 0 ? 'Partial' : 'Unpaid') }}
                           </span>
+                          <div v-for="(r, ri) in (i.payments || [])" :key="ri" class="pp-rec-line">
+                            {{ formatDateD(r.paidDate) }} · {{ partnerPay.currency }} {{ fmtMoneyP(r.amount) }}<span v-if="r.note"> · {{ r.note }}</span>
+                          </div>
                         </td>
+                        <td>{{ partnerPay.currency }} {{ fmtMoneyP(i.amountPaid || 0) }}</td>
                         <td><button class="btn-mini-d" :disabled="partnerPay.downloading" @click="downloadPartnerInvoice(i.sequence, null)">⤓ Invoice</button></td>
                       </tr>
                       <tr v-for="a in partnerPay.additionalInvoices" :key="'a' + a.sequence">
@@ -578,10 +582,14 @@
                         <td>{{ partnerPay.currency }} {{ fmtMoneyP(a.total) }} <span class="muted" style="font-size:.74rem;">{{ a.title }}</span></td>
                         <td>{{ formatDateD(a.dueDate) || '—' }}</td>
                         <td>
-                          <span :class="['pp-pill', a.isPaid ? 'pp-paid' : 'pp-unpaid']">
-                            {{ a.isPaid ? `Paid${a.paidDate ? ' · ' + formatDateD(a.paidDate) : ''}` : 'Unpaid' }}
+                          <span :class="['pp-pill', a.isPaid ? 'pp-paid' : ((a.amountPaid || 0) > 0 ? 'pp-part' : 'pp-unpaid')]">
+                            {{ a.isPaid ? `Paid${a.paidDate ? ' · ' + formatDateD(a.paidDate) : ''}` : ((a.amountPaid || 0) > 0 ? 'Partial' : 'Unpaid') }}
                           </span>
+                          <div v-for="(r, ri) in (a.payments || [])" :key="ri" class="pp-rec-line">
+                            {{ formatDateD(r.paidDate) }} · {{ partnerPay.currency }} {{ fmtMoneyP(r.amount) }}<span v-if="r.note"> · {{ r.note }}</span>
+                          </div>
                         </td>
+                        <td>{{ partnerPay.currency }} {{ fmtMoneyP(a.amountPaid || 0) }}</td>
                         <td><button class="btn-mini-d" :disabled="partnerPay.downloading" @click="downloadPartnerInvoice(null, a.sequence)">⤓ Invoice</button></td>
                       </tr>
                     </tbody>
@@ -2176,4 +2184,7 @@ function confirmSubStatus() {
 .add-prog-actions .btn-manage-sm:hover:not(:disabled) { background: #f0f6ff; border-color: #a0c0e0; }
 .add-prog-actions .btn-manage-sm:disabled { opacity: .5; cursor: default; }
 .add-prog-err { color: #b42318; font-size: .74rem; margin: 0; }
+
+.pp-part { background: #fff1cc; color: #8a6b16; }
+.pp-rec-line { font-size: .72rem; color: #667; margin-top: .15rem; }
 </style>

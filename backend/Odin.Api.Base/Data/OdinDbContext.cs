@@ -75,6 +75,7 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan> EnrollmentPaymentPlans => Set<SharedLibrary.Basics.Opaque.Domains.Payments.EnrollmentPaymentPlan>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment> PaymentInstallments => Set<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice> AdditionalInvoices => Set<SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentRecord> PaymentRecords => Set<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentRecord>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.Currency> Currencies => Set<SharedLibrary.Basics.Opaque.Domains.Payments.Currency>();
     public DbSet<Specialization> Specializations => Set<Specialization>();
     public DbSet<Subject> Subjects => Set<Subject>();

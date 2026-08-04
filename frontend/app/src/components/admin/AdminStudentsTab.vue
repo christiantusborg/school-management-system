@@ -897,22 +897,57 @@
                 </div>
 
                 <table v-if="payment.installments.length" class="pay-table">
-                  <thead><tr><th>#</th><th>Amount</th><th>Due date</th><th>Paid</th><th>Paid date</th><th>Invoice</th></tr></thead>
+                  <thead><tr><th>#</th><th>Amount</th><th>Due date</th><th>Paid</th><th>Amount paid</th><th>Payments</th><th>Invoice</th></tr></thead>
                   <tbody>
                     <template v-for="(inst, idx) in payment.installments" :key="idx">
                       <tr>
                         <td>{{ idx + 1 }}</td>
                         <td><input type="number" min="0" step="0.01" v-model.number="inst.amount" class="pay-inp" /></td>
                         <td><input type="date" v-model="inst.dueDate" class="pay-inp" /></td>
-                        <td class="pay-center"><input type="checkbox" v-model="inst.isPaid" /></td>
-                        <td><input v-if="inst.isPaid" type="date" v-model="inst.paidDate" class="pay-inp" /></td>
+                        <td class="pay-center">
+                          <span v-if="inst.isPaid" class="pay-badge pay-badge-paid">✓ {{ inst.paidDate || 'Paid' }}</span>
+                          <span v-else-if="(inst.amountPaid || 0) > 0" class="pay-badge pay-badge-part">Partial</span>
+                          <span v-else class="muted">—</span>
+                        </td>
+                        <td>{{ payment.currency }} {{ fmtMoney(inst.amountPaid || 0) }}</td>
+                        <td>
+                          <button v-if="inst.installmentId" class="btn-row-details btn-row-details-sm"
+                                  @click="togglePayRec('i' + idx)">
+                            {{ payRecOpen === 'i' + idx ? 'Hide' : `Payments (${(inst.payments || []).length})` }}
+                          </button>
+                          <span v-else class="muted" style="font-size:.72rem;" title="Save the payment plan first to record payments">save first</span>
+                        </td>
                         <td>
                           <a class="pay-invoice-link" @click="downloadInvoice(idx + 1)">⤓ Invoice</a>
                         </td>
                       </tr>
+                      <tr v-if="payRecOpen === 'i' + idx" class="pay-methods-row">
+                        <td></td>
+                        <td colspan="6">
+                          <div class="pay-records-box">
+                            <div v-for="r in (inst.payments || [])" :key="r.recordId" class="pay-rec-line">
+                              <span class="pay-rec-date">{{ (r.paidDate || '').slice(0, 10) }}</span>
+                              <span class="pay-rec-amt">{{ payment.currency }} {{ fmtMoney(r.amount) }}</span>
+                              <span class="pay-rec-note">{{ r.note || '' }}</span>
+                              <button class="btn-mini btn-remove" title="Delete this payment" @click="deletePaymentRecord(r)">✕</button>
+                            </div>
+                            <p v-if="!(inst.payments || []).length" class="muted" style="margin:.15rem 0;">No payments recorded yet.</p>
+                            <div class="pay-rec-add">
+                              <input type="number" min="0.01" step="0.01" v-model.number="payRec.amount" placeholder="Amount" class="pay-inp" />
+                              <input type="date" v-model="payRec.date" class="pay-inp" />
+                              <input type="text" v-model="payRec.note" placeholder="Note — where paid to, reference…" class="pay-rec-note-inp" />
+                              <button class="btn-row-details btn-row-details-sm" :disabled="!payRec.amount || payRec.busy"
+                                      @click="addPaymentRecord({ installmentId: inst.installmentId })">
+                                {{ payRec.busy ? 'Adding…' : 'Add payment' }}
+                              </button>
+                            </div>
+                            <p v-if="payRec.error" class="card-toggle-err" style="margin:.2rem 0 0;">{{ payRec.error }}</p>
+                          </div>
+                        </td>
+                      </tr>
                       <tr class="pay-methods-row">
                         <td></td>
-                        <td colspan="5">
+                        <td colspan="6">
                           <div class="pay-methods">
                             <div class="pay-method">
                               <label class="pay-method-toggle">
@@ -966,8 +1001,33 @@
                   <button class="btn-mini btn-mini-ghost" style="margin:.2rem 0 .4rem;" @click="ai.lines.push({ text: '', amount: 0 })">+ Add line</button>
                   <div class="pay-ai-meta">
                     <label>Due date <input type="date" v-model="ai.dueDate" class="pay-inp" /></label>
-                    <label class="pay-method-toggle"><input type="checkbox" v-model="ai.isPaid" /> Paid</label>
-                    <label v-if="ai.isPaid">Paid date <input type="date" v-model="ai.paidDate" class="pay-inp" /></label>
+                    <span v-if="ai.isPaid" class="pay-badge pay-badge-paid">✓ {{ ai.paidDate || 'Paid' }}</span>
+                    <span v-else-if="(ai.amountPaid || 0) > 0" class="pay-badge pay-badge-part">Partial</span>
+                    <span class="muted" style="font-size:.78rem;">Paid: {{ payment.currency }} {{ fmtMoney(ai.amountPaid || 0) }}</span>
+                    <button v-if="ai.additionalInvoiceId" class="btn-row-details btn-row-details-sm"
+                            @click="togglePayRec('a' + aidx)">
+                      {{ payRecOpen === 'a' + aidx ? 'Hide' : `Payments (${(ai.payments || []).length})` }}
+                    </button>
+                    <span v-else class="muted" style="font-size:.72rem;">save first</span>
+                  </div>
+                  <div v-if="payRecOpen === 'a' + aidx" class="pay-records-box">
+                    <div v-for="r in (ai.payments || [])" :key="r.recordId" class="pay-rec-line">
+                      <span class="pay-rec-date">{{ (r.paidDate || '').slice(0, 10) }}</span>
+                      <span class="pay-rec-amt">{{ payment.currency }} {{ fmtMoney(r.amount) }}</span>
+                      <span class="pay-rec-note">{{ r.note || '' }}</span>
+                      <button class="btn-mini btn-remove" title="Delete this payment" @click="deletePaymentRecord(r)">✕</button>
+                    </div>
+                    <p v-if="!(ai.payments || []).length" class="muted" style="margin:.15rem 0;">No payments recorded yet.</p>
+                    <div class="pay-rec-add">
+                      <input type="number" min="0.01" step="0.01" v-model.number="payRec.amount" placeholder="Amount" class="pay-inp" />
+                      <input type="date" v-model="payRec.date" class="pay-inp" />
+                      <input type="text" v-model="payRec.note" placeholder="Note — where paid to, reference…" class="pay-rec-note-inp" />
+                      <button class="btn-row-details btn-row-details-sm" :disabled="!payRec.amount || payRec.busy"
+                              @click="addPaymentRecord({ additionalInvoiceId: ai.additionalInvoiceId })">
+                        {{ payRec.busy ? 'Adding…' : 'Add payment' }}
+                      </button>
+                    </div>
+                    <p v-if="payRec.error" class="card-toggle-err" style="margin:.2rem 0 0;">{{ payRec.error }}</p>
                   </div>
                   <div class="pay-methods">
                     <div class="pay-method">
@@ -1804,8 +1864,8 @@ async function loadCurrencies() {
 function aiTotal(ai) { return (ai.lines || []).reduce((s, l) => s + (Number(l.amount) || 0), 0) }
 const additionalSum = computed(() => payment.additional.reduce((s, ai) => s + aiTotal(ai), 0))
 const paidSum = computed(() =>
-  payment.installments.filter(i => i.isPaid).reduce((s, i) => s + (Number(i.amount) || 0), 0)
-  + payment.additional.filter(ai => ai.isPaid).reduce((s, ai) => s + aiTotal(ai), 0))
+  payment.installments.reduce((s, i) => s + (Number(i.amountPaid) || (i.isPaid ? Number(i.amount) || 0 : 0)), 0)
+  + payment.additional.reduce((s, ai) => s + (Number(ai.amountPaid) || (ai.isPaid ? aiTotal(ai) : 0)), 0))
 const balanceDue = computed(() => (Number(payment.total) || 0) + additionalSum.value - paidSum.value)
 function fmtMoney(v) { return (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 
@@ -1816,27 +1876,70 @@ watch(() => [detailModal.value?.activeTab, programSubTab.value, activeEnrollment
   if (currencyList.value.length <= 1) loadCurrencies()
   try {
     const res = await api.get(`/v1/admin/students/${detailModal.value.studentId}/enrollments/${eid}/payment`)
-    const d = res.data
-    payment.exists = !!d.exists
-    payment.total = d.totalTuitionFee ?? 0
-    payment.currency = d.currency ?? 'USD'
-    payment.count = d.numberOfPayments || 1
-    payment.installments = (d.installments ?? []).map(i => ({
-      amount: i.amount, dueDate: i.dueDate?.slice(0, 10) ?? '', isPaid: !!i.isPaid, paidDate: i.paidDate?.slice(0, 10) ?? '',
-      payByCard: !!i.payByCardEnabled, cardPaymentLink: i.cardPaymentLink ?? '',
-      payByBank: !!i.payByBankEnabled, bankAccountDetails: i.bankAccountDetails ?? '',
-    }))
-    payment.additional = (d.additionalInvoices ?? []).map(a => ({
-      lines: (a.lines ?? []).map(l => ({ text: l.text ?? '', amount: l.amount ?? 0 })),
-      dueDate: a.dueDate?.slice(0, 10) ?? '', isPaid: !!a.isPaid, paidDate: a.paidDate?.slice(0, 10) ?? '',
-      payByCard: !!a.payByCardEnabled, cardPaymentLink: a.cardPaymentLink ?? '',
-      payByBank: !!a.payByBankEnabled, bankAccountDetails: a.bankAccountDetails ?? '',
-    }))
-    payment.additional.forEach(a => { if (!a.lines.length) a.lines.push({ text: '', amount: 0 }) })
+    applyPaymentPayload(res.data)
   } catch (err) {
     payment.error = err.response?.data?.error ?? err.message ?? 'Failed to load'
   }
 })
+
+function applyPaymentPayload(d) {
+  payment.exists = !!d.exists
+  payment.total = d.totalTuitionFee ?? 0
+  payment.currency = d.currency ?? 'USD'
+  payment.count = d.numberOfPayments || 1
+  payment.installments = (d.installments ?? []).map(i => ({
+    installmentId: i.installmentId ?? null,
+    amount: i.amount, dueDate: i.dueDate?.slice(0, 10) ?? '', isPaid: !!i.isPaid, paidDate: i.paidDate?.slice(0, 10) ?? '',
+    amountPaid: i.amountPaid ?? 0, payments: i.payments ?? [],
+    payByCard: !!i.payByCardEnabled, cardPaymentLink: i.cardPaymentLink ?? '',
+    payByBank: !!i.payByBankEnabled, bankAccountDetails: i.bankAccountDetails ?? '',
+  }))
+  payment.additional = (d.additionalInvoices ?? []).map(a => ({
+    additionalInvoiceId: a.additionalInvoiceId ?? null,
+    lines: (a.lines ?? []).map(l => ({ text: l.text ?? '', amount: l.amount ?? 0 })),
+    dueDate: a.dueDate?.slice(0, 10) ?? '', isPaid: !!a.isPaid, paidDate: a.paidDate?.slice(0, 10) ?? '',
+    amountPaid: a.amountPaid ?? 0, payments: a.payments ?? [],
+    payByCard: !!a.payByCardEnabled, cardPaymentLink: a.cardPaymentLink ?? '',
+    payByBank: !!a.payByBankEnabled, bankAccountDetails: a.bankAccountDetails ?? '',
+  }))
+  payment.additional.forEach(a => { if (!a.lines.length) a.lines.push({ text: '', amount: 0 }) })
+}
+
+// ── Part-payment records: "view and add payment" per installment / invoice ──
+const payRecOpen = ref('')
+const payRec = reactive({ amount: null, date: new Date().toISOString().slice(0, 10), note: '', busy: false, error: '' })
+function togglePayRec(key) {
+  payRec.error = ''
+  payRecOpen.value = payRecOpen.value === key ? '' : key
+  if (payRecOpen.value) { payRec.amount = null; payRec.note = ''; payRec.date = new Date().toISOString().slice(0, 10) }
+}
+async function addPaymentRecord(target) {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || payRec.busy || !payRec.amount) return
+  payRec.busy = true; payRec.error = ''
+  try {
+    const res = await api.post(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/payment/records`,
+      { ...target, amount: Number(payRec.amount), paidDate: payRec.date || null, note: payRec.note || null })
+    applyPaymentPayload(res.data)
+    payRec.amount = null; payRec.note = ''
+    load()
+  } catch (err) {
+    payRec.error = err.response?.data?.error ?? err.message ?? 'Failed to add payment'
+  } finally { payRec.busy = false }
+}
+async function deletePaymentRecord(rec) {
+  if (!detailModal.value?.studentId || !activeEnrollment.value || payRec.busy) return
+  if (!confirm('Delete this payment record?')) return
+  payRec.busy = true; payRec.error = ''
+  try {
+    const res = await api.delete(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/payment/records/${rec.recordId}`)
+    applyPaymentPayload(res.data)
+    load()
+  } catch (err) {
+    payRec.error = err.response?.data?.error ?? err.message ?? 'Failed to delete payment'
+  } finally { payRec.busy = false }
+}
 
 // Auto-split the total into `count` equal installments (last absorbs rounding),
 // due monthly from commencement (or today). Existing rows are replaced.
@@ -1890,7 +1993,7 @@ async function savePayment() {
     }
     const res = await api.put(
       `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/payment`, body)
-    payment.exists = !!res.data.exists
+    applyPaymentPayload(res.data)
     payment.ok = 'Saved'
     setTimeout(() => { payment.ok = '' }, 2500)
     // Refresh the students list in the background so the "Payment overdue"
@@ -4028,4 +4131,16 @@ async function runExport() {
 .vm-backdrop .btn-sm:disabled { opacity: .45; cursor: default; }
 .vm-backdrop .btn-row-details { background: #003366; border: 1px solid #003366; color: #fff; border-radius: 5px; padding: .35rem .8rem; font-size: .8rem; font-weight: 600; cursor: pointer; }
 .vm-backdrop .err-banner { background: #fdf3f2; border: 1px solid #e2b8b5; color: #b3261e; padding: .45rem .7rem; border-radius: 6px; font-size: .8rem; }
+
+.pay-badge { font-size: .72rem; padding: 2px 8px; border-radius: 10px; font-weight: 700; white-space: nowrap; }
+.pay-badge-paid { background: #d7f0df; color: #1c7a4a; }
+.pay-badge-part { background: #fff1cc; color: #8a6b16; }
+.pay-records-box { background: #f7f9fb; border: 1px solid #dfe6ee; border-radius: 8px; padding: .5rem .65rem; margin: .15rem 0 .35rem; }
+.pay-rec-line { display: flex; align-items: center; gap: .6rem; padding: .18rem 0; font-size: .8rem; border-bottom: 1px dashed #e6ebf2; }
+.pay-rec-line:last-of-type { border-bottom: 0; }
+.pay-rec-date { width: 92px; flex-shrink: 0; color: #445; }
+.pay-rec-amt { width: 110px; flex-shrink: 0; font-weight: 700; color: #0b2e59; }
+.pay-rec-note { flex: 1; color: #667; overflow: hidden; text-overflow: ellipsis; }
+.pay-rec-add { display: flex; align-items: center; gap: .4rem; margin-top: .35rem; flex-wrap: wrap; }
+.pay-rec-note-inp { flex: 1; min-width: 200px; padding: .3rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .78rem; }
 </style>

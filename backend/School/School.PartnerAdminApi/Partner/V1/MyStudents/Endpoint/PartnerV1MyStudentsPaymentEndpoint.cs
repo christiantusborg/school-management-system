@@ -48,10 +48,20 @@ public sealed class PartnerV1MyStudentsPaymentEndpoint : IEndpointMarker
                 p.TotalTuitionFee,
                 p.Currency,
                 Installments = p.Installments.OrderBy(i => i.Sequence)
-                    .Select(i => new { i.Sequence, i.Amount, i.DueDate, i.IsPaid, i.PaidDate })
+                    .Select(i => new { i.Sequence, i.Amount, i.DueDate, i.IsPaid, i.PaidDate,
+                        Records = db.PaymentRecords
+                            .Where(r => r.PaymentInstallmentId == i.PaymentInstallmentId)
+                            .OrderBy(r => r.PaidDate)
+                            .Select(r => new { r.Amount, r.PaidDate, r.Note })
+                            .ToList() })
                     .ToList(),
                 AdditionalInvoices = p.AdditionalInvoices.OrderBy(i => i.Sequence)
-                    .Select(i => new { i.Sequence, i.DueDate, i.IsPaid, i.PaidDate, i.LinesJson })
+                    .Select(i => new { i.Sequence, i.DueDate, i.IsPaid, i.PaidDate, i.LinesJson,
+                        Records = db.PaymentRecords
+                            .Where(r => r.AdditionalInvoiceId == i.AdditionalInvoiceId)
+                            .OrderBy(r => r.PaidDate)
+                            .Select(r => new { r.Amount, r.PaidDate, r.Note })
+                            .ToList() })
                     .ToList(),
             })
             .FirstOrDefaultAsync(ct);
@@ -61,13 +71,20 @@ public sealed class PartnerV1MyStudentsPaymentEndpoint : IEndpointMarker
 
         var additional = plan.AdditionalInvoices.Select(a => new
         {
-            a.Sequence, a.DueDate, a.IsPaid, a.PaidDate,
+            a.Sequence, a.DueDate, a.IsPaid, a.PaidDate, a.Records,
             Total = AdditionalInvoiceLines.Total(a.LinesJson),
             Title = AdditionalInvoiceLines.Title(a.LinesJson, a.Sequence),
         }).ToList();
         var additionalTotal = additional.Sum(a => a.Total);
-        var totalPaid = plan.Installments.Where(i => i.IsPaid).Sum(i => i.Amount)
-            + additional.Where(a => a.IsPaid).Sum(a => a.Total);
+        // Part-payment aware: records sum per item; legacy paid-with-no-records
+        // counts as fully paid.
+        decimal PaidOf(bool isPaid, decimal amount, decimal recSum, int recCount) =>
+            recCount > 0 ? Math.Min(recSum, amount) : (isPaid ? amount : 0m);
+        var instPaid = plan.Installments.ToDictionary(i => i.Sequence,
+            i => PaidOf(i.IsPaid, i.Amount, i.Records.Sum(r => r.Amount), i.Records.Count));
+        var addPaid = additional.ToDictionary(a => a.Sequence,
+            a => PaidOf(a.IsPaid, a.Total, a.Records.Sum(r => r.Amount), a.Records.Count));
+        var totalPaid = instPaid.Values.Sum() + addPaid.Values.Sum();
 
         return Results.Ok(new
         {
@@ -81,6 +98,8 @@ public sealed class PartnerV1MyStudentsPaymentEndpoint : IEndpointMarker
                 dueDate = i.DueDate,
                 isPaid = i.IsPaid,
                 paidDate = i.PaidDate,
+                amountPaid = instPaid[i.Sequence],
+                payments = i.Records.Select(r => new { amount = r.Amount, paidDate = r.PaidDate, note = r.Note }),
             }),
             additionalInvoices = additional.Select(a => new
             {
@@ -90,6 +109,8 @@ public sealed class PartnerV1MyStudentsPaymentEndpoint : IEndpointMarker
                 dueDate = a.DueDate,
                 isPaid = a.IsPaid,
                 paidDate = a.PaidDate,
+                amountPaid = addPaid[a.Sequence],
+                payments = a.Records.Select(r => new { amount = r.Amount, paidDate = r.PaidDate, note = r.Note }),
             }),
             additionalTotal,
             totalPaid,
