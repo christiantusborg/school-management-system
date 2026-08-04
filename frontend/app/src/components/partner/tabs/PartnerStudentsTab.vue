@@ -345,15 +345,37 @@
           <p v-if="detailModal.loading" class="muted detail-loading">Loading…</p>
 
           <template v-else-if="detailModal.data">
-            <div v-if="detailEnrollments.length > 1" class="enr-switch">
-              <label>Enrolment:</label>
-              <select v-model="detailModal.activeEnrollmentId">
-                <option v-for="e in detailEnrollments" :key="e.studentEnrollmentId" :value="e.studentEnrollmentId">
-                  {{ e.programmeCode }} · {{ e.specializationName }} ({{ e.statusName }})
-                </option>
-              </select>
-            </div>
-
+            <div class="detail-body-layout">
+            <aside class="programs-menu">
+              <button v-for="e in detailEnrollments" :key="e.studentEnrollmentId"
+                      :class="['prog-menu-item', { active: e.studentEnrollmentId === activeEnrollment?.studentEnrollmentId }]"
+                      @click="detailModal.activeEnrollmentId = e.studentEnrollmentId">
+                <span class="prog-menu-name">{{ e.programmeName }}</span>
+                <span class="prog-menu-spec">{{ e.specializationName }}</span>
+                <span class="prog-menu-status">{{ e.statusName }}</span>
+              </button>
+              <button class="btn-add-prog" @click="openAddProg">+ Add programme</button>
+              <div v-if="addProg.open" class="add-prog-box">
+                <select v-model="addProg.programmeId" class="inp-add-prog" @change="addProg.specializationId = ''">
+                  <option value="">— Programme —</option>
+                  <option v-for="p in addProg.options" :key="p.programmeId" :value="p.programmeId">
+                    {{ p.name }}{{ p.schoolName ? ` (${p.schoolName})` : '' }}
+                  </option>
+                </select>
+                <select v-model="addProg.specializationId" class="inp-add-prog" :disabled="!addProg.programmeId">
+                  <option value="">— Specialization —</option>
+                  <option v-for="m in addProgSpecs" :key="m.specializationId" :value="m.specializationId">{{ m.name }}</option>
+                </select>
+                <div class="add-prog-actions">
+                  <button class="btn-manage btn-manage-sm" :disabled="!addProg.specializationId || addProg.busy" @click="saveAddProg">
+                    {{ addProg.busy ? 'Adding…' : 'Add' }}
+                  </button>
+                  <button class="btn-manage btn-manage-sm" @click="addProg.open = false">Cancel</button>
+                </div>
+                <p v-if="addProg.error" class="add-prog-err">{{ addProg.error }}</p>
+              </div>
+            </aside>
+            <div class="detail-main">
             <div class="detail-tabs">
               <button v-for="t in visibleDetailTabs" :key="t.id"
                       :class="['tab-btn', { active: detailModal.activeTab === t.id }]"
@@ -616,6 +638,8 @@
               <EnrollmentActivityLog v-else
                 :api-path="`/v1/partner/my-students/${detailModal.studentId}/enrollments/${activeEnrollment.studentEnrollmentId}/activity`"
                 :default-open="true" />
+            </div>
+            </div>
             </div>
           </template>
         </div>
@@ -1141,6 +1165,39 @@ async function onPartnerReplace(ev, enrollmentId, doc) {
     setTimeout(() => { if (detailModal.value) detailModal.value.error = '' }, 3000)
   }
 }
+// ── "+ Add programme" (mirrors the Admission drawer, limited to this
+// partner's access: granted core specs + own approved custom specs) ─────────
+const addProg = reactive({ open: false, programmeId: '', specializationId: '', options: [], busy: false, error: '' })
+const addProgSpecs = computed(() =>
+  addProg.options.find(p => p.programmeId === addProg.programmeId)?.specializations ?? [])
+async function openAddProg() {
+  addProg.open = true
+  addProg.error = ''
+  addProg.programmeId = ''
+  addProg.specializationId = ''
+  try {
+    const res = await api.get('/v1/partner/my-students/enrolment-options')
+    addProg.options = res.data.items ?? []
+  } catch { addProg.options = [] }
+}
+async function saveAddProg() {
+  if (!detailModal.value || !addProg.specializationId || addProg.busy) return
+  addProg.busy = true
+  addProg.error = ''
+  try {
+    const res = await api.post(`/v1/partner/my-students/${detailModal.value.studentId}/enrollments`,
+      { specializationId: addProg.specializationId })
+    addProg.open = false
+    await refreshPartnerDetailModal()
+    if (res.data?.enrollmentId) detailModal.value.activeEnrollmentId = res.data.enrollmentId
+    load()
+  } catch (e) {
+    addProg.error = e.response?.data?.error ?? e.message ?? 'Failed to add'
+  } finally {
+    addProg.busy = false
+  }
+}
+
 async function refreshPartnerDetailModal() {
   if (!detailModal.value?.studentId) return
   try {
@@ -2098,4 +2155,25 @@ function confirmSubStatus() {
 .pgn-btn:not(:disabled):hover { background: #e8eef6; }
 .pgn-info { font-size: .8rem; color: #5f6e85; margin: 0 .4rem; }
 .pgn-size { margin-left: auto; padding: .3rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .8rem; background: #fff; }
+
+/* Admin-style programme menu inside the partner detail modal */
+.detail-body-layout { display: flex; gap: .8rem; flex: 1; min-height: 0; padding: .75rem 1rem 1rem; }
+.detail-body-layout .detail-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.detail-body-layout .tab-pane { padding: 1rem 0 0; }
+.programs-menu { width: 215px; flex-shrink: 0; display: flex; flex-direction: column; gap: .4rem; overflow-y: auto; }
+.prog-menu-item { display: flex; flex-direction: column; gap: .1rem; text-align: left; background: #f7f9fb; border: 1.5px solid #dfe6ee; border-radius: 8px; padding: .55rem .7rem; cursor: pointer; }
+.prog-menu-item:hover { border-color: #a0b8d0; }
+.prog-menu-item.active { border-color: #0b2e59; background: #eef3fb; }
+.prog-menu-name { font-weight: 700; font-size: .82rem; color: #0b2e59; }
+.prog-menu-spec { font-size: .76rem; color: #667; }
+.prog-menu-status { font-size: .7rem; color: #856404; }
+.btn-add-prog { margin-top: .3rem; background: #fff; border: 1.5px dashed #a0b8d0; color: #0b2e59; border-radius: 8px; padding: .45rem .7rem; font-size: .8rem; font-weight: 600; cursor: pointer; }
+.btn-add-prog:hover { border-color: #0b2e59; }
+.add-prog-box { background: #f7f9fb; border: 1.5px solid #dfe6ee; border-radius: 8px; padding: .5rem; display: flex; flex-direction: column; gap: .35rem; }
+.inp-add-prog { width: 100%; padding: .3rem .45rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .78rem; }
+.add-prog-actions { display: flex; gap: .35rem; }
+.add-prog-actions .btn-manage-sm { background: #fff; border: 1px solid #cfd7e3; color: #003366; border-radius: 5px; padding: .3rem .6rem; font-size: .76rem; cursor: pointer; }
+.add-prog-actions .btn-manage-sm:hover:not(:disabled) { background: #f0f6ff; border-color: #a0c0e0; }
+.add-prog-actions .btn-manage-sm:disabled { opacity: .5; cursor: default; }
+.add-prog-err { color: #b42318; font-size: .74rem; margin: 0; }
 </style>
