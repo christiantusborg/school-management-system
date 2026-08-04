@@ -2070,7 +2070,7 @@ function confirmSubStatus() {
 .btn-row-details:hover { background: #eef3fb; }
 .btn-row-details-sm { padding: .15rem .5rem; font-size: .7rem; margin-right: 0; }
 
-.detail-modal { width: 760px; max-width: 95vw; height: 80vh; max-height: 720px; display: flex; flex-direction: column; }
+.detail-modal { width: 1150px; max-width: 96vw; height: 86vh; max-height: 900px; display: flex; flex-direction: column; }
 .muted-sub { color: #6b7888; font-weight: 400; font-size: .82rem; margin-left: .25rem; }
 .detail-loading { padding: 1.5rem; }
 .enr-switch { display: flex; align-items: center; gap: .65rem; padding: .55rem 1rem; background: #f6f9fc; border-bottom: 1px solid #eef2f7; font-size: .85rem; }
