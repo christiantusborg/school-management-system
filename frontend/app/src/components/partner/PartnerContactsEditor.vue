@@ -6,6 +6,30 @@
     </div>
     <p v-if="error" class="pce-err">{{ error }}</p>
 
+    <!-- Read-only view: plain table; editing only after Edit is clicked -->
+    <template v-if="viewMode">
+      <table v-if="contacts.length" class="pce-view-table">
+        <thead><tr><th>Type</th><th>Name</th><th>Contact methods</th></tr></thead>
+        <tbody>
+          <tr v-for="(c, ci) in contacts" :key="ci">
+            <td><span class="pce-type-pill">{{ typeName(c) }}</span></td>
+            <td>{{ c.name || '—' }}</td>
+            <td>
+              <span v-for="(m, mi) in c.methods" :key="mi" class="pce-view-method">
+                <strong>{{ methodName(m) }}:</strong> {{ m.value }}<span v-if="mi < c.methods.length - 1"> · </span>
+              </span>
+              <span v-if="!c.methods.length" class="muted">—</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="muted" style="margin:.3rem 0;">No contacts yet.</p>
+      <div class="pce-actions">
+        <button class="pce-btn" @click="viewMode = false">Edit</button>
+      </div>
+    </template>
+
+    <template v-else>
     <div v-for="(c, ci) in contacts" :key="ci" class="pce-card" :class="{ 'pce-locked': isLocked(c) }">
       <div class="pce-row">
         <select v-model="c.partnerContactTypeId" class="pce-inp pce-type" :disabled="isLocked(c)">
@@ -29,8 +53,10 @@
     <div class="pce-actions">
       <button class="pce-btn" @click="addContact">+ Add contact</button>
       <button class="pce-btn pce-btn-save" :disabled="busy" @click="save">{{ busy ? 'Saving…' : 'Save contacts' }}</button>
+      <button class="pce-btn" :disabled="busy" @click="cancelEdit">Cancel</button>
       <span v-if="saved" class="pce-ok">✓ Saved</span>
     </div>
+    </template>
   </div>
 </template>
 
@@ -48,7 +74,18 @@ const props = defineProps({
 const contacts = ref([])
 const methods = ref([])
 const types = ref([])
+const viewMode = ref(true)
 const busy = ref(false)
+function typeName(c) {
+  return types.value.find(t => t.partnerContactTypeId === c.partnerContactTypeId)?.name ?? '—'
+}
+function methodName(m) {
+  return methods.value.find(x => x.contactMethodTypeId === m.contactMethodTypeId)?.name ?? '?'
+}
+async function cancelEdit() {
+  await load()
+  viewMode.value = true
+}
 const saved = ref(false)
 const error = ref('')
 
@@ -120,6 +157,7 @@ async function save() {
     const payload = contacts.value.filter(c => !isLocked(c))
     const res = await api.put(contactsUrl(), { contacts: payload })
     contacts.value = normalize(res.data.items)
+    viewMode.value = true
     saved.value = true
     setTimeout(() => { saved.value = false }, 2500)
   } catch (e) {
@@ -156,4 +194,10 @@ onMounted(load)
 .pce-btn { padding: .35rem .7rem; font-size: .8rem; border: 1px solid #cfd7e3; background: #fff; border-radius: 5px; cursor: pointer; }
 .pce-btn-save { border-color: #1c7a4a; color: #1c7a4a; font-weight: 600; }
 .pce-ok { color: #1c7a4a; font-size: .8rem; font-weight: 600; }
+
+.pce-view-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.pce-view-table th { text-align: left; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7888; padding: .3rem .5rem; border-bottom: 1px solid #e8edf3; }
+.pce-view-table td { padding: .38rem .5rem; border-bottom: 1px solid #f0f3f7; vertical-align: top; }
+.pce-type-pill { font-size: .7rem; padding: 2px 8px; border-radius: 10px; background: #eef3fb; color: #1a4d8c; font-weight: 700; }
+.pce-view-method { white-space: nowrap; }
 </style>
