@@ -34,6 +34,14 @@
         <RubricConfigTab v-else-if="t.key === 'rubrics'" v-show="activeTab === t.key" />
         <SchoolsManager v-else-if="t.key === 'schools'" v-show="activeTab === t.key" />
         <CurrenciesManager v-else-if="t.key === 'currencies'" v-show="activeTab === t.key" />
+        <div v-else-if="t.key === 'contactMethods'" v-show="activeTab === t.key">
+          <SimpleListManager
+            title="Contact Methods" singular="Contact Method"
+            endpoint="/v1/school/contact-methods" id-key="contactMethodTypeId" />
+          <SimpleListManager
+            title="Contact Types" singular="Contact Type"
+            endpoint="/v1/school/contact-types" id-key="partnerContactTypeId" />
+        </div>
         <SimpleListManager
           v-else-if="t.key === 'positionFunctions'" v-show="activeTab === t.key"
           title="Position Functions" singular="Position Function"
@@ -83,6 +91,7 @@ const entities = [
   { key: 'email',           label: 'Email' },
   { key: 'schools',         label: 'Schools' },
   { key: 'currencies',      label: 'Currencies' },
+  { key: 'contactMethods',       label: 'Contact Methods' },
   { key: 'positionFunctions',    label: 'Position Functions' },
   { key: 'employmentIndustries', label: 'Employment Industries' },
 ]

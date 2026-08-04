@@ -28,6 +28,10 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<Partner> Partners => Set<Partner>();
     public DbSet<PartnerAddress> PartnerAddresses => Set<PartnerAddress>();
     public DbSet<PartnerAddressType> PartnerAddressTypes => Set<PartnerAddressType>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Partners.ContactMethodType> ContactMethodTypes => Set<SharedLibrary.Basics.Opaque.Domains.Partners.ContactMethodType>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Partners.PartnerContactType> PartnerContactTypes => Set<SharedLibrary.Basics.Opaque.Domains.Partners.PartnerContactType>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Partners.PartnerContact> PartnerContacts => Set<SharedLibrary.Basics.Opaque.Domains.Partners.PartnerContact>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Partners.PartnerContactMethod> PartnerContactMethods => Set<SharedLibrary.Basics.Opaque.Domains.Partners.PartnerContactMethod>();
     public DbSet<PartnerContactEmail> PartnerContactEmails => Set<PartnerContactEmail>();
     public DbSet<PartnerContactPhone> PartnerContactPhones => Set<PartnerContactPhone>();
     public DbSet<PartnerContract> PartnerContracts => Set<PartnerContract>();

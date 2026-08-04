@@ -12,7 +12,9 @@
             <span class="slug-url">student signup URL: <code>{{ signupUrl }}</code></span>
           </strong>
         </div>
-        <div class="grid-row"><span>Contact</span><strong>{{ contactSummary || '—' }}</strong></div>
+        <div class="grid-row" style="display:block;">
+          <PartnerContactsEditor mode="admin" :partner-id="partnerId" />
+        </div>
         <div class="grid-row"><span>Address</span><strong>{{ addressSummary || '—' }}</strong></div>
         <div class="grid-row"><span>Website</span><strong>{{ profile.website || '—' }}</strong></div>
         <div class="grid-row"><span>Registration no.</span><strong>{{ profile.registrationNumber || '—' }}</strong></div>
@@ -95,6 +97,7 @@
 </template>
 
 <script setup>
+import PartnerContactsEditor from '../PartnerContactsEditor.vue'
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import apiClient from '../../../api/client.js'
 

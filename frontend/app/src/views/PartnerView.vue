@@ -27,6 +27,7 @@
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'users' }]" @click="mainTab = 'users'">My Users</button>
       <button :class="['main-tab-btn', { active: mainTab === 'forms' }]" @click="mainTab = 'forms'">Forms</button>
       <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Partnership Documents</button>
+      <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'contacts' }]" @click="mainTab = 'contacts'">Contacts</button>
       <button :class="['main-tab-btn', { active: mainTab === 'faculties' }]" @click="mainTab = 'faculties'">Faculties</button>
       <button :class="['main-tab-btn', { active: mainTab === 'cohorts' }]" @click="mainTab = 'cohorts'">Module Cohorts</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'invoices' }]" @click="mainTab = 'invoices'">Invoices</button>
@@ -599,6 +600,13 @@
 
     <div v-show="mainTab === 'forms'" class="container">
       <IntakeFillPanel v-if="mainTab === 'forms'" api-base="/v1/partner/intake-forms" />
+    </div>
+
+    <!-- Contacts — how MGW reaches this partner; Owner contacts admission-only -->
+    <div v-show="mainTab === 'contacts'" class="container">
+      <div class="page-head"><h1>Contacts</h1></div>
+      <p class="cert-tab-sub">People MGW can reach at your institution. Add as many contacts and contact methods as you need. The Owner contact can only be changed by the MGW Admission Office.</p>
+      <PartnerContactsEditor v-if="mainTab === 'contacts'" mode="partner" />
     </div>
 
     <!-- Faculties — the partner's teachers, based on Faculty Profile Information -->
@@ -1308,6 +1316,7 @@
 </template>
 
 <script setup>
+import PartnerContactsEditor from '../components/partner/PartnerContactsEditor.vue'
 import { ref, computed, reactive, watch, onMounted } from 'vue'
 import SubjectRubricButton from '../components/admin/SubjectRubricButton.vue'
 import { useRouter } from 'vue-router'
