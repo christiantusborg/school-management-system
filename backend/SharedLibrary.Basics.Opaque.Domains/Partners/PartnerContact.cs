@@ -40,6 +40,8 @@ public class PartnerContact
     public Guid PartnerId { get; set; }
     public Guid PartnerContactTypeId { get; set; }
     public string Name { get; set; } = default!;
+    /// <summary>Free text: title, department, "call after 14:00", … .</summary>
+    public string? Note { get; set; }
     public int SortOrder { get; set; }
 
     public Partner Partner { get; set; } = default!;

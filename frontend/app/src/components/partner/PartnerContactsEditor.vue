@@ -9,7 +9,7 @@
     <!-- Read-only view: plain table; editing only after Edit is clicked -->
     <template v-if="viewMode">
       <table v-if="contacts.length" class="pce-view-table">
-        <thead><tr><th>Type</th><th>Name</th><th>Contact methods</th></tr></thead>
+        <thead><tr><th>Type</th><th>Name</th><th>Contact methods</th><th>Note</th></tr></thead>
         <tbody>
           <tr v-for="(c, ci) in contacts" :key="ci">
             <td><span class="pce-type-pill">{{ typeName(c) }}</span></td>
@@ -20,6 +20,7 @@
               </span>
               <span v-if="!c.methods.length" class="muted">—</span>
             </td>
+            <td class="pce-view-note">{{ c.note || '—' }}</td>
           </tr>
         </tbody>
       </table>
@@ -38,6 +39,9 @@
         <input v-model="c.name" class="pce-inp pce-name" placeholder="Contact name…" :disabled="isLocked(c)" />
         <span v-if="isLocked(c)" class="pce-lock" title="Owner contacts can only be changed by the Admission Office">🔒 Admission only</span>
         <button v-else class="pce-x" title="Remove contact" @click="contacts.splice(ci, 1)">✕</button>
+      </div>
+      <div class="pce-row">
+        <input v-model="c.note" class="pce-inp pce-note" placeholder="Note — title, department, best time to call…" :disabled="isLocked(c)" />
       </div>
       <div v-for="(m, mi) in c.methods" :key="mi" class="pce-method-row">
         <select v-model="m.contactMethodTypeId" class="pce-inp pce-method" :disabled="isLocked(c)">
@@ -133,6 +137,7 @@ function normalize(items) {
   return (items ?? []).map(c => ({
     partnerContactTypeId: c.partnerContactTypeId,
     name: c.name ?? '',
+    note: c.note ?? '',
     methods: (c.methods ?? []).map(m => ({ contactMethodTypeId: m.contactMethodTypeId, value: m.value ?? '' })),
   }))
 }
@@ -141,6 +146,7 @@ function addContact() {
   contacts.value.push({
     partnerContactTypeId: firstType?.partnerContactTypeId ?? '',
     name: '',
+    note: '',
     methods: [{ contactMethodTypeId: methods.value[0]?.contactMethodTypeId ?? '', value: '' }],
   })
 }
@@ -200,4 +206,6 @@ onMounted(load)
 .pce-view-table td { padding: .38rem .5rem; border-bottom: 1px solid #f0f3f7; vertical-align: top; }
 .pce-type-pill { font-size: .7rem; padding: 2px 8px; border-radius: 10px; background: #eef3fb; color: #1a4d8c; font-weight: 700; }
 .pce-view-method { white-space: nowrap; }
+.pce-note { flex: 1; min-width: 260px; }
+.pce-view-note { color: #667; font-size: .78rem; max-width: 260px; }
 </style>

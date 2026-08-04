@@ -38,6 +38,7 @@ public sealed class PartnerContactsV1Endpoint : IEndpointMarker
     {
         public Guid PartnerContactTypeId { get; init; }
         public string? Name { get; init; }
+        public string? Note { get; init; }
         public List<MethodInput>? Methods { get; init; }
     }
 
@@ -57,6 +58,7 @@ public sealed class PartnerContactsV1Endpoint : IEndpointMarker
                 partnerContactTypeId = c.PartnerContactTypeId,
                 typeName = c.Type.Name,
                 name = c.Name,
+                note = c.Note,
                 methods = c.Methods.Select(m => new
                 {
                     contactMethodTypeId = m.ContactMethodTypeId,
@@ -123,6 +125,7 @@ public sealed class PartnerContactsV1Endpoint : IEndpointMarker
                 PartnerId = partnerId,
                 PartnerContactTypeId = c.PartnerContactTypeId,
                 Name = name,
+                Note = string.IsNullOrWhiteSpace(c.Note) ? null : c.Note.Trim(),
                 SortOrder = sort++,
             };
             db.PartnerContacts.Add(contact);

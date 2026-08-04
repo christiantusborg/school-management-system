@@ -10,6 +10,7 @@ public class PartnerContactConfiguration : IEntityTypeConfiguration<PartnerConta
     {
         builder.HasKey(e => e.PartnerContactId);
         builder.Property(e => e.Name).HasMaxLength(300);
+        builder.Property(e => e.Note).HasMaxLength(2000);
         builder.HasOne(e => e.Partner)
             .WithMany()
             .HasForeignKey(e => e.PartnerId)
