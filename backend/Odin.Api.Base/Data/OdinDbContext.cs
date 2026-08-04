@@ -80,6 +80,12 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment> PaymentInstallments => Set<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentInstallment>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice> AdditionalInvoices => Set<SharedLibrary.Basics.Opaque.Domains.Payments.AdditionalInvoice>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentRecord> PaymentRecords => Set<SharedLibrary.Basics.Opaque.Domains.Payments.PaymentRecord>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Crm.CrmPipeline> CrmPipelines => Set<SharedLibrary.Basics.Opaque.Domains.Crm.CrmPipeline>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Crm.CrmStage> CrmStages => Set<SharedLibrary.Basics.Opaque.Domains.Crm.CrmStage>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Crm.CrmLeadSource> CrmLeadSources => Set<SharedLibrary.Basics.Opaque.Domains.Crm.CrmLeadSource>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Crm.CrmLead> CrmLeads => Set<SharedLibrary.Basics.Opaque.Domains.Crm.CrmLead>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Crm.CrmActivity> CrmActivities => Set<SharedLibrary.Basics.Opaque.Domains.Crm.CrmActivity>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Crm.CrmAssignmentConfig> CrmAssignmentConfigs => Set<SharedLibrary.Basics.Opaque.Domains.Crm.CrmAssignmentConfig>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.Currency> Currencies => Set<SharedLibrary.Basics.Opaque.Domains.Payments.Currency>();
     public DbSet<Specialization> Specializations => Set<Specialization>();
     public DbSet<Subject> Subjects => Set<Subject>();

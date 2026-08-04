@@ -34,9 +34,12 @@ public sealed class DraftSignupV1StartEndpoint : IEndpointMarker
         /// link of a staff member; signups through it carry their name as
         /// "added by". Validated to a real enabled non-student user.</summary>
         public string? Ref { get; init; }
+        /// <summary>CRM lead id when the wizard was opened from "Convert to
+        /// student" — /finish links the created student back to the lead.</summary>
+        public string? CrmLead { get; init; }
     }
 
-    public sealed record DraftStartCacheState(string PartnerSlug, string FirstName, string LastName, string? ActorUserId = null);
+    public sealed record DraftStartCacheState(string PartnerSlug, string FirstName, string LastName, string? ActorUserId = null, string? CrmLeadId = null);
 
     private static async Task<IResult> HandleAsync(
         [FromBody] StartRequest body,
@@ -105,7 +108,8 @@ public sealed class DraftSignupV1StartEndpoint : IEndpointMarker
         // Stash wizard-only fields so /finish can copy them onto UserProfile + Student.
         await cache.SetAsync(
             $"wizdraft:{initData!.RegistrationId}",
-            new DraftStartCacheState(body.PartnerSlug.Trim(), body.FirstName.Trim(), body.LastName.Trim(), actorUserId),
+            new DraftStartCacheState(body.PartnerSlug.Trim(), body.FirstName.Trim(), body.LastName.Trim(), actorUserId,
+                Guid.TryParse(body.CrmLead, out var crmLeadGuid) ? crmLeadGuid.ToString() : null),
             TimeSpan.FromMinutes(5));
 
         return Results.Ok(new

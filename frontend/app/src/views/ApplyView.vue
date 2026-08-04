@@ -457,8 +457,11 @@ const state = reactive({
   existingUser: false,
 })
 
+// Prefill support: the CRM "Convert to student" flow passes pf_* params.
+const _pf = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
 const form = reactive({
-  firstName: '', lastName: '', email: '', password: '',
+  firstName: _pf.get('pf_first') ?? '', lastName: _pf.get('pf_last') ?? '',
+  email: _pf.get('pf_email') ?? '', password: '',
   dateOfBirth: '', passportId: '', nationalityId: null,
   gender: '', disabilityDisclosure: '', disabilitySupportNeeds: '',
   wantsStudentCard: true,
@@ -790,6 +793,8 @@ async function startAccount() {
       // attribute the created student to that staff member.
       actorTicket: new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('actor') || null,
       ref: (() => { const q = new URLSearchParams(window.location.hash.split('?')[1] ?? ''); return q.get('ref') || q.get('Ref') || null })(),
+      // CRM convert-to-student: links the created student back to the lead.
+      crmLead: new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('crmLead') || null,
     })
     if (startRes.data?.existingUser) {
       // The email already has an application — continue it instead of failing.

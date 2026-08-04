@@ -116,6 +116,43 @@ public sealed class DraftSignupV1FinishEndpoint : IEndpointMarker
         db.Students.Add(student);
         await db.SaveChangesAsync(ct);
 
+        // Convert-to-student handshake: when the wizard was opened from a CRM
+        // lead, link the created student and flip the lead to the pipeline's
+        // Won stage. Best-effort — a CRM hiccup never blocks the signup.
+        if (Guid.TryParse(draftState.CrmLeadId, out var crmLeadId))
+        {
+            try
+            {
+                var lead = await db.CrmLeads.FirstOrDefaultAsync(l => l.CrmLeadId == crmLeadId && l.DeletedAt == null, ct);
+                if (lead is not null && lead.ConvertedStudentId is null)
+                {
+                    lead.ConvertedStudentId = student.StudentId;
+                    lead.ConvertedAt = DateTime.UtcNow;
+                    lead.Status = 1;
+                    var wonStage = await db.CrmStages
+                        .Where(st => st.CrmPipelineId == lead.CrmPipelineId && st.DeletedAt == null && st.StageType == 1)
+                        .OrderBy(st => st.DisplayOrder)
+                        .FirstOrDefaultAsync(ct);
+                    if (wonStage is not null && lead.CrmStageId != wonStage.CrmStageId)
+                    {
+                        lead.CrmStageId = wonStage.CrmStageId;
+                        lead.StageEnteredAt = DateTime.UtcNow;
+                    }
+                    db.CrmActivities.Add(new SharedLibrary.Basics.Opaque.Domains.Crm.CrmActivity
+                    {
+                        CrmLeadId = lead.CrmLeadId,
+                        Kind = 6,
+                        Body = $"Converted to student {student.StudentNumber} via signup wizard.",
+                        OccurredAt = DateTime.UtcNow,
+                        ActorUserId = Guid.TryParse(draftState.ActorUserId, out var au) ? au : Guid.Empty,
+                        CreatedAt = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync(ct);
+                }
+            }
+            catch { /* signup always succeeds even if the lead link fails */ }
+        }
+
         // Issue wizard token.
         var wizardToken = await wizard.IssueAsync(user.Id, student.StudentId);
 
