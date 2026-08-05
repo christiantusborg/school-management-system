@@ -201,6 +201,8 @@ builder.Services.AddSingleton<Odin.Api.Base.DocumentScanning.IAiDocumentValidato
             builder.Configuration["DocumentScan:OllamaUrl"] ?? "http://localhost:11434",
             builder.Configuration["DocumentScan:OllamaModel"] ?? "llama3.2:latest"),
     });
+builder.Services.AddSingleton<Odin.Api.Base.Mail.MailHubService>();
+builder.Services.AddHostedService<Odin.Api.Base.Mail.MailSyncWorker>();
 builder.Services.AddHostedService<DocumentScanWorker>();
 builder.Services.AddHostedService<SharedLibrary.Basics.Opaque.Api.Infrastructure.GradingSheetReminderWorker>();
 

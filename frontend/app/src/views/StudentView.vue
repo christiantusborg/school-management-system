@@ -19,6 +19,7 @@
       <button :class="['tab-btn', { active: tab === 'cohorts' }]" @click="tab = 'cohorts'">Module Cohorts</button>
       <button :class="['tab-btn', { active: tab === 'notes' }]" @click="tab = 'notes'">Notes</button>
       <button :class="['tab-btn', { active: tab === 'forms' }]" @click="tab = 'forms'">Forms</button>
+      <button :class="['tab-btn', { active: tab === 'mail' }]" @click="tab = 'mail'">Mail</button>
     </div>
 
     <div class="tab-content">
@@ -26,7 +27,7 @@
       <div v-else-if="!loaded" class="loading">Loading…</div>
 
       <template v-else-if="data">
-        <div v-if="!data.enrollments?.length && tab !== 'profile' && tab !== 'forms'" class="empty">
+        <div v-if="!data.enrollments?.length && tab !== 'profile' && tab !== 'forms' && tab !== 'mail'" class="empty">
           You don't have any applications yet.
         </div>
 
@@ -398,6 +399,10 @@
         </template>
 
         <!-- ══════════ FORMS ══════════ -->
+        <template v-else-if="tab === 'mail'">
+          <PartnerMailView endpoint="/v1/student/me/mail" />
+        </template>
+
         <template v-else-if="tab === 'forms'">
           <div class="panel">
             <h3 class="panel-title">Forms</h3>
@@ -444,6 +449,7 @@
 </template>
 
 <script setup>
+import PartnerMailView from '../components/partner/PartnerMailView.vue'
 import { ref, computed, onMounted, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import EnrollmentActivityLog from '../components/letters/EnrollmentActivityLog.vue'

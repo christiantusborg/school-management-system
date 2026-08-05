@@ -172,6 +172,15 @@
             </div>
 
             <div v-if="drawer.lead" class="crm-timeline">
+              <div v-if="drawer.emails?.length" class="crm-emails">
+                <h4>Emails ({{ drawer.emails.length }})</h4>
+                <div v-for="e in drawer.emails" :key="e.mailMessageId" class="crm-email-row">
+                  <span class="mail-acct-chip" :style="{ background: e.accountColor || '#eef' }">{{ e.accountName }}</span>
+                  <span class="crm-email-dir">{{ e.isOutbound ? '📤' : '📥' }}</span>
+                  <span class="crm-email-subject" :title="e.snippet || ''">{{ e.subject || '(no subject)' }}</span>
+                  <span class="crm-email-date">{{ (e.sentAt || '').slice(0, 10) }}</span>
+                </div>
+              </div>
               <h4>Activity</h4>
               <div class="crm-compose">
                 <select v-model.number="compose.kind">
@@ -329,6 +338,9 @@ async function openLead(id) {
     drawer.value.form = { name: l.name, email: l.email, phone: l.phone, country: l.country, note: l.note,
       sourceId: l.sourceId, partnerId: l.partnerId, programmeId: l.programmeId,
       valueBand: l.valueBand, assignedToUserId: l.assignedToUserId }
+    api.get(`/v1/admin/crm/leads/${id}/emails`)
+      .then(r => { if (drawer.value?.lead?.crmLeadId === id) drawer.value.emails = r.data.items ?? [] })
+      .catch(() => {})
   } catch (e) { drawer.value.error = e.response?.data?.error ?? e.message }
 }
 async function checkDuplicate() {
@@ -531,4 +543,10 @@ onMounted(async () => { await Promise.all([loadBoard(), loadOptions()]) })
 .crm-mini { border: 1px solid #1c7a4a; color: #1c7a4a; background: #fff; border-radius: 4px; cursor: pointer; font-size: .7rem; padding: 0 5px; }
 .crm-wizard-modal { margin: auto; width: 1100px; max-width: 96vw; height: 90vh; background: #fff; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
 .crm-wizard-frame { flex: 1; border: 0; }
+.crm-emails { margin-bottom: .6rem; }
+.crm-emails h4 { margin: 0 0 .3rem; font-size: .84rem; color: #0b2e59; }
+.crm-email-row { display: flex; gap: .4rem; align-items: center; font-size: .78rem; padding: .2rem 0; border-bottom: 1px dashed #edf1f6; }
+.crm-email-subject { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crm-email-date { color: #8a93a4; font-size: .7rem; }
+.mail-acct-chip { font-size: .64rem; border-radius: 8px; padding: 0 7px; color: #0b2e59; font-weight: 700; }
 </style>

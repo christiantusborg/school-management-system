@@ -22,6 +22,7 @@
       <button :class="['tab-btn', { active: tab === 'partners' }]" @click="tab = 'partners'">Partners</button>
       <button :class="['tab-btn', { active: tab === 'statistics' }]" @click="tab = 'statistics'">Statistics</button>
       <button :class="['tab-btn', { active: tab === 'crm' }]" @click="tab = 'crm'">CRM</button>
+      <button v-if="!isSales" :class="['tab-btn', { active: tab === 'mail' }]" @click="tab = 'mail'">Mail</button>
       <button v-if="!isSales" :class="['tab-btn', { active: tab === 'messages' }]" @click="tab = 'messages'">
         Messages
         <span v-if="pendingMsgCount" class="tab-badge">{{ pendingMsgCount }}</span>
@@ -531,6 +532,10 @@
       <CrmTab v-if="tab === 'crm'" />
     </div>
 
+    <div v-show="tab === 'mail'" class="container">
+      <MailTab v-if="tab === 'mail'" />
+    </div>
+
     <!-- ══════════════════════ ADMIN USERS TAB (SuperAdministrator only) ══════════════════════ -->
     <div v-show="tab === 'admin-users'" class="container">
       <AdminUsersTab v-if="tab === 'admin-users' && auth.isSuperAdmin" :key="adminUsersRefreshKey" />
@@ -695,6 +700,7 @@
 </template>
 
 <script setup>
+import MailTab from '../components/admin/MailTab.vue'
 import CrmTab from '../components/admin/CrmTab.vue'
 import { ref, reactive, computed, watch } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'

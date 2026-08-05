@@ -86,6 +86,12 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Crm.CrmLead> CrmLeads => Set<SharedLibrary.Basics.Opaque.Domains.Crm.CrmLead>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Crm.CrmActivity> CrmActivities => Set<SharedLibrary.Basics.Opaque.Domains.Crm.CrmActivity>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Crm.CrmAssignmentConfig> CrmAssignmentConfigs => Set<SharedLibrary.Basics.Opaque.Domains.Crm.CrmAssignmentConfig>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Mail.MailAccount> MailAccounts => Set<SharedLibrary.Basics.Opaque.Domains.Mail.MailAccount>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Mail.MailAccountAccess> MailAccountAccesses => Set<SharedLibrary.Basics.Opaque.Domains.Mail.MailAccountAccess>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Mail.MailFolder> MailFolders => Set<SharedLibrary.Basics.Opaque.Domains.Mail.MailFolder>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Mail.MailMessage> MailMessages => Set<SharedLibrary.Basics.Opaque.Domains.Mail.MailMessage>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Mail.MailAttachment> MailAttachments => Set<SharedLibrary.Basics.Opaque.Domains.Mail.MailAttachment>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Mail.MailMessageLink> MailMessageLinks => Set<SharedLibrary.Basics.Opaque.Domains.Mail.MailMessageLink>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.Currency> Currencies => Set<SharedLibrary.Basics.Opaque.Domains.Payments.Currency>();
     public DbSet<Specialization> Specializations => Set<Specialization>();
     public DbSet<Subject> Subjects => Set<Subject>();

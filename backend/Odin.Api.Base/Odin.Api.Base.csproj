@@ -28,6 +28,7 @@
     <PackageReference Include="Otp.NET" Version="1.*" />
     <PackageReference Include="QuestPDF" Version="2024.10.*" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.*" />
+    <PackageReference Include="MailKit" Version="4.15.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\SharedLibrary.Basics\QuVian.SharedLibrary.Basics.csproj" />

@@ -28,6 +28,7 @@
       <button :class="['main-tab-btn', { active: mainTab === 'forms' }]" @click="mainTab = 'forms'">Forms</button>
       <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Partnership Documents</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'contacts' }]" @click="mainTab = 'contacts'">Contacts</button>
+      <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'mail' }]" @click="mainTab = 'mail'">Mail</button>
       <button :class="['main-tab-btn', { active: mainTab === 'faculties' }]" @click="mainTab = 'faculties'">Faculties</button>
       <button :class="['main-tab-btn', { active: mainTab === 'cohorts' }]" @click="mainTab = 'cohorts'">Module Cohorts</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'invoices' }]" @click="mainTab = 'invoices'">Invoices</button>
@@ -600,6 +601,13 @@
 
     <div v-show="mainTab === 'forms'" class="container">
       <IntakeFillPanel v-if="mainTab === 'forms'" api-base="/v1/partner/intake-forms" />
+    </div>
+
+    <!-- Mail — read-only view of hub mail linked to this partner -->
+    <div v-show="mainTab === 'mail'" class="container">
+      <div class="page-head"><h1>Mail</h1></div>
+      <p class="cert-tab-sub">Email conversations between your institution and MGW, synced from MGW's mailboxes. Read-only.</p>
+      <PartnerMailView v-if="mainTab === 'mail'" endpoint="/v1/partner/mail" />
     </div>
 
     <!-- Contacts — how MGW reaches this partner; Owner contacts admission-only -->
@@ -1316,6 +1324,7 @@
 </template>
 
 <script setup>
+import PartnerMailView from '../components/partner/PartnerMailView.vue'
 import PartnerContactsEditor from '../components/partner/PartnerContactsEditor.vue'
 import { ref, computed, reactive, watch, onMounted } from 'vue'
 import SubjectRubricButton from '../components/admin/SubjectRubricButton.vue'
