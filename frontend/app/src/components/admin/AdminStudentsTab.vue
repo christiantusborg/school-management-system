@@ -569,9 +569,13 @@
                   </button>
                   <button class="btn-add" style="margin-top:.3rem;" @click="openAddProg">+ Add programme</button>
                   <div v-if="addProg.open" class="add-prog-box">
-                    <select v-model="addProg.programmeId" class="inp" style="width:100%; margin-bottom:.35rem;">
+                    <select v-model="addProg.partnerId" class="inp" style="width:100%; margin-bottom:.35rem;" @change="onAddProgPartnerChange">
+                      <option value="">— School / partner —</option>
+                      <option v-for="pa in addProg.partners" :key="pa.partnerId" :value="pa.partnerId">{{ pa.name }}</option>
+                    </select>
+                    <select v-model="addProg.programmeId" class="inp" style="width:100%; margin-bottom:.35rem;" :disabled="!addProg.partnerId" @change="addProg.specializationId = ''">
                       <option value="">— Programme —</option>
-                      <option v-for="p in enrolmentProgOptions" :key="p.programmeId" :value="p.programmeId">
+                      <option v-for="p in addProg.options" :key="p.programmeId" :value="p.programmeId">
                         {{ p.name }}{{ p.schoolName ? ` (${p.schoolName})` : '' }}
                       </option>
                     </select>
@@ -1490,19 +1494,35 @@ const PROGRAM_SUBTABS = [
 const programSubTab = ref('enrolment')
 
 // ── Add another programme to this student (Programs left menu) ──────────────
-const addProg = reactive({ open: false, programmeId: '', specializationId: '', specs: [], busy: false, error: '' })
+const addProg = reactive({ open: false, partnerId: '', partners: [], options: [],
+  programmeId: '', specializationId: '', busy: false, error: '' })
 const addProgSpecs = computed(() =>
-  addProg.specs.filter(m => m.programmeId === addProg.programmeId && !m.deletedAt))
+  addProg.options.find(p => p.programmeId === addProg.programmeId)?.specializations ?? [])
 async function openAddProg() {
   addProg.open = true
   addProg.error = ''
   addProg.programmeId = ''
   addProg.specializationId = ''
-  loadEnrolmentProgOptions()
+  addProg.options = []
   try {
-    const res = await api.get('/v1/school/specializations')
-    addProg.specs = res.data.items ?? []
-  } catch { addProg.specs = [] }
+    const res = await api.get('/v1/admin/school/partners', { params: { page: 1, pageSize: 200 } })
+    addProg.partners = (res.data.items ?? []).map(p => ({ partnerId: p.partnerId, name: p.name }))
+  } catch { addProg.partners = [] }
+  // Default the school to the student's current partner.
+  const currentPartnerId = detailModal.value?.data?.partnerId
+    ?? activeEnrollment.value?.enrolmentPartnerId ?? ''
+  addProg.partnerId = addProg.partners.some(p => p.partnerId === currentPartnerId) ? currentPartnerId : ''
+  if (addProg.partnerId) await onAddProgPartnerChange()
+}
+async function onAddProgPartnerChange() {
+  addProg.programmeId = ''
+  addProg.specializationId = ''
+  addProg.options = []
+  if (!addProg.partnerId) return
+  try {
+    const res = await api.get('/v1/admin/students/enrolment-options', { params: { partnerId: addProg.partnerId } })
+    addProg.options = res.data.items ?? []
+  } catch { addProg.options = [] }
 }
 async function saveAddProg() {
   if (!detailModal.value || !addProg.specializationId || addProg.busy) return
@@ -1510,7 +1530,7 @@ async function saveAddProg() {
   addProg.error = ''
   try {
     const res = await api.post(`/v1/admin/students/${detailModal.value.studentId}/enrollments`,
-      { specializationId: addProg.specializationId })
+      { specializationId: addProg.specializationId, partnerId: addProg.partnerId || null })
     addProg.open = false
     await refreshDetailModal()
     if (res.data?.enrollmentId) detailModal.value.activeEnrollmentId = res.data.enrollmentId

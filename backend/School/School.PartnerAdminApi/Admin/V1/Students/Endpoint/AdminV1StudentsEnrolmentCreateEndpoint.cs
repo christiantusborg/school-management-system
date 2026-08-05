@@ -17,6 +17,8 @@ public sealed class AdminV1StudentsEnrolmentCreateEndpoint : IEndpointMarker
     {
         app.MapPost("/v1/admin/students/{studentId:guid}/enrollments", HandleAsync)
             .RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/students/enrolment-options", OptionsAsync)
+            .RequireAuthorization("AdminOnly");
         return app;
     }
 
@@ -24,6 +26,66 @@ public sealed class AdminV1StudentsEnrolmentCreateEndpoint : IEndpointMarker
     {
         public Guid? SpecializationId { get; init; }
         public int ModeOfStudyId { get; init; } = 1;
+        /// <summary>Partner (school) the new enrolment belongs to; defaults
+        /// to the student's original partner.</summary>
+        public Guid? PartnerId { get; init; }
+    }
+
+    /// <summary>Programme → specializations a given PARTNER may enrol into:
+    /// per-spec granted core specs (not partner-disabled) plus approved specs
+    /// of the partner's own custom programmes. Drives the admin drawer's
+    /// "+ Add programme" picker after the school is chosen.</summary>
+    private static async Task<IResult> OptionsAsync(
+        [FromQuery] Guid partnerId, OdinDbContext db, CancellationToken ct)
+    {
+        var granted = await db.SpecializationPartners
+            .Where(g => g.PartnerId == partnerId && !g.DisabledByPartner
+                && g.Specialization.DeletedAt == null
+                && g.Specialization.Programmes.DeletedAt == null)
+            .Select(g => new
+            {
+                specializationId = g.SpecializationId,
+                specializationName = g.Specialization.Name,
+                programmeId = g.Specialization.ProgrammeId,
+                programmeName = g.Specialization.Programmes.Name,
+                programmeCode = g.Specialization.Programmes.Code,
+                schoolName = g.Specialization.Programmes.School != null
+                    ? g.Specialization.Programmes.School.Name : null,
+            })
+            .ToListAsync(ct);
+        var ownApproved = await db.PartnerSpecializationStatuses
+            .Where(x => x.Status == 2
+                && x.Specialization.DeletedAt == null
+                && x.Specialization.Programmes.OwnerId == partnerId
+                && x.Specialization.Programmes.DeletedAt == null)
+            .Select(x => new
+            {
+                specializationId = x.SpecializationId,
+                specializationName = x.Specialization.Name,
+                programmeId = x.Specialization.ProgrammeId,
+                programmeName = x.Specialization.Programmes.Name,
+                programmeCode = x.Specialization.Programmes.Code,
+                schoolName = x.Specialization.Programmes.School != null
+                    ? x.Specialization.Programmes.School.Name : null,
+            })
+            .ToListAsync(ct);
+        var items = granted.Concat(ownApproved)
+            .GroupBy(x => x.programmeId)
+            .Select(g => new
+            {
+                programmeId = g.Key,
+                name = g.First().programmeName,
+                code = g.First().programmeCode,
+                schoolName = g.First().schoolName,
+                specializations = g
+                    .Select(x => new { x.specializationId, name = x.specializationName })
+                    .DistinctBy(x => x.specializationId)
+                    .OrderBy(x => x.name)
+                    .ToList(),
+            })
+            .OrderBy(x => x.name)
+            .ToList();
+        return Results.Ok(new { items });
     }
 
     private static async Task<IResult> HandleAsync(
@@ -37,24 +99,26 @@ public sealed class AdminV1StudentsEnrolmentCreateEndpoint : IEndpointMarker
             .FirstOrDefaultAsync(s => s.StudentId == studentId && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();
 
+        var enrolPartnerId = body.PartnerId ?? student.PartnerId;
+        if (!await db.Partners.AnyAsync(p => p.PartnerId == enrolPartnerId && p.DeletedAt == null, ct))
+            return Results.BadRequest(new { error = "Partner not found." });
+
         var target = await db.Specializations
             .Where(s => s.SpecializationId == specId && s.DeletedAt == null)
             .Select(s => new { s.SpecializationId, s.ProgrammeId })
             .FirstOrDefaultAsync(ct);
         if (target is null) return Results.BadRequest(new { error = "Specialization not found." });
 
-        var owner = await db.Programmes
-            .Where(p => p.ProgrammeId == target.ProgrammeId && p.DeletedAt == null)
-            .Select(p => new { p.OwnerId })
-            .FirstOrDefaultAsync(ct);
-        if (owner is null) return Results.BadRequest(new { error = "Programme not found." });
-
-        var available = owner.OwnerId == null
-            || owner.OwnerId == student.PartnerId
-            || await db.ProgrammePartners.AnyAsync(pp =>
-                pp.ProgrammeId == target.ProgrammeId && pp.PartnerId == student.PartnerId && pp.IsActive != null, ct);
+        // Availability follows the CHOSEN partner's real access: per-spec
+        // granted core specs (not disabled) or approved specs of that
+        // partner's own custom programmes.
+        var available = await db.SpecializationPartners.AnyAsync(g =>
+                g.SpecializationId == specId && g.PartnerId == enrolPartnerId && !g.DisabledByPartner, ct)
+            || await db.PartnerSpecializationStatuses.AnyAsync(x =>
+                x.SpecializationId == specId && x.Status == 2
+                && x.Specialization.Programmes.OwnerId == enrolPartnerId, ct);
         if (!available)
-            return Results.BadRequest(new { error = "That programme isn't available to this student's partner." });
+            return Results.BadRequest(new { error = "That programme isn't available to the selected partner." });
 
         var duplicate = await db.Enrollments.AnyAsync(e =>
             e.StudentId == studentId && e.SpecializationId == specId && e.DeletedAt == null, ct);
@@ -66,7 +130,7 @@ public sealed class AdminV1StudentsEnrolmentCreateEndpoint : IEndpointMarker
         {
             StudentEnrollmentId = enrollmentId,
             StudentId = studentId,
-            PartnerId = student.PartnerId,
+            PartnerId = enrolPartnerId,
             SpecializationId = specId,
             ModeOfStudyId = body.ModeOfStudyId,
             PathwayId = 0,
