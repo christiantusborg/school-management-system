@@ -810,6 +810,12 @@
             <div v-if="programSubTab === 'letters'" class="tab-pane">
               <p v-if="!activeEnrollment" class="muted">No enrolment selected.</p>
               <div v-else class="letters-list">
+                <div class="passmark-row">
+                  <span>🎯 Approval-letter pass mark for this programme:</span>
+                  <input type="number" min="0" max="100" v-model.number="passMarkDraft" class="passmark-inp" />
+                  <button class="btn-mini" :disabled="passMarkBusy" @click="savePassMark">{{ passMarkBusy ? 'Saving…' : 'Save' }}</button>
+                  <span v-if="passMarkMsg" class="muted">{{ passMarkMsg }}</span>
+                </div>
                 <template v-for="t in LETTER_TYPES" :key="t.key">
                   <div class="letter-row" :class="{ disabled: !activeEnrollment.letters?.[t.key] }">
                     <span class="letter-icon">{{ t.icon }}</span>
@@ -1506,6 +1512,8 @@ const ALL_LETTER_TYPES = [
   { key: 'provisionalCertificate', label: 'Printable Cert',         icon: '🎓' },
   // Only for programmes with the digital-student-card toggle on.
   { key: 'studentIdCard',          label: 'Student ID Card',        icon: '🪪', requiresCardToggle: true },
+  { key: 'finalProposalApproval',  label: 'Proposal Approval Letter', icon: '📗' },
+  { key: 'finalProjectApproval',   label: 'Project Approval Letter',  icon: '📘' },
 ]
 const LETTER_TYPES = computed(() => ALL_LETTER_TYPES.filter(t =>
   !t.requiresCardToggle || activeEnrollment.value?.issueDigitalStudentCard))
@@ -2439,6 +2447,23 @@ async function regenerateLetters() {
 
 // Regenerate a single released letter (per-row button). camelCase key →
 // PascalCase LetterType the backend enum expects (offerLetter → OfferLetter).
+// ── Approval-letter pass mark (per programme, default 40) ───────────────────
+const passMarkDraft = ref(40)
+const passMarkBusy = ref(false)
+const passMarkMsg = ref('')
+watch(activeEnrollment, e => { passMarkDraft.value = e?.projectApprovalPassMark ?? 40 }, { immediate: true })
+async function savePassMark() {
+  if (!activeEnrollment.value?.programmeId || passMarkBusy.value) return
+  passMarkBusy.value = true; passMarkMsg.value = ''
+  try {
+    await api.patch(`/v1/school/programmes/${activeEnrollment.value.programmeId}/project-pass-mark`, { passMark: Number(passMarkDraft.value) || 0 })
+    activeEnrollment.value.projectApprovalPassMark = Number(passMarkDraft.value) || 0
+    passMarkMsg.value = '✓ Saved'
+    setTimeout(() => { passMarkMsg.value = '' }, 2000)
+  } catch (e) { passMarkMsg.value = e.response?.data?.error ?? e.message }
+  finally { passMarkBusy.value = false }
+}
+
 async function regenerateLetter(t) {
   if (!detailModal.value?.studentId || !activeEnrollment.value) return
   // Works for not-yet-released letters too: the backend release creates the
@@ -4240,4 +4265,6 @@ async function runExport() {
 .sid-label { font-size: .72rem; color: #667; }
 .sid-add { display: flex; gap: .35rem; margin-top: .25rem; }
 .sid-inp { padding: .28rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .78rem; }
+.passmark-row { display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: #445; background: #f6f9fd; border: 1px solid #e0e6ee; border-radius: 7px; padding: .4rem .65rem; margin-bottom: .5rem; }
+.passmark-inp { width: 70px; padding: .28rem .45rem; border: 1px solid #cfd7e3; border-radius: 5px; }
 </style>

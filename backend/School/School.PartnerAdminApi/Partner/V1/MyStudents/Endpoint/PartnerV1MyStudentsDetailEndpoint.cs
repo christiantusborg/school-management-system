@@ -246,6 +246,8 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
                 // Partners may download an issued digital student ID card
                 // (same access as the student's other released letters).
                 studentIdCard          = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.StudentIdCard),
+                finalProposalApproval  = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.FinalProposalApproval),
+                finalProjectApproval   = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.FinalProjectApproval),
             },
         }).ToList();
 

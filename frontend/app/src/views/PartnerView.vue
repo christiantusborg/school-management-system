@@ -443,6 +443,16 @@
               <small class="muted">Credits a student must complete before grades can be submitted. Admission can adjust this later.</small>
             </div>
 
+            <div class="prog-edit-row">
+              <label class="prog-edit-label">Duration of study</label>
+              <div class="prog-dur-range">
+                <input v-model.number="clone.minDurationMonths" type="number" min="1" class="prog-edit-input prog-dur-inp" placeholder="min" />
+                <span>–</span>
+                <input v-model.number="clone.maxDurationMonths" type="number" min="1" class="prog-edit-input prog-dur-inp" placeholder="max" />
+                <span class="muted">months (allowed range for approved durations)</span>
+              </div>
+            </div>
+
             <div class="prog-edit-row pathway-row-toggle" @click="togglePathwayPanel(clone.id)">
               <label class="prog-edit-label" style="cursor:pointer">
                 <span class="arrow-sm">{{ pathwayOpen.has(clone.id) ? '▾' : '▸' }}</span>
@@ -544,6 +554,10 @@
               <span v-else-if="clone.hasEnrolments">&#128274; Students have enrolled in this programme — it is locked.</span>
               <span v-else-if="clone.status === 'approved'">&#128274; This programme has been approved by MGW.</span>
               <span v-else>&#9203; Awaiting MGW review — editing is locked while under review.</span>
+            </div>
+            <div class="prog-edit-row">
+              <label class="prog-edit-label">Duration of study</label>
+              <span class="muted">{{ clone.minDurationMonths ?? '—' }} – {{ clone.maxDurationMonths ?? '—' }} months</span>
             </div>
             <div v-if="(clone.pathwayIds ?? []).length" class="prog-edit-row">
               <label class="prog-edit-label">Pathways</label>
@@ -1573,6 +1587,8 @@ async function loadProgDetail(clone) {
   clone.name = d.name
   clone.code = d.code
   clone.requiredEcts = d.requiredEcts ?? null
+  clone.minDurationMonths = d.minDurationMonths ?? null
+  clone.maxDurationMonths = d.maxDurationMonths ?? null
   clone.schoolId = d.schoolId ?? null
   clone.schoolName = d.schoolName ?? null
   clone.status = (d.status ?? 'Draft').toLowerCase()
@@ -1735,6 +1751,8 @@ async function saveProgEdit(clone) {
       name: clone.name,
       code: clone.code,
       requiredEcts: (clone.requiredEcts === '' || clone.requiredEcts == null) ? 0 : Number(clone.requiredEcts),
+      minDurationMonths: Number(clone.minDurationMonths) || null,
+      maxDurationMonths: Number(clone.maxDurationMonths) || null,
       schoolId: clone.schoolId || null,
       specializations: clone.specializations.map(m => ({
         specializationId: isServerId(m.id) ? m.id : null,
@@ -2995,4 +3013,6 @@ function logout() { auth.logout(); router.push('/login') }
 .sp-approved { background: #d7f0df; color: #1c7a4a; }
 .sp-rejected { background: #fde7e5; color: #a8241e; }
 .btn-spec-submit { padding: .15rem .5rem; font-size: .72rem; }
+.prog-dur-range { display: flex; align-items: center; gap: .45rem; }
+.prog-dur-inp { width: 90px; }
 </style>

@@ -55,6 +55,8 @@ const ALL_TYPES = [
   { code: 'Certificate',            label: 'Digital Certificate' },
   { code: 'ProvisionalCertificate', label: 'Printable Cert' },
   { code: 'StudentIdCard',          label: 'Student ID Card', requiresCard: true },
+  { code: 'FinalProposalApproval', label: 'Proposal Approval' },
+  { code: 'FinalProjectApproval',  label: 'Project Approval' },
 ]
 const TYPES = computed(() =>
   ALL_TYPES.filter(t => !t.requiresCard || props.showStudentCard))

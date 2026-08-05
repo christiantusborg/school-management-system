@@ -4,6 +4,28 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'approval-letters',
+    date: '2026-08-06',
+    title: 'Final project approval letters + spec code editing',
+    summary: 'Proposal/Project approval letters auto-release at the pass mark; admission can edit spec codes.',
+    details: [
+      'Two new letters on the Letters tab: "Proposal Approval Letter" and "Project Approval Letter", each with its own designer template per programme + partner and manual Generate / Send buttons.',
+      'They release AUTOMATICALLY when a mark saved in a "Dissertation Proposal" (proposal letter) or "Final Project / Dissertation" (project letter) cohort reaches the programme pass mark - configurable per programme on the Letters tab, default 40.',
+      'Admission can now edit the specialization CODE on custom programmes (partner- or admission-created) from the partner Programmes panel.',
+      'Partner programme editor also gained the Duration of study (min-max months) fields.',
+    ],
+  },
+  {
+    id: 'partner-prog-duration',
+    date: '2026-08-06',
+    title: 'Duration of study on partner programme editor',
+    summary: 'My Programs edit form gains the min–max duration months fields.',
+    details: [
+      'The partner portal programme editor was missing the Duration of study range: min and max months are now editable next to ECTS (and shown read-only on locked programmes).',
+      'The range is what approved per-student durations are validated against.',
+    ],
+  },
+  {
     id: 'mail-lead-history-sales',
     date: '2026-08-05',
     title: 'Full mail history on leads & students + Mail for Sales',

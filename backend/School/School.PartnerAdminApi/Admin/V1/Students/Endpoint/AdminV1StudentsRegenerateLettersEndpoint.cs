@@ -20,6 +20,8 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
 {
     public IEndpointRouteBuilder Map(IEndpointRouteBuilder app)
     {
+        app.MapPatch("/v1/school/programmes/{programmeId:guid}/project-pass-mark", PassMarkAsync)
+            .RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/students/{studentId:guid}/enrollments/{enrollmentId:guid}/letters/regenerate", HandleAsync)
             .RequireAuthorization("AdminOnly");
         return app;
@@ -34,6 +36,8 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
         (SystemDocumentTypeIds.Certificate,            LetterType.Certificate),
         (SystemDocumentTypeIds.ProvisionalCertificate, LetterType.ProvisionalCertificate),
         (SystemDocumentTypeIds.StudentIdCard,          LetterType.StudentIdCard),
+        (SystemDocumentTypeIds.FinalProposalApproval,  LetterType.FinalProposalApproval),
+        (SystemDocumentTypeIds.FinalProjectApproval,   LetterType.FinalProjectApproval),
     ];
 
     private static async Task<IResult> HandleAsync(
@@ -99,5 +103,22 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
         }
 
         return Results.Ok(new { regenerated });
+    }
+
+    public sealed class PassMarkBody { public int PassMark { get; init; } }
+
+    /// <summary>Per-programme pass mark for the final-project approval
+    /// letters (default 40): a proposal/project cohort mark at or above it
+    /// releases the matching approval letter automatically.</summary>
+    private static async Task<IResult> PassMarkAsync(
+        Guid programmeId, [FromBody] PassMarkBody body, OdinDbContext db, CancellationToken ct)
+    {
+        if (body.PassMark is < 0 or > 100)
+            return Results.BadRequest(new { error = "Pass mark must be between 0 and 100." });
+        var programme = await db.Programmes.FirstOrDefaultAsync(p => p.ProgrammeId == programmeId && p.DeletedAt == null, ct);
+        if (programme is null) return Results.NotFound();
+        programme.ProjectApprovalPassMark = body.PassMark;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { programmeId, passMark = programme.ProjectApprovalPassMark });
     }
 }

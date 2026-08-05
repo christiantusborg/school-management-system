@@ -34,6 +34,11 @@ public class Programme : IDeletedAtEntity
     /// everywhere while off.</summary>
     public bool IssueDigitalStudentCard { get; set; }
 
+    /// <summary>Pass mark (0–100) for the final-project approval letters:
+    /// a proposal/project cohort mark at or above this releases the matching
+    /// approval letter automatically. Default 40; configurable per programme.</summary>
+    public int ProjectApprovalPassMark { get; set; } = 40;
+
     public DateTime? DeletedAt { get; set; }
    
     public Guid? OwnerId { get; set; }

@@ -92,6 +92,7 @@
               <span class="caret">{{ openSpecs.has(s.specializationId) ? '▾' : '▸' }}</span>
               <strong>{{ s.name }}</strong>
               <span class="mono-code">{{ s.code }}</span>
+              <button class="btn-sm" title="Edit specialization code" @click.stop="editSpecCode(s)">✎</button>
               <span class="muted">{{ subjectsFor(s.specializationId).length }} subjects</span>
               <span v-if="s.instructionLanguage" class="pill">{{ s.instructionLanguage }}</span>
               <span class="pill" :class="(s.offerAcceptanceMode === 'AutoAccept') ? 'pill-auto' : 'pill-student'">
@@ -297,6 +298,16 @@ function specStatus(s) {
   // approvalStatus: 0 Draft, 1 Pending, 2 Approved, 3 Rejected; null = Draft
   return ['Draft', 'Pending', 'Approved', 'Rejected'][s.approvalStatus ?? 0] ?? 'Draft'
 }
+// Admission can correct the specialization CODE on custom programmes.
+async function editSpecCode(spec) {
+  const code = prompt('Specialization code:', spec.code)
+  if (code == null || !code.trim() || code.trim() === spec.code) return
+  try {
+    await apiClient.put(`/v1/school/specializations/${spec.specializationId}`, { code: code.trim() })
+    await load()
+  } catch (e) { loadError.value = e.response?.data?.message ?? e.response?.data?.error ?? e.message ?? 'Failed to update code' }
+}
+
 async function approveSpec(s) {
   if (specBusy.value.has(s.specializationId)) return
   specBusy.value.add(s.specializationId)

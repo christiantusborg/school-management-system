@@ -421,7 +421,8 @@ public sealed class PartnerV1MyCohortsEndpoint : IEndpointMarker
             c.ModuleCohortId == cohortId && c.PartnerId == partnerId && c.DeletedAt == null
             && (teacherId == null || c.TeacherId == teacherId), ct);
         if (!owned) return Results.NotFound();
-        var (found, error, saved, skipped) = await ModuleCohortLogic.SaveGradesDraftAsync(db, cohortId, body, ct);
+        var letterRelease = httpContext.RequestServices.GetService<Odin.Api.Base.Letters.LetterReleaseService>();
+        var (found, error, saved, skipped) = await ModuleCohortLogic.SaveGradesDraftAsync(db, cohortId, body, ct, letterRelease);
         if (!found) return Results.NotFound();
         return error is null ? Results.Ok(new { saved, skipped }) : Results.BadRequest(new { error });
     }

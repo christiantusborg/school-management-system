@@ -187,6 +187,8 @@ public sealed class LetterReleaseService(
             LetterType.ProvisionalCertificate => SystemDocumentTypeIds.ProvisionalCertificate,
             LetterType.PrintableTranscript    => SystemDocumentTypeIds.PrintableTranscript,
             LetterType.StudentIdCard          => SystemDocumentTypeIds.StudentIdCard,
+            LetterType.FinalProposalApproval  => SystemDocumentTypeIds.FinalProposalApproval,
+            LetterType.FinalProjectApproval   => SystemDocumentTypeIds.FinalProjectApproval,
             _ => throw new ArgumentOutOfRangeException(nameof(letterType)),
         };
 
@@ -272,6 +274,8 @@ public sealed class LetterReleaseService(
         LetterType.ProvisionalCertificate => "PCERT",
         LetterType.PrintableTranscript    => "PTR",
         LetterType.StudentIdCard          => "IDCARD",
+        LetterType.FinalProposalApproval  => "PROPAPP",
+        LetterType.FinalProjectApproval   => "PROJAPP",
         _ => "DOC",
     };
 

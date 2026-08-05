@@ -571,9 +571,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SaveGradesDraftAsync(
-        Guid cohortId, [FromBody] ModuleCohortLogic.GradesDraftBody body, OdinDbContext db, CancellationToken ct)
+        Guid cohortId, [FromBody] ModuleCohortLogic.GradesDraftBody body, OdinDbContext db,
+        Odin.Api.Base.Letters.LetterReleaseService letterRelease, CancellationToken ct)
     {
-        var (found, error, saved, skipped) = await ModuleCohortLogic.SaveGradesDraftAsync(db, cohortId, body, ct);
+        var (found, error, saved, skipped) = await ModuleCohortLogic.SaveGradesDraftAsync(db, cohortId, body, ct, letterRelease);
         if (!found) return Results.NotFound();
         return error is null ? Results.Ok(new { saved, skipped }) : Results.BadRequest(new { error });
     }

@@ -219,8 +219,10 @@ public static class ModuleCohortLogic
     /// target Subject row is resolved by the cohort's module CODE within the
     /// enrolment's own specialization. Never touches enrolment status.</summary>
     public static async Task<(bool Found, string? Error, int Saved, List<object> Skipped)> SaveGradesDraftAsync(
-        OdinDbContext db, Guid cohortId, GradesDraftBody body, CancellationToken ct)
+        OdinDbContext db, Guid cohortId, GradesDraftBody body, CancellationToken ct,
+        Odin.Api.Base.Letters.LetterReleaseService? letterRelease = null)
     {
+        var savedScores = new List<(Guid EnrollmentId, int Score)>();
         var cohort = await db.ModuleCohorts
             .Where(c => c.ModuleCohortId == cohortId && c.DeletedAt == null)
             .Select(c => new
@@ -317,6 +319,7 @@ public static class ModuleCohortLogic
             }
             else finalScore = item.Score!.Value;
 
+            savedScores.Add((item.EnrollmentId, finalScore));
             var row = existing.FirstOrDefault(g => g.StudentEnrollmentId == item.EnrollmentId && g.SubjectId == subjectId);
             if (row is not null) { row.Score = finalScore; row.GradedAt = now; }
             else
@@ -358,6 +361,13 @@ public static class ModuleCohortLogic
         }
 
         await db.SaveChangesAsync(ct);
+
+        // Final-project approval letters: a mark at/above the programme's
+        // pass mark in a "Dissertation Proposal" / "Final Project" cohort
+        // releases the matching letter automatically. Best-effort — a missing
+        // template never fails the grade save.
+        await TryReleaseApprovalLettersAsync(db, letterRelease, cohortId, savedScores, ct);
+
         return (true, null, saved, skipped);
     }
 
@@ -367,6 +377,49 @@ public static class ModuleCohortLogic
     /// AwaitingGradesApproval (same rule as the per-student submit). Returns
     /// submitted count + per-student skip reasons.
     /// </summary>
+    internal static async Task TryReleaseApprovalLettersAsync(
+        OdinDbContext db, Odin.Api.Base.Letters.LetterReleaseService? letterRelease,
+        Guid cohortId, List<(Guid EnrollmentId, int Score)> savedScores, CancellationToken ct)
+    {
+        if (letterRelease is null || savedScores.Count == 0) return;
+        var typeName = await db.ModuleCohorts
+            .Where(c => c.ModuleCohortId == cohortId)
+            .Select(c => c.CohortTypeId != null
+                ? db.CohortTypes.Where(t => t.CohortTypeId == c.CohortTypeId).Select(t => t.Name).FirstOrDefault()
+                : null)
+            .FirstOrDefaultAsync(ct);
+        if (string.IsNullOrWhiteSpace(typeName)) return;
+
+        // "Dissertation Proposal" hits the proposal letter (checked FIRST —
+        // it also contains "dissertation"); "Final Project / Dissertation"
+        // hits the project letter.
+        SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.LetterType? letter =
+            typeName.Contains("proposal", StringComparison.OrdinalIgnoreCase)
+                ? SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.LetterType.FinalProposalApproval
+            : typeName.Contains("final", StringComparison.OrdinalIgnoreCase)
+                || typeName.Contains("dissertation", StringComparison.OrdinalIgnoreCase)
+                ? SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.LetterType.FinalProjectApproval
+            : null;
+        if (letter is null) return;
+        var docTypeId = letter == SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.LetterType.FinalProposalApproval
+            ? SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.FinalProposalApproval
+            : SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.FinalProjectApproval;
+
+        foreach (var (enrollmentId, score) in savedScores)
+        {
+            var passMark = await db.Enrollments
+                .Where(e => e.StudentEnrollmentId == enrollmentId)
+                .Select(e => (int?)e.Specialization.Programmes.ProjectApprovalPassMark)
+                .FirstOrDefaultAsync(ct) ?? 40;
+            if (score < passMark) continue;
+            var already = await db.StudentDocuments.AnyAsync(d => d.EnrollmentId == enrollmentId
+                && d.DocumentTypeId == docTypeId && d.DeletedAt == null, ct);
+            if (already) continue;
+            try { await letterRelease.ReleaseAsync(enrollmentId, letter.Value, ct); }
+            catch { /* no published template yet — the mark still stands */ }
+        }
+    }
+
     public static async Task<object?> SubmitGradesAsync(
         OdinDbContext db, Guid cohortId, Guid byUserId, string actorLabel, CancellationToken ct)
     {

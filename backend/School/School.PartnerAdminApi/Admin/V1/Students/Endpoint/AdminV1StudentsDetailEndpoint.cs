@@ -177,6 +177,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 programmeName = e.Specialization.Programmes.Name,
                 enrolmentPartnerId = e.PartnerId,
                 enrolmentPartnerName = db.Partners.Where(pa => pa.PartnerId == e.PartnerId).Select(pa => pa.Name).FirstOrDefault(),
+                projectApprovalPassMark = e.Specialization.Programmes.ProjectApprovalPassMark,
                 programmeMinDurationMonths = e.Specialization.Programmes.MinDurationMonths,
                 programmeMaxDurationMonths = e.Specialization.Programmes.MaxDurationMonths,
                 specializationId = e.SpecializationId,
@@ -231,6 +232,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             e.programmeName,
             e.enrolmentPartnerId,
             e.enrolmentPartnerName,
+            e.projectApprovalPassMark,
             e.programmeMinDurationMonths,
             e.programmeMaxDurationMonths,
             e.specializationId,
@@ -261,6 +263,8 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 certificate            = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.Certificate),
                 provisionalCertificate = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.ProvisionalCertificate),
                 studentIdCard          = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.StudentIdCard),
+                finalProposalApproval  = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.FinalProposalApproval),
+                finalProjectApproval   = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.FinalProjectApproval),
             },
             issueDigitalStudentCard = db.Programmes
                 .Where(p => p.ProgrammeId == e.programmeId)

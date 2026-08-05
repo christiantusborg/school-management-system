@@ -18,4 +18,12 @@ public enum LetterType
     /// IssueDigitalStudentCard toggle is on; visible to the Admission Office,
     /// the partner and the student.</summary>
     StudentIdCard = 6,
+    /// <summary>Approval letter for the Final Project Proposal / Dissertation
+    /// Project Proposal — auto-released when the student's mark in a
+    /// "Dissertation Proposal"-type cohort reaches the programme's pass mark.</summary>
+    FinalProposalApproval = 7,
+    /// <summary>Approval letter for the Final Project / Dissertation Project —
+    /// auto-released when the student's mark in a "Final Project /
+    /// Dissertation"-type cohort reaches the programme's pass mark.</summary>
+    FinalProjectApproval = 8,
 }
