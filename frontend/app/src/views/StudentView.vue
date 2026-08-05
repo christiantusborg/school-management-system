@@ -38,7 +38,9 @@
               <h3 class="panel-title">Account</h3>
               <dl class="summary">
                 <div><dt>Name</dt><dd>{{ displayName }}</dd></div>
-                <div><dt>Student ID</dt><dd>{{ data.studentNumber || '—' }}</dd></div>
+                <div><dt>Student ID</dt><dd>{{ data.studentNumber || '—' }}
+                  <span v-for="(i, ix) in (data.identifiers ?? []).filter(x => !x.isPrimary)" :key="ix" class="muted" style="font-size:.8rem;"> · {{ i.value }}</span>
+                </dd></div>
                 <div><dt>Email</dt><dd>{{ data.account?.email || '—' }}
                   <span v-if="data.account?.emailVerified" class="doc-pill tone-green">Verified</span></dd></div>
                 <div><dt>Username</dt><dd>{{ data.account?.username || '—' }}</dd></div>

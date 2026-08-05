@@ -331,6 +331,11 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
         {
             studentId = student.StudentId,
             studentNumber = student.StudentNumber,
+            identifiers = await db.StudentIdentifiers
+                .Where(i => i.StudentId == student.StudentId)
+                .OrderByDescending(i => i.IsPrimary).ThenBy(i => i.CreatedAt)
+                .Select(i => new { value = i.Value, label = i.Label, isPrimary = i.IsPrimary })
+                .ToListAsync(ct),
             partner = student.Partner == null ? null : new
             {
                 name = student.Partner.Name,

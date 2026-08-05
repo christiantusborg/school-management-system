@@ -477,6 +477,23 @@
                       <input v-model="detailModal.data.personal.studentCardId"
                              placeholder="Overrides the ID on the card only" />
                     </label>
+                    <div class="edit-field edit-field-wide sid-box">
+                      <span>Student IDs</span>
+                      <div v-for="i in (detailModal.data.identifiers ?? [])" :key="i.studentIdentifierId" class="sid-row">
+                        <span class="sid-value">{{ i.value }}</span>
+                        <span v-if="i.isPrimary" class="sid-primary">PRIMARY</span>
+                        <span v-if="i.label" class="sid-label">{{ i.label }}</span>
+                        <button v-if="!i.isPrimary" class="btn-mini" @click="makePrimaryId(i)">Make primary</button>
+                        <button class="btn-mini" @click="editId(i)">Edit</button>
+                        <button v-if="!i.isPrimary" class="btn-mini btn-remove" @click="deleteId(i)">✕</button>
+                      </div>
+                      <div class="sid-add">
+                        <input v-model="sidNew.value" placeholder="New Student ID…" class="sid-inp" />
+                        <input v-model="sidNew.label" placeholder="Label (optional)" class="sid-inp" />
+                        <button class="btn-mini" :disabled="!sidNew.value.trim() || sidNew.busy" @click="addId">+ Add ID</button>
+                      </div>
+                      <p v-if="sidNew.error" class="card-toggle-err" style="margin:.2rem 0 0;">{{ sidNew.error }}</p>
+                    </div>
                     <label class="edit-field edit-field-wide">
                       <span>Nationality</span>
                       <select v-model.number="detailModal.data.personal.nationalityId">
@@ -3282,9 +3299,42 @@ const specializationsAvailable = computed(() => {
 })
 // Fuzzy search across every field admin might type. Rebuilt whenever the
 // list changes; Fuse's threshold tuned to allow typos but stay specific.
+// ── Multiple Student IDs (admission-only management) ────────────────────────
+const sidNew = reactive({ value: '', label: '', busy: false, error: '' })
+async function sidCall(fn) {
+  if (sidNew.busy) return
+  sidNew.busy = true; sidNew.error = ''
+  try {
+    const res = await fn()
+    if (detailModal.value?.data) detailModal.value.data.identifiers = res.data.items ?? []
+    load()
+  } catch (e) { sidNew.error = e.response?.data?.error ?? e.message ?? 'Failed' }
+  finally { sidNew.busy = false }
+}
+const addId = () => sidCall(async () => {
+  const res = await api.post(`/v1/admin/students/${detailModal.value.studentId}/identifiers`,
+    { value: sidNew.value.trim(), label: sidNew.label.trim() || null })
+  sidNew.value = ''; sidNew.label = ''
+  return res
+})
+const makePrimaryId = i => sidCall(() =>
+  api.post(`/v1/admin/students/${detailModal.value.studentId}/identifiers/${i.studentIdentifierId}/make-primary`))
+const deleteId = i => {
+  if (!confirm(`Remove Student ID "${i.value}"?`)) return
+  sidCall(() => api.delete(`/v1/admin/students/${detailModal.value.studentId}/identifiers/${i.studentIdentifierId}`))
+}
+const editId = i => {
+  const value = prompt('Student ID:', i.value)
+  if (value == null) return
+  const label = prompt('Label (optional):', i.label ?? '')
+  sidCall(() => api.patch(`/v1/admin/students/${detailModal.value.studentId}/identifiers/${i.studentIdentifierId}`,
+    { value: value.trim(), label: (label ?? '').trim() || null }))
+}
+
 const fuse = computed(() => new Fuse(list.value, {
   keys: [
     { name: 'studentNumber', weight: 0.9 },
+    { name: 'allStudentIds', weight: 0.85 },
     { name: 'firstName',     weight: 0.8 },
     { name: 'lastName',      weight: 0.8 },
     { name: 'username',      weight: 0.6 },
@@ -4168,4 +4218,11 @@ async function runExport() {
 .pay-rec-note-inp { flex: 1; min-width: 200px; padding: .3rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .78rem; }
 .doc-partner-chip { font-size: .68rem; background: #eef3fb; color: #1a4d8c; border-radius: 9px; padding: 1px 8px; font-weight: 700; }
 .prog-menu-partner { font-size: .68rem; color: #1a4d8c; }
+.sid-box { display: flex; flex-direction: column; gap: .25rem; }
+.sid-row { display: flex; align-items: center; gap: .4rem; font-size: .82rem; }
+.sid-value { font-family: monospace; background: #f6f9fd; border: 1px solid #e0e6ee; border-radius: 5px; padding: 1px 8px; }
+.sid-primary { font-size: .62rem; font-weight: 800; background: #d7f0df; color: #1c7a4a; border-radius: 8px; padding: 1px 6px; }
+.sid-label { font-size: .72rem; color: #667; }
+.sid-add { display: flex; gap: .35rem; margin-top: .25rem; }
+.sid-inp { padding: .28rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .78rem; }
 </style>

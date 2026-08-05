@@ -171,6 +171,8 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
             {
                 studentId = s.StudentId,
                 studentNumber = s.StudentNumber,
+                allStudentIds = db.StudentIdentifiers.Where(i => i.StudentId == s.StudentId)
+                    .Select(i => i.Value).ToList(),
                 createdBy = s.CreatedByUserId != null ? creators.GetValueOrDefault(s.CreatedByUserId) : null,
                 handledBy = s.HandledByUserId != null ? creators.GetValueOrDefault(s.HandledByUserId) : null,
                 wizardStep = s.WizardStep,

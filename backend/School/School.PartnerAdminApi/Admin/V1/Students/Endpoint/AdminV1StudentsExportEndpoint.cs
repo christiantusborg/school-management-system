@@ -183,6 +183,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
     private sealed record ExportRow(
         Guid StudentId,
         string? StudentNumber,
+        string? AllStudentIds,
         string? Username,
         string? Email,
         bool EmailVerified,
@@ -220,6 +221,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
             {
                 s.StudentId,
                 s.StudentNumber,
+                AllStudentIds = string.Join(", ", db.StudentIdentifiers.Where(i => i.StudentId == s.StudentId).OrderByDescending(i => i.IsPrimary).Select(i => i.Value)),
                 s.UserId,
                 s.PartnerId,
                 s.DateOfBirth,
@@ -473,6 +475,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
             return new ExportRow(
                 s.StudentId,
                 s.StudentNumber,
+                s.AllStudentIds,
                 s.User.UserName,
                 s.User.Email,
                 s.User.EmailConfirmed,
@@ -516,6 +519,7 @@ public sealed class AdminV1StudentsExportEndpoint : IEndpointMarker
     private static readonly Column[] Columns = new Column[]
     {
         new("studentNumber",       "Student #",        false, (r, _) => r.StudentNumber),
+        new("allStudentIds",    "All student IDs", false, (r, _) => r.AllStudentIds),
         new("partnerName",         "Partner",          false, (r, _) => r.PartnerName),
         new("username",            "Username",         false, (r, _) => r.Username),
         new("email",               "Email",            false, (r, _) => r.Email),

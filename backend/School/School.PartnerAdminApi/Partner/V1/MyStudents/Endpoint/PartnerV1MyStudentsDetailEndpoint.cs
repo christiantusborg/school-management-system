@@ -262,6 +262,11 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
         {
             studentId = student.StudentId,
             studentNumber = student.StudentNumber,
+            identifiers = await db.StudentIdentifiers
+                .Where(i => i.StudentId == studentId)
+                .OrderByDescending(i => i.IsPrimary).ThenBy(i => i.CreatedAt)
+                .Select(i => new { value = i.Value, label = i.Label, isPrimary = i.IsPrimary })
+                .ToListAsync(ct),
             account = new
             {
                 username = student.User.UserName,

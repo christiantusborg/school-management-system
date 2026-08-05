@@ -406,6 +406,12 @@
                     <dt>Date of birth</dt><dd>{{ formatDateD(detailModal.data.personal?.dateOfBirth) || '—' }}</dd>
                     <dt>Passport / ID</dt><dd>{{ detailModal.data.personal?.passportId || '—' }}</dd>
                     <dt>Student card ID</dt><dd>{{ detailModal.data.personal?.studentCardId || '—' }}</dd>
+                    <dt>Student IDs</dt><dd>
+                      <span v-for="(i, ix) in (detailModal.data.identifiers ?? [])" :key="ix">
+                        <code>{{ i.value }}</code><strong v-if="i.isPrimary"> (primary)</strong><span v-if="ix < (detailModal.data.identifiers?.length ?? 0) - 1"> · </span>
+                      </span>
+                      <span v-if="!(detailModal.data.identifiers ?? []).length">—</span>
+                    </dd>
                     <dt>Address</dt><dd>{{ formatAddressD(detailModal.data.personal?.address) || '—' }}</dd>
                   </dl>
                 </div>

@@ -281,6 +281,11 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
         {
             studentId = student.StudentId,
             studentNumber = student.StudentNumber,
+            identifiers = await db.StudentIdentifiers
+                .Where(i => i.StudentId == studentId)
+                .OrderByDescending(i => i.IsPrimary).ThenBy(i => i.CreatedAt)
+                .Select(i => new { studentIdentifierId = i.StudentIdentifierId, value = i.Value, label = i.Label, isPrimary = i.IsPrimary })
+                .ToListAsync(ct),
             handledByUserId = student.HandledByUserId,
             isLegacyStudent = student.IsLegacyStudent,
             moodleEnabled = student.MoodleEnabled,

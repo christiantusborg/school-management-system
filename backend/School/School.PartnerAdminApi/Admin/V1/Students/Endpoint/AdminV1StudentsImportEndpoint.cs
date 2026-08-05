@@ -285,8 +285,25 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             }
             if (plan.SkipReason is not null)
             {
+                // The programme is skipped but a NEW Student ID on the row is
+                // still attached to the matched student.
+                var aliasNote = "";
+                if (plan.ExistingStudent is not null && plan.AddAliasNumber is { } aliasNum
+                    && usedNumbers.Add(aliasNum))
+                {
+                    db.StudentIdentifiers.Add(new SharedLibrary.Basics.Opaque.Domains.StudentIdentifier
+                    {
+                        StudentId = plan.ExistingStudent.StudentId,
+                        Value = aliasNum,
+                        Label = "CSV import",
+                        IsPrimary = false,
+                        CreatedAt = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync(ct);
+                    aliasNote = $" New Student ID '{aliasNum}' attached.";
+                }
                 skipped++;
-                results.Add(RowResult(plan, "skip", plan.SkipReason,
+                results.Add(RowResult(plan, "skip", plan.SkipReason + aliasNote,
                     plan.ExistingStudent?.StudentNumber ?? plan.GivenStudentNumber));
                 continue;
             }
@@ -380,6 +397,15 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                 if (plan.Cell("Phone") is { } phone)
                     db.UserPhones.Add(new UserPhone { UserId = user.Id, Number = phone, IsPrimary = true });
 
+                db.StudentIdentifiers.Add(new SharedLibrary.Basics.Opaque.Domains.StudentIdentifier
+                {
+                    StudentId = student.StudentId,
+                    Value = number,
+                    Label = plan.GivenStudentNumber is not null ? "CSV import" : null,
+                    IsPrimary = true,
+                    CreatedAt = DateTime.UtcNow,
+                });
+
                 createdByKey[plan.NewKey] = student;
                 createdNow = true;
             }
@@ -393,7 +419,9 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             {
                 StudentEnrollmentId = enrollmentId,
                 StudentId = student.StudentId,
-                PartnerId = student.PartnerId,
+                // Multi-partner: the enrolment belongs to the IMPORTING
+                // partner, which may differ from the student's original one.
+                PartnerId = plan.Partner!.PartnerId,
                 SpecializationId = plan.SpecializationId,
                 ModeOfStudyId = plan.ModeOfStudyId,
                 PathwayId = 0,
@@ -414,6 +442,18 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                 ByUserId = actorId,
                 CreatedAt = DateTime.UtcNow,
             });
+            if (plan.ExistingStudent is not null && plan.AddAliasNumber is { } newAlias
+                && usedNumbers.Add(newAlias))
+            {
+                db.StudentIdentifiers.Add(new SharedLibrary.Basics.Opaque.Domains.StudentIdentifier
+                {
+                    StudentId = student.StudentId,
+                    Value = newAlias,
+                    Label = "CSV import",
+                    IsPrimary = false,
+                    CreatedAt = DateTime.UtcNow,
+                });
+            }
             await db.SaveChangesAsync(ct);
 
             if (createdNow) created++; else enrolled++;
@@ -476,6 +516,10 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
         public bool ReusesEarlierRow;
         public string NewKey = "";
         public string? GivenStudentNumber;
+        /// <summary>Unknown Student ID on an email-matched student — attached
+        /// as an alias identifier at commit (label "CSV import").</summary>
+        public string? AddAliasNumber;
+        public Guid ProgrammeId;
         public string? Email;
         public string? DisplayName;
         public Guid SpecializationId;
@@ -593,24 +637,45 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
 
         var numbersInFile = plans.Select(p => p.Cell("StudentNumber"))
             .Where(n => n != null).Distinct().Cast<string>().ToList();
-        var studentsByNumber = (await db.Students
-                .Where(s => s.DeletedAt == null && numbersInFile.Contains(s.StudentNumber))
-                .ToListAsync(ct))
-            .ToDictionary(s => s.StudentNumber, s => s, StringComparer.OrdinalIgnoreCase);
         var partnerNumbersById = partnersByNumber.Values.ToDictionary(p => p.PartnerId, p => p.PartnerNumber);
 
-        var existingIds = studentsByNumber.Values.Select(s => s.StudentId).ToList();
+        // Matching is by EMAIL ONLY. Student numbers are used solely to
+        // detect conflicts and to attach new alias IDs.
+        var emailsInFile = plans.Select(p => p.Cell("Email")?.ToLowerInvariant())
+            .Where(e => e != null).Distinct().Cast<string>().ToList();
+        var studentsByEmail = (await db.Students
+                .Where(s => s.DeletedAt == null && s.User.Email != null && emailsInFile.Contains(s.User.Email.ToLower()))
+                .Select(s => new { Student = s, Email = s.User.Email!.ToLower() })
+                .ToListAsync(ct))
+            .GroupBy(x => x.Email)
+            .ToDictionary(g => g.Key, g => g.First().Student, StringComparer.OrdinalIgnoreCase);
+
+        // Which student (if any) owns each number in the file — primary
+        // numbers and alias identifiers alike.
+        var identifierOwners = (await db.StudentIdentifiers
+                .Where(i => numbersInFile.Contains(i.Value))
+                .Select(i => new { i.Value, i.StudentId })
+                .ToListAsync(ct))
+            .GroupBy(x => x.Value)
+            .ToDictionary(g => g.Key, g => g.First().StudentId, StringComparer.OrdinalIgnoreCase);
+        foreach (var srow in await db.Students
+            .Where(st => st.DeletedAt == null && numbersInFile.Contains(st.StudentNumber))
+            .Select(st => new { st.StudentNumber, st.StudentId }).ToListAsync(ct))
+            identifierOwners.TryAdd(srow.StudentNumber, srow.StudentId);
+
+        // Duplicate detection is PROGRAMME-level: a student already in a
+        // programme (any specialization, any partner) is not re-added.
+        var existingIds = studentsByEmail.Values.Select(s => s.StudentId).ToList();
         var existingEnrolments = (await db.Enrollments
                 .Where(e => e.DeletedAt == null && existingIds.Contains(e.StudentId))
-                .Select(e => new { e.StudentId, e.SpecializationId })
+                .Select(e => new { e.StudentId, e.Specialization.ProgrammeId })
                 .ToListAsync(ct))
-            .Select(x => (x.StudentId, x.SpecializationId)).ToHashSet();
+            .Select(x => (x.StudentId, x.ProgrammeId)).ToHashSet();
 
         var newEmails = plans
-            .Where(p => p.Cell("StudentNumber") is null
-                || !studentsByNumber.ContainsKey(p.Cell("StudentNumber")!))
             .Select(p => p.Cell("Email")?.ToLowerInvariant())
-            .Where(e => e != null).Distinct().Cast<string>().ToList();
+            .Where(e => e != null && !studentsByEmail.ContainsKey(e!))
+            .Distinct().Cast<string>().ToList();
         var takenIdentifiers = (await db.Users
                 .Where(u => (u.Email != null && newEmails.Contains(u.Email.ToLower()))
                          || (u.UserName != null && newEmails.Contains(u.UserName.ToLower())))
@@ -662,6 +727,7 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                 else
                 {
                     plan.ProgrammeName = prog.Name;
+                    plan.ProgrammeId = prog.ProgrammeId;
                     var spec = specs.FirstOrDefault(s => s.ProgrammeId == prog.ProgrammeId
                         && string.Equals(s.Code, specCode, StringComparison.OrdinalIgnoreCase));
                     if (spec is null)
@@ -710,34 +776,53 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                 else plan.ModeOfStudyId = mode.ModeOfStudyId;
             }
 
-            // Student identity.
+            // Student identity — EMAIL is the only match key.
             plan.GivenStudentNumber = plan.Cell("StudentNumber");
             plan.Email = plan.Cell("Email")?.ToLowerInvariant();
-            if (plan.GivenStudentNumber is not null
-                && studentsByNumber.TryGetValue(plan.GivenStudentNumber, out var existing))
+            if (plan.Email is null)
+            {
+                plan.Errors.Add("Email is required — rows are matched by email only.");
+                plan.NewKey = $"row-{plan.RowNumber}";
+                plan.DisplayName = $"{plan.Cell("FirstName")} {plan.Cell("LastName")}".Trim();
+            }
+            else if (studentsByEmail.TryGetValue(plan.Email, out var existing))
             {
                 plan.ExistingStudent = existing;
-                plan.NewKey = existing.StudentNumber;
+                plan.NewKey = plan.Email;
                 plan.DisplayName = existing.StudentNumber;
-                if (plan.Partner is not null && existing.PartnerId != plan.Partner.PartnerId)
-                    plan.Errors.Add($"Student '{plan.GivenStudentNumber}' belongs to partner " +
-                        $"'{partnerNumbersById.GetValueOrDefault(existing.PartnerId, "?")}', not '{partnerNumber}'.");
+                // Student ID column on a matched row: known ID → nothing to
+                // do; someone ELSE's ID → the whole row is rejected; unknown
+                // ID → attached as a new alias identifier.
+                if (plan.GivenStudentNumber is { } num)
+                {
+                    if (identifierOwners.TryGetValue(num, out var ownerId))
+                    {
+                        if (ownerId != existing.StudentId)
+                            plan.Errors.Add($"StudentNumber '{num}' already belongs to a different student — row rejected.");
+                    }
+                    else
+                    {
+                        plan.AddAliasNumber = num;
+                    }
+                }
             }
             else
             {
-                // New student (blank or unknown number): personal columns apply.
-                plan.NewKey = plan.GivenStudentNumber ?? plan.Email ?? $"row-{plan.RowNumber}";
+                // New student: personal columns apply. A given StudentNumber
+                // becomes the primary ID; blank auto-generates one.
+                plan.NewKey = plan.Email;
                 plan.DisplayName = $"{plan.Cell("FirstName")} {plan.Cell("LastName")}".Trim();
+
+                if (plan.GivenStudentNumber is { } num && identifierOwners.ContainsKey(num))
+                    plan.Errors.Add($"StudentNumber '{num}' already belongs to another student — row rejected.");
 
                 var isFirstRowForStudent = !plannedNew.ContainsKey(plan.NewKey);
                 if (isFirstRowForStudent)
                 {
                     if (plan.Cell("FirstName") is null) plan.Errors.Add("FirstName is required for a new student.");
                     if (plan.Cell("LastName") is null) plan.Errors.Add("LastName is required for a new student.");
-                    if (plan.Email is null) plan.Errors.Add("Email is required for a new student.");
-                    else if (takenIdentifiers.Contains(plan.Email))
-                        plan.Errors.Add($"Email '{plan.Email}' already has an account. " +
-                            "Put the student's existing Student ID in the row instead.");
+                    if (takenIdentifiers.Contains(plan.Email))
+                        plan.Errors.Add($"Email '{plan.Email}' already has a NON-student account and cannot be imported.");
 
                     ParsePersonalFields(plan, nationalities, currencies, positionFunctions, industries);
 
@@ -753,14 +838,16 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                 }
             }
 
-            // Duplicate enrolment detection (existing data + earlier file rows).
-            if (plan.Errors.Count == 0 && plan.SpecializationId != Guid.Empty)
+            // Duplicate detection is programme-level: a programme the student
+            // already has (any spec, any partner) is skipped — the row's new
+            // Student ID is still attached.
+            if (plan.Errors.Count == 0 && plan.ProgrammeId != Guid.Empty)
             {
                 if (plan.ExistingStudent is not null
-                    && existingEnrolments.Contains((plan.ExistingStudent.StudentId, plan.SpecializationId)))
-                    plan.SkipReason = "Already enrolled in this specialization.";
-                else if (!plannedEnrolments.Add((plan.NewKey, plan.SpecializationId)))
-                    plan.SkipReason = "Duplicate line: same student and specialization appears earlier in the file.";
+                    && existingEnrolments.Contains((plan.ExistingStudent.StudentId, plan.ProgrammeId)))
+                    plan.SkipReason = "Already in this programme — programme skipped.";
+                else if (!plannedEnrolments.Add((plan.NewKey, plan.ProgrammeId)))
+                    plan.SkipReason = "Duplicate line: same student and programme appears earlier in the file.";
             }
         }
 
