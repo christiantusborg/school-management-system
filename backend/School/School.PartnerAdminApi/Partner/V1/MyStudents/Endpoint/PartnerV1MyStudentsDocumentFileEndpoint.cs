@@ -30,11 +30,18 @@ public sealed class PartnerV1MyStudentsDocumentFileEndpoint : IEndpointMarker
         if (fail is not null) return fail;
 
         var ownsStudent = await db.Students
-            .AnyAsync(s => s.StudentId == studentId && s.PartnerId == partnerId && s.DeletedAt == null, ct);
+            .AnyAsync(s => s.StudentId == studentId && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null, ct);
         if (!ownsStudent) return Results.NotFound();
 
+        // Per-document scope: enrolment docs must belong to one of THIS
+        // partner's enrolments; student-level docs (no enrolment yet) stay
+        // with the original signup partner.
         var doc = await db.StudentDocuments
-            .Where(d => d.StudentDocumentId == documentId && d.StudentId == studentId && d.DeletedAt == null)
+            .Where(d => d.StudentDocumentId == documentId && d.StudentId == studentId && d.DeletedAt == null
+                && (d.EnrollmentId != null
+                    ? db.Enrollments.Any(en => en.StudentEnrollmentId == d.EnrollmentId
+                        && en.PartnerId == partnerId && en.DeletedAt == null)
+                    : d.Student.PartnerId == partnerId))
             .Select(d => new { d.StoragePath, d.FileName, d.MimeType, d.StudentId, d.DocumentTypeId })
             .FirstOrDefaultAsync(ct);
         if (doc is null) return Results.NotFound();

@@ -42,7 +42,7 @@ public sealed class PartnerV1MyStudentsLogNotesEndpoint : IEndpointMarker
     private static async Task<Student?> OwnedStudentAsync(
         OdinDbContext db, Guid studentId, Guid partnerId, CancellationToken ct) =>
         await db.Students.FirstOrDefaultAsync(s =>
-            s.StudentId == studentId && s.PartnerId == partnerId && s.DeletedAt == null, ct);
+            s.StudentId == studentId && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null, ct);
 
     private static async Task<IResult> ListAsync(
         Guid studentId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
@@ -136,7 +136,7 @@ public sealed class PartnerV1MyStudentsLogNotesEndpoint : IEndpointMarker
         var note = await (
             from n in db.StudentLogNotes
             join s in db.Students on n.StudentId equals s.StudentId
-            where n.StudentLogNoteId == id && s.PartnerId == partnerId && s.DeletedAt == null
+            where n.StudentLogNoteId == id && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null
             select n).FirstOrDefaultAsync(ct);
         if (note is null) return Results.NotFound();
         if (note.AuthorRole != "Partner")

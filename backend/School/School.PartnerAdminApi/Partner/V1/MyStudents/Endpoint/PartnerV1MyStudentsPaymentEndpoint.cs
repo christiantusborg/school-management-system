@@ -140,7 +140,7 @@ public sealed class PartnerV1MyStudentsPaymentEndpoint : IEndpointMarker
         if (fail is not null) return fail;
 
         var student = await db.Students
-            .Where(s => s.StudentId == studentId && s.PartnerId == partnerId && s.DeletedAt == null)
+            .Where(s => s.StudentId == studentId && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null)
             .Select(s => new { s.MoodleEnabled, s.MoodleUsername, s.MoodlePassword })
             .FirstOrDefaultAsync(ct);
         if (student is null) return Results.NotFound();

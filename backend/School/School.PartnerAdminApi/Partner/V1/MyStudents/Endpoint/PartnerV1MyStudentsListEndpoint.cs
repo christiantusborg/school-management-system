@@ -86,7 +86,7 @@ public sealed class PartnerV1MyStudentsListEndpoint : IEndpointMarker
         // Include all of the partner's students even if they have no enrollment yet
         // (frontend "Applying (draft)" chip includes them via includeNoEnrolment).
         var partnerStudents = await db.Students
-            .Where(s => s.PartnerId == partnerId && s.DeletedAt == null)
+            .Where(s => (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null)
             .Select(s => new
             {
                 s.StudentId,

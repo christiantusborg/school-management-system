@@ -77,7 +77,7 @@ public sealed class PartnerV1MyStudentsReviewEndpoint : IEndpointMarker
         if (fail is not null) return fail;
 
         var student = await db.Students
-            .FirstOrDefaultAsync(s => s.StudentId == studentId && s.PartnerId == partnerId && s.DeletedAt == null, ct);
+            .FirstOrDefaultAsync(s => s.StudentId == studentId && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();
 
         var enrollment = await db.Enrollments

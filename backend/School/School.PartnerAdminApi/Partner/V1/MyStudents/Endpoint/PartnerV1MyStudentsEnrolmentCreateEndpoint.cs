@@ -102,7 +102,7 @@ public sealed class PartnerV1MyStudentsEnrolmentCreateEndpoint : IEndpointMarker
             return Results.BadRequest(new { error = "specializationId is required." });
 
         var student = await db.Students
-            .FirstOrDefaultAsync(s => s.StudentId == studentId && s.PartnerId == partnerId && s.DeletedAt == null, ct);
+            .FirstOrDefaultAsync(s => s.StudentId == studentId && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();
 
         // Availability: granted-and-enabled core spec, or an approved spec of

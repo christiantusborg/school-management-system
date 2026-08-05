@@ -51,11 +51,31 @@
       <section v-if="state.step === 1" class="step">
         <h2 class="step-title">Create your account</h2>
         <p class="step-hint">We'll save your progress as you go and send a confirmation email.</p>
+        <div v-if="attach.mode === 'attach'" class="attach-panel">
+          <template v-if="attach.staff">
+            <p class="attach-found">✅ <strong>Student found:</strong> {{ attach.name }} <span class="attach-num">{{ attach.studentNumber }}</span></p>
+            <p class="step-hint">Continuing adds a <strong>new application via this partner</strong> to the existing student — no new account is created and personal details are kept.</p>
+            <button class="btn-primary" :disabled="busy" @click="attachStart()">Continue with this student →</button>
+          </template>
+          <template v-else>
+            <p class="attach-found">✅ This email already has an MGW student account.</p>
+            <p class="step-hint">To add a new application to it, confirm you own the email: we'll send a 6-digit code to <strong>{{ form.email }}</strong>.</p>
+            <button v-if="!attach.codeSent" class="btn-primary" :disabled="busy" @click="sendAttachCode">Send code</button>
+            <div v-else class="attach-code-row">
+              <input v-model="attach.code" maxlength="6" placeholder="6-digit code" class="attach-code-inp" />
+              <button class="btn-primary" :disabled="busy || attach.code.length !== 6" @click="attachStart(attach.code)">Verify &amp; continue →</button>
+              <button class="btn-back" @click="sendAttachCode">Resend</button>
+            </div>
+          </template>
+          <p v-if="attach.error" class="field-hint-err">{{ attach.error }}</p>
+          <button class="btn-link-plain" @click="resetAttach">Use a different email instead</button>
+        </div>
         <div v-if="state.existingUser" class="existing-user-warn">
           ⚠️ THIS EMAIL ALREADY HAS AN APPLICATION / STUDENT ACCOUNT.<br />
           You are <u>continuing the existing application</u> — everything already entered will be loaded.
           Enter the <strong>same password</strong> that was used when it was first created to continue.
         </div>
+        <template v-if="attach.mode !== 'attach'">
         <div class="row-2">
           <div class="field"><label>First name *</label><input v-model="form.firstName" /></div>
           <div class="field"><label>Last name *</label><input v-model="form.lastName" /></div>
@@ -75,6 +95,7 @@
             {{ busy ? 'Creating…' : 'Create account &amp; continue →' }}
           </button>
         </div>
+        </template>
       </section>
 
       <!-- ── Step 2: Personal ── -->
@@ -218,7 +239,8 @@
               <label>Programme</label>
               <select v-model="row.programmeId" @change="onProgrammeChange(row)">
                 <option value="">— select —</option>
-                <option v-for="p in catalogue.programmes" :key="p.programmeId" :value="p.programmeId">
+                <option v-for="p in catalogue.programmes.filter(x => !attach.blockedProgrammeIds.includes(x.programmeId))"
+                        :key="p.programmeId" :value="p.programmeId">
                   {{ p.name }} ({{ p.code }})
                 </option>
               </select>
@@ -272,6 +294,9 @@
       <!-- ── Step 5: Documents (per-application) ── -->
       <section v-if="state.step === 5" class="step">
         <h2 class="step-title">Supporting documents</h2>
+        <div v-if="attach.linkDocs" class="attach-linkdocs">
+          ✅ Your documents from this partner's earlier application will be <strong>attached automatically</strong> (keeping their verified status). Upload files below only if something changed.
+        </div>
         <p class="step-hint">
           Each application has its own document set — please upload separately for every programme you applied to.
         </p>
@@ -777,11 +802,67 @@ async function loadDraft() {
 
 function goBack() { if (state.step > 1) state.step-- }
 
+// ── Existing-student attach flow ────────────────────────────────────────────
+const attach = reactive({ mode: '', staff: false, name: '', studentNumber: '', codeSent: false,
+  code: '', linkDocs: false, blockedProgrammeIds: [], error: '' })
+const wizQuery = () => new URLSearchParams(window.location.hash.split('?')[1] ?? '')
+function resetAttach() { Object.assign(attach, { mode: '', staff: false, codeSent: false, code: '', error: '' }); form.email = '' }
+async function checkExisting() {
+  const email = form.email.trim()
+  if (!email || !validEmail.value) return false
+  try {
+    const res = await api.post('/v1/public/draft-signup/check-existing', {
+      partnerSlug: slug, email, actorTicket: wizQuery().get('actor') || null,
+    })
+    if (res.data?.exists && res.data.mode === 'attach') {
+      Object.assign(attach, {
+        mode: 'attach', staff: !!res.data.staff,
+        name: res.data.name ?? '', studentNumber: res.data.studentNumber ?? '',
+        linkDocs: !!res.data.linkDocs, blockedProgrammeIds: res.data.blockedProgrammeIds ?? [],
+        error: '',
+      })
+      return true
+    }
+  } catch { /* fall through to the normal flow */ }
+  return false
+}
+watch(() => form.email, () => { if (attach.mode) Object.assign(attach, { mode: '', codeSent: false, code: '', error: '' }) })
+async function sendAttachCode() {
+  busy.value = true; attach.error = ''
+  try {
+    await api.post('/v1/public/draft-signup/attach-code', { partnerSlug: slug, email: form.email.trim() })
+    attach.codeSent = true
+  } catch (e) { attach.error = extractApiError(e, 'Could not send the code.') }
+  finally { busy.value = false }
+}
+async function attachStart(code) {
+  busy.value = true; attach.error = ''
+  try {
+    const res = await api.post('/v1/public/draft-signup/attach-start', {
+      partnerSlug: slug, email: form.email.trim(),
+      actorTicket: wizQuery().get('actor') || null,
+      attachCode: code || null,
+      crmLead: wizQuery().get('crmLead') || null,
+    })
+    setToken(res.data.wizardToken)
+    attach.linkDocs = !!res.data.linkDocs
+    attach.blockedProgrammeIds = res.data.blockedProgrammeIds ?? []
+    attach.name = res.data.studentName ?? attach.name
+    attach.studentNumber = res.data.studentNumber ?? attach.studentNumber
+    state.emailVerified = true
+    state.step = 4
+  } catch (e) { attach.error = extractApiError(e, 'Could not continue with the existing student.') }
+  finally { busy.value = false }
+}
+
 async function startAccount() {
   if (!step1Valid.value) return
   busy.value = true
   error.value = ''
   try {
+    // Existing student? Switch to the attach panel instead of creating an
+    // account (staff continue immediately; public verifies a code).
+    if (await checkExisting()) { busy.value = false; return }
     const { blind, blindedElement } = blindPassword(form.password)
     const startRes = await api.post('/v1/public/draft-signup/start', {
       partnerSlug: slug,
@@ -1077,4 +1158,12 @@ onMounted(async () => {
 .consent-list { background: #fafbfc; border: 1px solid #e8edf4; border-radius: 6px; padding: 0.6rem 1rem 0.6rem 1.7rem; font-size: 0.86rem; color: #444; }
 .consent-row { display: flex; gap: 0.55rem; align-items: flex-start; font-size: 0.88rem; padding: 0.4rem 0; cursor: pointer; }
 .consent-row input { margin-top: 0.18rem; }
+
+.attach-panel { background: #eefaf1; border: 1.5px solid #9fd9b4; border-radius: 8px; padding: .8rem 1rem; margin-bottom: .8rem; }
+.attach-found { font-size: .95rem; margin: 0 0 .3rem; }
+.attach-num { font-family: monospace; background: #fff; border: 1px solid #cfe3d6; border-radius: 5px; padding: 1px 7px; font-size: .8rem; margin-left: .3rem; }
+.attach-code-row { display: flex; gap: .5rem; align-items: center; margin-top: .4rem; flex-wrap: wrap; }
+.attach-code-inp { width: 130px; padding: .5rem .6rem; border: 1px solid #cfd7e3; border-radius: 6px; font-size: 1.1rem; letter-spacing: 4px; text-align: center; font-weight: 700; }
+.btn-link-plain { background: none; border: none; color: #1a4d8c; text-decoration: underline; cursor: pointer; font-size: .8rem; margin-top: .5rem; padding: 0; }
+.attach-linkdocs { background: #eefaf1; border: 1px solid #9fd9b4; border-radius: 7px; padding: .55rem .8rem; font-size: .84rem; margin-bottom: .7rem; }
 </style>

@@ -30,7 +30,7 @@ public sealed class PartnerV1MyStudentsBackgroundEndpoint : IEndpointMarker
 
         var student = await db.Students
             .FirstOrDefaultAsync(s => s.StudentId == studentId
-                && s.PartnerId == partnerId
+                && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null))
                 && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();
 

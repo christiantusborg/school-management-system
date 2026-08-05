@@ -29,7 +29,7 @@ public sealed class PartnerV1MyStudentsSignupTokenEndpoint : IEndpointMarker
         if (fail is not null || partnerId is null) return fail ?? Results.StatusCode(403);
 
         var student = await db.Students
-            .Where(s => s.StudentId == studentId && s.PartnerId == partnerId && s.DeletedAt == null)
+            .Where(s => s.StudentId == studentId && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null)
             .Select(s => new
             {
                 s.UserId,

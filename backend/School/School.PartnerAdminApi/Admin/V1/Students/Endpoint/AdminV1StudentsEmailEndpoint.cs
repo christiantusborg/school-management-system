@@ -38,7 +38,7 @@ public sealed class AdminV1StudentsEmailEndpoint : IEndpointMarker
         var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
         if (fail is not null || partnerId is null) return fail ?? Results.StatusCode(403);
         var student = await db.Students.FirstOrDefaultAsync(s =>
-            s.StudentId == studentId && s.PartnerId == partnerId && s.DeletedAt == null, ct);
+            s.StudentId == studentId && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();
         return await ChangeAsync(student, body, userManager);
     }

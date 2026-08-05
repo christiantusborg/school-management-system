@@ -23,7 +23,7 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
         if (fail is not null) return fail;
 
         var student = await db.Students
-            .Where(s => s.StudentId == studentId && s.PartnerId == partnerId && s.DeletedAt == null)
+            .Where(s => s.StudentId == studentId && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null)
             .Select(s => new
             {
                 s.StudentId,
@@ -54,10 +54,15 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
         // Per-application docs: one set per enrolment, no cross-pollination.
         // The reviewer's wizard scopes to a single enrolment, so the partner
         // sees only the docs belonging to whatever enrolment they opened.
+        // Multi-partner students: a partner sees ONLY documents belonging to
+        // THEIR OWN enrolments — never uploads made under another partner's
+        // programmes.
         var documents = await db.StudentDocuments
             .Where(d => d.StudentId == studentId
                 && d.EnrollmentId != null
-                && d.DeletedAt == null)
+                && d.DeletedAt == null
+                && db.Enrollments.Any(en => en.StudentEnrollmentId == d.EnrollmentId
+                    && en.PartnerId == partnerId && en.DeletedAt == null))
             .Select(d => new
             {
                 studentDocumentId = d.StudentDocumentId,

@@ -48,6 +48,30 @@ public sealed class DraftSignupV1SubmitEndpoint : IEndpointMarker
         if (picks is null || picks.Items.Count == 0)
             return Results.BadRequest(new { error = "No programmes selected — go back to step 4." });
 
+        // Attach mode: an existing student getting an ADDITIONAL application.
+        // The enrolments belong to the flow's partner (not the student's
+        // original partner), the same partner+programme pair is refused, and
+        // the partner's earlier documents can carry over verified.
+        var wizardTokenHeader = http.Request.Headers[WizardTokenAuth.HeaderName].ToString();
+        var attach = await cache.GetAsync<DraftSignupV1AttachEndpoint.AttachState>(
+            DraftSignupV1AttachEndpoint.AttachKey(wizardTokenHeader));
+        if (attach is not null)
+        {
+            var pickSpecIds = picks.Items.Select(x => x.SpecializationId).ToList();
+            var pickProgrammes = await db.Specializations
+                .Where(sp => pickSpecIds.Contains(sp.SpecializationId))
+                .Select(sp => new { sp.SpecializationId, sp.ProgrammeId, ProgrammeName = sp.Programmes.Name })
+                .ToListAsync(ct);
+            foreach (var pp in pickProgrammes)
+            {
+                var dup = await db.Enrollments.AnyAsync(en => en.StudentId == student.StudentId
+                    && en.PartnerId == attach.PartnerId && en.DeletedAt == null
+                    && en.Specialization.ProgrammeId == pp.ProgrammeId, ct);
+                if (dup)
+                    return Results.BadRequest(new { error = $"This student already has an application for {pp.ProgrammeName} with this partner. Pick a different programme." });
+            }
+        }
+
         // Digital student card: when opted in and a selected programme issues
         // cards, the card photo upload is mandatory before submitting.
         var pickedProgrammeIds = picks.Items.Select(p => p.ProgrammeId).Distinct().ToList();
@@ -73,7 +97,7 @@ public sealed class DraftSignupV1SubmitEndpoint : IEndpointMarker
             {
                 StudentEnrollmentId = enrollmentId,
                 StudentId = student.StudentId,
-                PartnerId = student.PartnerId,
+                PartnerId = attach?.PartnerId ?? student.PartnerId,
                 SpecializationId = pick.SpecializationId,
                 ModeOfStudyId = pick.ModeOfStudyId,
                 // Domain quirk: Enrollment.PathwayId is `int` but Pathway PK
@@ -87,7 +111,7 @@ public sealed class DraftSignupV1SubmitEndpoint : IEndpointMarker
                     EnrollmentStatusNoteId = Guid.NewGuid(),
                     EnrollmentId = enrollmentId,
                     StatusId = SharedLibrary.Basics.Opaque.Domains.EnrollmentStatusIds.ApplicationSubmitted,
-                    Note = "Submitted by student.",
+                    Note = attach is null ? "Submitted by student." : "Additional application submitted (existing student).",
                     ByUserId = Guid.TryParse(student.UserId, out var sg) ? sg : Guid.Empty,
                     CreatedAt = submittedAt,
                 });
@@ -113,6 +137,79 @@ public sealed class DraftSignupV1SubmitEndpoint : IEndpointMarker
         }
 
         student.WizardStep = 6;
+
+        // Attach mode extras: carry the flow partner's earlier documents over
+        // to each new enrolment (keeping their verified status) and link a
+        // converting CRM lead. Letter-type documents are never carried.
+        if (attach is not null)
+        {
+            if (attach.LinkDocs)
+            {
+                var letterTypes = new[]
+                {
+                    SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.OfferLetter,
+                    SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.AdmissionLetter,
+                    SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.Transcript,
+                    SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.Certificate,
+                    SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.ProvisionalCertificate,
+                    SharedLibrary.Basics.Opaque.Domains.SystemDocumentTypeIds.StudentIdCard,
+                };
+                var sourceDocs = await db.StudentDocuments
+                    .Where(d => d.StudentId == student.StudentId && d.DeletedAt == null
+                        && d.EnrollmentId != null && !letterTypes.Contains(d.DocumentTypeId)
+                        && db.Enrollments.Any(en => en.StudentEnrollmentId == d.EnrollmentId
+                            && en.PartnerId == attach.PartnerId && en.DeletedAt == null))
+                    .GroupBy(d => d.DocumentTypeId)
+                    .Select(g => g.OrderByDescending(d => d.UploadedAt).First())
+                    .ToListAsync(ct);
+                foreach (var newEnrolmentId in specToEnrolment.Values)
+                {
+                    foreach (var src in sourceDocs)
+                    {
+                        db.StudentDocuments.Add(new SharedLibrary.Basics.Opaque.Domains.StudentDocument
+                        {
+                            StudentId = student.StudentId,
+                            DocumentTypeId = src.DocumentTypeId,
+                            EnrollmentId = newEnrolmentId,
+                            FileName = src.FileName,
+                            MimeType = src.MimeType,
+                            StoragePath = src.StoragePath,
+                            UploadedAt = src.UploadedAt,
+                            ExpiryDate = src.ExpiryDate,
+                            CurrentStatusId = src.CurrentStatusId,
+                            OcrResult = src.OcrResult,
+                            AiResult = src.AiResult,
+                            AiConfidence = src.AiConfidence,
+                            AiFraudRisk = src.AiFraudRisk,
+                        });
+                    }
+                }
+            }
+
+            if (Guid.TryParse(attach.CrmLeadId, out var crmLeadId))
+            {
+                var lead = await db.CrmLeads.FirstOrDefaultAsync(l => l.CrmLeadId == crmLeadId && l.DeletedAt == null, ct);
+                if (lead is not null && lead.ConvertedStudentId is null)
+                {
+                    lead.ConvertedStudentId = student.StudentId;
+                    lead.ConvertedAt = DateTime.UtcNow;
+                    lead.Status = 1;
+                    var wonStage = await db.CrmStages
+                        .Where(st => st.CrmPipelineId == lead.CrmPipelineId && st.DeletedAt == null && st.StageType == 1)
+                        .OrderBy(st => st.DisplayOrder).FirstOrDefaultAsync(ct);
+                    if (wonStage is not null) { lead.CrmStageId = wonStage.CrmStageId; lead.StageEnteredAt = DateTime.UtcNow; }
+                    db.CrmActivities.Add(new SharedLibrary.Basics.Opaque.Domains.Crm.CrmActivity
+                    {
+                        CrmLeadId = lead.CrmLeadId, Kind = 6,
+                        Body = $"Converted: additional application for existing student {student.StudentNumber}.",
+                        OccurredAt = DateTime.UtcNow,
+                        ActorUserId = Guid.TryParse(attach.ActorUserId, out var au) ? au : Guid.Empty,
+                        CreatedAt = DateTime.UtcNow,
+                    });
+                }
+            }
+            await cache.RemoveAsync(DraftSignupV1AttachEndpoint.AttachKey(wizardTokenHeader));
+        }
 
         await db.SaveChangesAsync(ct);
 

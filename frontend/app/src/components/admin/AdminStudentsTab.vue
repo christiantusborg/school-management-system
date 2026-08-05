@@ -564,6 +564,7 @@
                           @click="detailModal.activeEnrollmentId = e.studentEnrollmentId">
                     <span class="prog-menu-name">{{ e.programmeName }}</span>
                     <span class="prog-menu-spec">{{ e.specializationName }}</span>
+                    <span v-if="e.enrolmentPartnerName" class="prog-menu-partner">🤝 {{ e.enrolmentPartnerName }}</span>
                     <span class="prog-menu-status">{{ e.statusName }}</span>
                   </button>
                   <button class="btn-add" style="margin-top:.3rem;" @click="openAddProg">+ Add programme</button>
@@ -1083,6 +1084,7 @@
               <div v-for="enr in docsByEnrollment" :key="enr.enrollmentId" class="docs-group">
                 <div class="docs-group-head">
                   <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
+                  <span v-if="enr.partnerName" class="doc-partner-chip" title="Partner this application belongs to">🤝 {{ enr.partnerName }}</span>
                   <span class="docs-group-count">{{ enr.coreDocs.length + enr.additionalDocs.length }}</span>
                   <button class="btn-mini" style="margin-left:auto"
                           @click="openAdditionalDialog(enr.enrollmentId)">
@@ -2686,6 +2688,7 @@ const docsByEnrollment = computed(() => {
       programmeCode: e.programmeCode,
       programmeName: e.programmeName,
       specializationName: e.specializationName,
+      partnerName: e.enrolmentPartnerName ?? null,
       coreDocs: docs.filter(d => !d.isAdditional),
       additionalDocs: docs.filter(d => d.isAdditional),
     }
@@ -4143,4 +4146,6 @@ async function runExport() {
 .pay-rec-note { flex: 1; color: #667; overflow: hidden; text-overflow: ellipsis; }
 .pay-rec-add { display: flex; align-items: center; gap: .4rem; margin-top: .35rem; flex-wrap: wrap; }
 .pay-rec-note-inp { flex: 1; min-width: 200px; padding: .3rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .78rem; }
+.doc-partner-chip { font-size: .68rem; background: #eef3fb; color: #1a4d8c; border-radius: 9px; padding: 1px 8px; font-weight: 700; }
+.prog-menu-partner { font-size: .68rem; color: #1a4d8c; }
 </style>

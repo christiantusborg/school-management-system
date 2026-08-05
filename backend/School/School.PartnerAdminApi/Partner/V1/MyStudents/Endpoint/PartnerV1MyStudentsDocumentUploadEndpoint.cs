@@ -38,7 +38,7 @@ public sealed class PartnerV1MyStudentsDocumentUploadEndpoint : IEndpointMarker
         var isAdditional = bool.TryParse(form["isAdditional"].ToString(), out var ia) && ia;
 
         var student = await db.Students
-            .FirstOrDefaultAsync(s => s.StudentId == studentId && s.PartnerId == partnerId && s.DeletedAt == null, ct);
+            .FirstOrDefaultAsync(s => s.StudentId == studentId && (s.PartnerId == partnerId || s.Enrollments.Any(pe => pe.PartnerId == partnerId && pe.DeletedAt == null)) && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();
 
         var enrolmentOwned = await db.Enrollments
