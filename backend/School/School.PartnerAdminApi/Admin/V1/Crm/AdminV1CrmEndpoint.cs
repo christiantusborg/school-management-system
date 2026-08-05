@@ -272,6 +272,9 @@ public sealed class AdminV1CrmEndpoint : IEndpointMarker
         if (lead.AssignedToUserId is null) lead.AssignedToUserId = await NextRoundRobinAsync(db, ct);
         lead.Score = ComputeScore(lead, recentActivity: false);
         db.CrmLeads.Add(lead);
+        // The lead starts with its full mail history from the hub archive.
+        if (!string.IsNullOrWhiteSpace(lead.Email))
+            await Odin.Api.Base.Mail.MailHubService.RetroLinkLeadAsync(db, lead.CrmLeadId, lead.Email, ct);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { crmLeadId = lead.CrmLeadId });
     }
@@ -292,6 +295,8 @@ public sealed class AdminV1CrmEndpoint : IEndpointMarker
         lead.PartnerId = body.PartnerId;
         lead.ProgrammeId = body.ProgrammeId;
         lead.ValueBand = body.ValueBand;
+        if (!string.IsNullOrWhiteSpace(lead.Email))
+            await Odin.Api.Base.Mail.MailHubService.RetroLinkLeadAsync(db, lead.CrmLeadId, lead.Email, ct);
         await RescoreAsync(db, lead, ct);
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { crmLeadId = id });

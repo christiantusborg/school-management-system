@@ -22,7 +22,7 @@
       <button :class="['tab-btn', { active: tab === 'partners' }]" @click="tab = 'partners'">Partners</button>
       <button :class="['tab-btn', { active: tab === 'statistics' }]" @click="tab = 'statistics'">Statistics</button>
       <button :class="['tab-btn', { active: tab === 'crm' }]" @click="tab = 'crm'">CRM</button>
-      <button v-if="!isSales" :class="['tab-btn', { active: tab === 'mail' }]" @click="tab = 'mail'">Mail</button>
+      <button :class="['tab-btn', { active: tab === 'mail' }]" @click="tab = 'mail'">Mail</button>
       <button v-if="isSuperAdmin" :class="['tab-btn', { active: tab === 'changelog' }]" @click="tab = 'changelog'">Changelog</button>
       <button v-if="!isSales" :class="['tab-btn', { active: tab === 'messages' }]" @click="tab = 'messages'">
         Messages
@@ -39,7 +39,7 @@
         <h1 class="page-title">Students</h1>
         <button class="btn-add-student-admin" @click="openAddStudentAdmin">+ Add Student</button>
       </div>
-      <AdminStudentsTab v-if="tab === 'students'" :key="adminStudentsRefreshKey" />
+      <AdminStudentsTab v-if="tab === 'students'" :key="adminStudentsRefreshKey" :open-student-id="mailOpenStudentId" />
     </div>
 
 
@@ -514,6 +514,9 @@
             @imported="adminStudentsRefreshKey++" />
         </div>
 
+        <div v-show="manageTab === 'mail'" class="manage-section">
+          <AdminEntityMailPanel v-if="manageTab === 'mail' && managingPartner" kind="partner" :entity-id="managingPartner.partnerId" />
+        </div>
         <div v-show="manageTab === 'students'" class="manage-section">
           <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" @add-student="openAddStudentForManagedPartner" />
         </div>
@@ -530,11 +533,12 @@
     </div>
 
     <div v-show="tab === 'crm'" class="container">
-      <CrmTab v-if="tab === 'crm'" />
+      <CrmTab v-if="tab === 'crm'" :open-lead-id="crmOpenLeadId" />
     </div>
 
     <div v-show="tab === 'mail'" class="container">
-      <MailTab v-if="tab === 'mail'" />
+      <MailTab v-if="tab === 'mail'"
+        @open-student="openStudentFromMail" @open-partner="openPartnerFromMail" @open-lead="openLeadFromMail" />
     </div>
 
     <div v-show="tab === 'changelog'" class="container">
@@ -705,6 +709,7 @@
 </template>
 
 <script setup>
+import AdminEntityMailPanel from '../components/admin/AdminEntityMailPanel.vue'
 import ChangelogTab from '../components/admin/ChangelogTab.vue'
 import MailTab from '../components/admin/MailTab.vue'
 import CrmTab from '../components/admin/CrmTab.vue'
@@ -881,6 +886,26 @@ const partners        = ref([])
 const partnersLoading = ref(false)
 const partnersError   = ref('')
 const managingPartner = ref(null)
+
+// ── Mail-tab link chips: jump to the linked student / partner / lead ────────
+const mailOpenStudentId = ref('')
+const crmOpenLeadId = ref('')
+function openStudentFromMail(id) {
+  tab.value = 'students'
+  mailOpenStudentId.value = ''
+  setTimeout(() => { mailOpenStudentId.value = id }, 50)
+}
+async function openPartnerFromMail(id) {
+  tab.value = 'partners'
+  if (!partners.value.length) await loadPartners()
+  const p = partners.value.find(x => x.partnerId === id)
+  if (p) openManagePartner(p)
+}
+function openLeadFromMail(id) {
+  tab.value = 'crm'
+  crmOpenLeadId.value = ''
+  setTimeout(() => { crmOpenLeadId.value = id }, 50)
+}
 const managePanelEl   = ref(null)
 const partnerUsers    = ref([])
 const partnerUsersLoading = ref(false)
@@ -895,6 +920,7 @@ const MANAGE_TABS = [
   { k: 'cohorts',  label: 'Module Cohorts' },
   { k: 'invoices', label: 'Invoices' },
   { k: 'import',   label: 'Import' },
+  { k: 'mail',     label: 'Mail' },
 ]
 const GEAR_TABS = [
   { k: 'profile',    label: 'Profile' },

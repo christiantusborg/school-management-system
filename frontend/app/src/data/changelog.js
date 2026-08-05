@@ -4,6 +4,29 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'mail-lead-history-sales',
+    date: '2026-08-05',
+    title: 'Full mail history on leads & students + Mail for Sales',
+    summary: 'Leads and converted students inherit the complete email history; Sales get their own Mail page.',
+    details: [
+      'Creating a lead (from the CRM, from a mail, or by setting its email) now links the ENTIRE archived mail history with that address — incoming and outgoing — not just future mail.',
+      'When a lead converts to a student, the student inherits the lead\'s complete mail history automatically.',
+      'Sales users now see the Mail tab, scoped to the mail accounts a SuperAdministrator grants them (e.g. their own sales address) — with the same webmail, linking and reply features.',
+      'Sales can also open the Mail tab on a partner\'s manage page to view linked mail and send new mail from their granted account.',
+    ],
+  },
+  {
+    id: 'mail-entity-panels',
+    date: '2026-08-05',
+    title: 'Mail on student & partner pages + named links',
+    summary: 'Admission Mail tab on the student drawer and partner view; mail chips show names and jump to the record.',
+    details: [
+      'The admin student drawer and the partner manage view each gained a Mail tab: the full email log linked to that student/partner (incoming and outgoing, with account colour labels) plus a compose box to send a new mail directly from there — the To address is prefilled.',
+      'Webmail link chips now show the actual student name, lead name or partner name instead of a generic label, and clicking a chip jumps straight to that student drawer, CRM lead or partner view.',
+      'Reminder: every synced email is stored permanently in the hub database (bodies + attachments up to 10 MB), so the per-student and per-partner logs survive even if mail is deleted from the mailbox.',
+    ],
+  },
+  {
     id: 'student-ids-changelog',
     date: '2026-08-05',
     title: 'Multiple Student IDs + this changelog',

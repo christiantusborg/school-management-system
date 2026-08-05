@@ -34,6 +34,8 @@ public sealed class AdminV1MailEndpoint : IEndpointMarker
         app.MapPost("/v1/admin/mail/send", SendAsync).RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/mail/messages/{id:guid}/create-lead", CreateLeadAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/admin/crm/leads/{id:guid}/emails", LeadEmailsAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/mail/for-student/{studentId:guid}", ForStudentAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/mail/for-partner/{partnerId:guid}", ForPartnerAsync).RequireAuthorization("AdminOnly");
         app.MapGet("/v1/partner/mail", PartnerMailAsync).RequireAuthorization("PartnerOnly");
         app.MapGet("/v1/student/me/mail", StudentMailAsync).RequireAuthorization();
         return app;
@@ -253,7 +255,25 @@ public sealed class AdminV1MailEndpoint : IEndpointMarker
                 isOutbound = m.IsOutbound,
                 isRead = m.IsRead,
                 hasAttachments = m.Attachments.Any(),
-                links = m.Links.Select(l => new { l.StudentId, l.CrmLeadId, l.PartnerId }).ToList(),
+                links = m.Links.Select(l => new
+                {
+                    l.StudentId,
+                    studentName = l.StudentId != null
+                        ? db.UserProfiles.Where(up => up.UserId == db.Students.Where(st => st.StudentId == l.StudentId).Select(st => st.UserId).FirstOrDefault())
+                            .Select(up => (up.FirstName + " " + up.LastName).Trim()).FirstOrDefault()
+                        : null,
+                    studentNumber = l.StudentId != null
+                        ? db.Students.Where(st => st.StudentId == l.StudentId).Select(st => st.StudentNumber).FirstOrDefault()
+                        : null,
+                    l.CrmLeadId,
+                    leadName = l.CrmLeadId != null
+                        ? db.CrmLeads.Where(cl => cl.CrmLeadId == l.CrmLeadId).Select(cl => cl.Name).FirstOrDefault()
+                        : null,
+                    l.PartnerId,
+                    partnerName = l.PartnerId != null
+                        ? db.Partners.Where(pa => pa.PartnerId == l.PartnerId).Select(pa => pa.Name).FirstOrDefault()
+                        : null,
+                }).ToList(),
             })
             .ToListAsync(ct);
         return Results.Ok(new { items, total });
@@ -399,7 +419,8 @@ public sealed class AdminV1MailEndpoint : IEndpointMarker
             CreatedAt = DateTime.UtcNow,
         };
         db.CrmLeads.Add(lead);
-        db.MailMessageLinks.Add(new MailMessageLink { MailMessageId = id, CrmLeadId = lead.CrmLeadId, MatchedAddress = m.FromAddress.ToLower() });
+        // Link the WHOLE history with this sender, not only the open mail.
+        await MailHubService.RetroLinkLeadAsync(db, lead.CrmLeadId, m.FromAddress, ct);
         db.CrmActivities.Add(new SharedLibrary.Basics.Opaque.Domains.Crm.CrmActivity
         {
             CrmLeadId = lead.CrmLeadId,
@@ -444,6 +465,70 @@ public sealed class AdminV1MailEndpoint : IEndpointMarker
             .Take(100)
             .ToListAsync(ct);
         return Results.Ok(new { items });
+    }
+
+    /// <summary>Entity mail log for the admin drawer: every mail linked to
+    /// the student/partner from accounts the caller may open, plus the
+    /// default To address for composing from the same panel.</summary>
+    private static async Task<IResult> ForStudentAsync(
+        Guid studentId, HttpContext ctx, OdinDbContext db, CancellationToken ct)
+    {
+        var accessible = AccessibleAccounts(db, ctx).Select(a => a.MailAccountId);
+        var items = await db.MailMessageLinks
+            .Where(x => x.StudentId == studentId && accessible.Contains(x.Message.MailAccountId))
+            .Select(x => new
+            {
+                mailMessageId = x.MailMessageId,
+                subject = x.Message.Subject,
+                fromAddress = x.Message.FromAddress,
+                fromName = x.Message.FromName,
+                toAddresses = x.Message.ToAddresses,
+                sentAt = x.Message.SentAt ?? x.Message.SyncedAt,
+                isOutbound = x.Message.IsOutbound,
+                accountName = x.Message.Account.DisplayName,
+                accountColor = x.Message.Account.Color,
+                bodyText = x.Message.BodyText,
+            })
+            .OrderByDescending(x => x.sentAt)
+            .Take(200)
+            .ToListAsync(ct);
+        var email = await db.Students.Where(st => st.StudentId == studentId)
+            .Select(st => st.User.Email).FirstOrDefaultAsync(ct);
+        return Results.Ok(new { items, defaultTo = email });
+    }
+
+    private static async Task<IResult> ForPartnerAsync(
+        Guid partnerId, HttpContext ctx, OdinDbContext db, CancellationToken ct)
+    {
+        var accessible = AccessibleAccounts(db, ctx).Select(a => a.MailAccountId);
+        var items = await db.MailMessageLinks
+            .Where(x => x.PartnerId == partnerId && accessible.Contains(x.Message.MailAccountId))
+            .Select(x => new
+            {
+                mailMessageId = x.MailMessageId,
+                subject = x.Message.Subject,
+                fromAddress = x.Message.FromAddress,
+                fromName = x.Message.FromName,
+                toAddresses = x.Message.ToAddresses,
+                sentAt = x.Message.SentAt ?? x.Message.SyncedAt,
+                isOutbound = x.Message.IsOutbound,
+                accountName = x.Message.Account.DisplayName,
+                accountColor = x.Message.Account.Color,
+                bodyText = x.Message.BodyText,
+            })
+            .OrderByDescending(x => x.sentAt)
+            .Take(200)
+            .ToListAsync(ct);
+        var email = await db.PartnerContactEmails
+            .Where(e => e.PartnerId == partnerId && e.DeletedAt == null && e.Email != null)
+            .OrderByDescending(e => e.IsPrimary)
+            .Select(e => e.Email)
+            .FirstOrDefaultAsync(ct)
+            ?? await db.PartnerContactMethods
+                .Where(m => m.Contact.PartnerId == partnerId && m.MethodType.Name == "Email")
+                .Select(m => m.Value)
+                .FirstOrDefaultAsync(ct);
+        return Results.Ok(new { items, defaultTo = email });
     }
 
     private static async Task<IResult> PartnerMailAsync(

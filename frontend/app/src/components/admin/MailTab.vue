@@ -53,8 +53,12 @@
             </div>
             <div class="mail-row-links">
               <span class="mail-acct-chip" :style="{ background: m.accountColor || '#eef' }">{{ m.accountName }}</span>
-              <span v-for="(l, i) in m.links" :key="i" class="mail-link-chip">
-                {{ l.studentId ? '🎓 Student' : l.crmLeadId ? '📈 Lead' : '🤝 Partner' }}
+              <span v-for="(l, i) in m.links" :key="i" class="mail-link-chip clickable"
+                    :title="l.studentId ? 'Open student' : l.crmLeadId ? 'Open lead in CRM' : 'Open partner'"
+                    @click.stop="openLink(l)">
+                {{ l.studentId ? `🎓 ${l.studentName || l.studentNumber || 'Student'}`
+                  : l.crmLeadId ? `📈 ${l.leadName || 'Lead'}`
+                  : `🤝 ${l.partnerName || 'Partner'}` }}
               </span>
               <span v-if="!m.links.length && !m.isOutbound" class="mail-link-chip unknown">unknown</span>
             </div>
@@ -81,7 +85,9 @@
               <span>{{ fmtDate(reader.sentAt) }}</span>
             </div>
             <div class="mail-reader-links">
-              <span v-for="(l, i) in reader.links" :key="i" class="mail-link-chip big">
+              <span v-for="(l, i) in reader.links" :key="i" class="mail-link-chip big clickable"
+                    :title="l.studentId ? 'Open student' : l.crmLeadId ? 'Open lead in CRM' : 'Open partner'"
+                    @click="openLink(l)">
                 {{ l.studentId ? `🎓 ${l.studentNumber}` : l.crmLeadId ? `📈 ${l.leadName}` : `🤝 ${l.partnerName}` }}
               </span>
               <button v-if="!reader.links.some(l => l.crmLeadId) && !reader.isOutbound && reader.fromAddress"
@@ -203,6 +209,12 @@
 import { ref, onMounted } from 'vue'
 import api from '../../api/client.js'
 
+const emit = defineEmits(['open-student', 'open-partner', 'open-lead'])
+function openLink(l) {
+  if (l.studentId) emit('open-student', l.studentId)
+  else if (l.crmLeadId) emit('open-lead', l.crmLeadId)
+  else if (l.partnerId) emit('open-partner', l.partnerId)
+}
 const accounts = ref([])
 const isSuperAdmin = ref(false)
 const activeAccount = ref('')
@@ -410,6 +422,8 @@ onMounted(async () => { await loadAccounts(); if (activeAccount.value) await loa
 .mail-acct-chip { font-size: .64rem; border-radius: 8px; padding: 0 7px; color: #0b2e59; font-weight: 700; }
 .mail-link-chip { font-size: .64rem; border-radius: 8px; padding: 0 7px; background: #ecf0f6; color: #445; }
 .mail-link-chip.unknown { background: #fff1cc; color: #8a6b16; }
+.mail-link-chip.clickable { cursor: pointer; }
+.mail-link-chip.clickable:hover { background: #dbe7f6; }
 .mail-link-chip.big { font-size: .74rem; padding: 2px 9px; }
 
 .mail-reader { flex: 1; min-width: 0; overflow-y: auto; background: #fff; border: 1px solid #e0e6ee; border-radius: 8px; display: flex; flex-direction: column; }

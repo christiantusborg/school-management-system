@@ -147,6 +147,8 @@ public sealed class DraftSignupV1FinishEndpoint : IEndpointMarker
                         ActorUserId = Guid.TryParse(draftState.ActorUserId, out var au) ? au : Guid.Empty,
                         CreatedAt = DateTime.UtcNow,
                     });
+                    // The student inherits the lead's full mail history.
+                    await Odin.Api.Base.Mail.MailHubService.CopyLeadMailToStudentAsync(db, lead.CrmLeadId, student.StudentId, ct);
                     await db.SaveChangesAsync(ct);
                 }
             }

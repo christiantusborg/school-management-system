@@ -224,6 +224,43 @@ public sealed class MailHubService(IServiceScopeFactory scopeFactory, ILogger<Ma
             db.MailMessageLinks.Add(new MailMessageLink { MailMessageId = msg.MailMessageId, PartnerId = pid, MatchedAddress = email });
     }
 
+    /// <summary>Link every already-synced mail exchanged with an address to
+    /// a CRM lead — called when a lead is created (or its email set) so the
+    /// lead starts with the FULL history, not just future mail.</summary>
+    public static async Task RetroLinkLeadAsync(OdinDbContext db, Guid crmLeadId, string email, CancellationToken ct)
+    {
+        var e = email.Trim().ToLowerInvariant();
+        if (e.Length == 0) return;
+        var messageIds = await db.MailMessages
+            .Where(m => (m.FromAddress != null && m.FromAddress.ToLower() == e)
+                || (m.IsOutbound && ((m.ToAddresses ?? "").ToLower().Contains(e) || (m.CcAddresses ?? "").ToLower().Contains(e))))
+            .Select(m => m.MailMessageId)
+            .ToListAsync(ct);
+        var already = await db.MailMessageLinks
+            .Where(l => l.CrmLeadId == crmLeadId)
+            .Select(l => l.MailMessageId)
+            .ToListAsync(ct);
+        foreach (var id in messageIds.Except(already))
+            db.MailMessageLinks.Add(new MailMessageLink { MailMessageId = id, CrmLeadId = crmLeadId, MatchedAddress = e });
+    }
+
+    /// <summary>On lead → student conversion the student inherits the lead's
+    /// complete mail history: every mail linked to the lead is also linked to
+    /// the student.</summary>
+    public static async Task CopyLeadMailToStudentAsync(OdinDbContext db, Guid crmLeadId, Guid studentId, CancellationToken ct)
+    {
+        var leadMsgIds = await db.MailMessageLinks
+            .Where(l => l.CrmLeadId == crmLeadId)
+            .Select(l => new { l.MailMessageId, l.MatchedAddress })
+            .ToListAsync(ct);
+        var studentMsgIds = await db.MailMessageLinks
+            .Where(l => l.StudentId == studentId)
+            .Select(l => l.MailMessageId)
+            .ToListAsync(ct);
+        foreach (var m in leadMsgIds.Where(x => !studentMsgIds.Contains(x.MailMessageId)))
+            db.MailMessageLinks.Add(new MailMessageLink { MailMessageId = m.MailMessageId, StudentId = studentId, MatchedAddress = m.MatchedAddress });
+    }
+
     /// <summary>Send via the account's SMTP and store the outbound copy
     /// (linked to its recipients) so hub-sent mail is archived too.</summary>
     public async Task<Guid> SendAsync(

@@ -223,7 +223,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import api from '../../api/client.js'
 import CrmSettings from './CrmSettings.vue'
 import { auth } from '../../store/auth.js'
@@ -246,6 +246,8 @@ const subTabs = [
   ...(isAdministrator ? [{ id: 'settings', label: 'Settings' }] : []),
 ]
 
+const props = defineProps({ openLeadId: { type: String, default: '' } })
+watch(() => props.openLeadId, id => { if (id) openLead(id) }, { immediate: true })
 const sub = ref('board')
 const err = ref('')
 const pipelineId = ref('')

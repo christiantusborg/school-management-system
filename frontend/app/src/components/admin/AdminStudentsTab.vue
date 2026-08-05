@@ -1174,6 +1174,10 @@
               @uploaded="onAdditionalUploaded" />
 
             <!-- Moodle tab -->
+            <div v-if="detailModal.activeTab === 'mail'" class="tab-pane">
+              <AdminEntityMailPanel kind="student" :entity-id="detailModal.studentId" />
+            </div>
+
             <div v-if="detailModal.activeTab === 'moodle'" class="tab-pane">
               <div class="moodle-row">
                 <div>
@@ -1372,6 +1376,7 @@
 </template>
 
 <script setup>
+import AdminEntityMailPanel from './AdminEntityMailPanel.vue'
 import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue'
 import RubricGradeCell from './RubricGradeCell.vue'
 import { monthsToDays, displayDuration, durationToDays, isDayUnit } from '../../lib/duration.js'
@@ -1387,6 +1392,7 @@ import { ACCEPTED_DOC_ACCEPT_ATTR } from '../../utils/uploadPolicy.js'
 
 const props = defineProps({
   partnerId: { type: String, default: '' },
+  openStudentId: { type: String, default: '' },
 })
 const emit = defineEmits(['add-student'])
 
@@ -1487,6 +1493,7 @@ const DETAIL_TABS = [
   { id: 'programs',    label: 'Programs' },
   { id: 'documents',   label: 'Documents' },
   { id: 'moodle',      label: 'Moodle' },
+  { id: 'mail',        label: 'Mail' },
   { id: 'log',         label: 'Log' },
   { id: 'activity',    label: 'Activity log' },
 ]
@@ -2557,6 +2564,14 @@ async function resetStudentPassword() {
 function copyResetStudentPw() {
   navigator.clipboard.writeText(resetStudentPwValue.value).catch(() => {})
 }
+
+// Cross-tab open (e.g. Mail tab link chips): open a student by id.
+watch(() => props.openStudentId, id => {
+  if (id) {
+    const row = list.value.find(x => x.studentId === id)
+    openStudentDetail(row ?? { studentId: id })
+  }
+}, { immediate: true })
 
 async function openStudentDetail(s, preselectEnrollmentId = null) {
   // Clear any reset-password reveal from a previous student so the value
