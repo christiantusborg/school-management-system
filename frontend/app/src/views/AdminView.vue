@@ -23,6 +23,7 @@
       <button :class="['tab-btn', { active: tab === 'statistics' }]" @click="tab = 'statistics'">Statistics</button>
       <button :class="['tab-btn', { active: tab === 'crm' }]" @click="tab = 'crm'">CRM</button>
       <button v-if="!isSales" :class="['tab-btn', { active: tab === 'mail' }]" @click="tab = 'mail'">Mail</button>
+      <button v-if="isSuperAdmin" :class="['tab-btn', { active: tab === 'changelog' }]" @click="tab = 'changelog'">Changelog</button>
       <button v-if="!isSales" :class="['tab-btn', { active: tab === 'messages' }]" @click="tab = 'messages'">
         Messages
         <span v-if="pendingMsgCount" class="tab-badge">{{ pendingMsgCount }}</span>
@@ -536,6 +537,10 @@
       <MailTab v-if="tab === 'mail'" />
     </div>
 
+    <div v-show="tab === 'changelog'" class="container">
+      <ChangelogTab v-if="tab === 'changelog'" />
+    </div>
+
     <!-- ══════════════════════ ADMIN USERS TAB (SuperAdministrator only) ══════════════════════ -->
     <div v-show="tab === 'admin-users'" class="container">
       <AdminUsersTab v-if="tab === 'admin-users' && auth.isSuperAdmin" :key="adminUsersRefreshKey" />
@@ -700,6 +705,7 @@
 </template>
 
 <script setup>
+import ChangelogTab from '../components/admin/ChangelogTab.vue'
 import MailTab from '../components/admin/MailTab.vue'
 import CrmTab from '../components/admin/CrmTab.vue'
 import { ref, reactive, computed, watch } from 'vue'
@@ -902,6 +908,7 @@ const gearOpen = ref(false)
 const isGearTab = computed(() => GEAR_TABS.some(t => t.k === manageTab.value))
 // Sales logins get a trimmed portal: no Import tab, no gear config tabs.
 const isSales = computed(() => auth.adminLevel === 'Sales')
+const isSuperAdmin = computed(() => auth.adminLevel === 'SuperAdministrator')
 const visibleManageTabs = computed(() =>
   isSales.value ? MANAGE_TABS.filter(t => t.k !== 'import') : MANAGE_TABS)
 // Programmes tab sub-menu: Core ⇄ Custom.
