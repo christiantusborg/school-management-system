@@ -119,6 +119,7 @@ public sealed class AdminProgrammesV1LetterTemplatePreviewEndpoint : IEndpointMa
         tags["[project title]"]        = "The Impact of Digital Transformation on SME Growth";
         tags["[supervisor]"]           = "Dr. John Smith";
         tags["[word count]"]           = "14500";
+        tags["[plagiarism]"]           = "4%";
         tags["[ects achieved]"]        = "60";
         tags["[transcript]"]           = string.Empty; // transcript HTML token; the renderer uses transcriptTable fields for layout-based previews
         tags["[tuition fee]"]          = "-";

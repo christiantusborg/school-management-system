@@ -38,6 +38,9 @@ public class AssignmentUpload : IDeletedAtEntity
     public string? ProjectName { get; set; }
     public string? SupervisorName { get; set; }
     public int? WordCount { get; set; }
+    /// <summary>Plagiarism check result, free text (e.g. "12%" or
+    /// "Checked — OK") so any checker's output fits.</summary>
+    public string? Plagiarism { get; set; }
 
     public ICollection<AssignmentComment> Comments { get; set; } = [];
 }

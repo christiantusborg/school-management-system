@@ -34,6 +34,7 @@ public sealed class AdminV1StudentsAssignmentsEndpoint : IEndpointMarker
         public string? ProjectName { get; init; }
         public string? SupervisorName { get; init; }
         public int? WordCount { get; init; }
+        public string? Plagiarism { get; init; }
     }
 
     private static async Task<bool> OwnsAsync(OdinDbContext db, Guid studentId, Guid enrollmentId, CancellationToken ct) =>
@@ -68,7 +69,8 @@ public sealed class AdminV1StudentsAssignmentsEndpoint : IEndpointMarker
         var (error, id) = await svc.UploadAsync(enrollmentId,
             new AssignmentService.UploadInput(subjectId, form["title"].ToString(), src, file.FileName, file.ContentType, file.Length,
                 form["projectName"].ToString(), form["supervisorName"].ToString(),
-                int.TryParse(form["wordCount"].ToString(), out var wc) ? wc : null),
+                int.TryParse(form["wordCount"].ToString(), out var wc) ? wc : null,
+                form["plagiarism"].ToString()),
             "Admission Office", name, callerId, ct);
         return error is null ? Results.Ok(new { assignmentUploadId = id }) : Results.BadRequest(new { error });
     }
@@ -79,7 +81,7 @@ public sealed class AdminV1StudentsAssignmentsEndpoint : IEndpointMarker
     {
         if (!await OwnsAsync(db, studentId, enrollmentId, ct)) return Results.NotFound();
         var ok = await svc.UpdateProjectFieldsAsync(assignmentId, enrollmentId,
-            body.ProjectName, body.SupervisorName, body.WordCount, ct);
+            body.ProjectName, body.SupervisorName, body.WordCount, body.Plagiarism, ct);
         return ok ? Results.Ok(new { updated = true }) : Results.NotFound();
     }
 

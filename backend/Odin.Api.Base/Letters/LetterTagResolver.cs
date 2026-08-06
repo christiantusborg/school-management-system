@@ -184,7 +184,7 @@ public sealed class LetterTagResolver(OdinDbContext db)
                     .Where(a => a.StudentEnrollmentId == enrollmentId
                         && a.SubjectId == c.SubjectId && a.DeletedAt == null)
                     .OrderByDescending(a => a.UploadedAt)
-                    .Select(a => new { a.ProjectName, a.SupervisorName, a.WordCount })
+                    .Select(a => new { a.ProjectName, a.SupervisorName, a.WordCount, a.Plagiarism })
                     .ToList(),
             })
             .ToListAsync(ct);
@@ -206,6 +206,7 @@ public sealed class LetterTagResolver(OdinDbContext db)
 
         result["[supervisor]"] = FirstFilled(orderedUploads.Select(u => u.SupervisorName));
         result["[word count]"] = FirstFilled(orderedUploads.Select(u => u.WordCount?.ToString(CultureInfo.InvariantCulture)));
+        result["[plagiarism]"] = FirstFilled(orderedUploads.Select(u => u.Plagiarism));
         // The upload's Project name wins over the enrolment's Project Title
         // from the grade-submit modal when both are filled.
         var uploadProjectName = FirstFilled(orderedUploads.Select(u => u.ProjectName));

@@ -5,6 +5,17 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'final-project-plagiarism',
+    date: '2026-08-06',
+    title: 'Plagiarism field on final-project uploads',
+    summary: 'A Plagiarism field joins Project name / Supervisor / Word count on final-project uploads, with a [plagiarism] letter tag.',
+    details: [
+      'WHERE: same place as the other project details — Module Cohorts → a "Final Project / Dissertation" cohort → Uploaded Assignments tab → the student\'s fold-out, on the upload form and on every uploaded file.',
+      'HOW: enter the plagiarism check result as free text (e.g. "12%" or "Checked — OK") when uploading, or on an existing upload and press "Save details". Admission, partner staff and teachers can edit; students see it read-only.',
+      'USE IN LETTERS: insert the new [plagiarism] tag in the letter designer (Partners → Programmes → Letters row), then Generate the letter from the student drawer\'s Letters tab.',
+    ],
+  },
+  {
     id: 'final-project-upload-fields',
     date: '2026-08-06',
     title: 'Final project details: Project name, Supervisor, Word count',

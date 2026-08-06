@@ -75,6 +75,7 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
                 a.ProjectName,
                 a.SupervisorName,
                 a.WordCount,
+                a.Plagiarism,
                 Comments = a.Comments.OrderBy(c => c.CreatedAt).Select(c => new
                 {
                     c.AssignmentCommentId,
@@ -107,6 +108,7 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
                     projectName = u.ProjectName,
                     supervisorName = u.SupervisorName,
                     wordCount = u.WordCount,
+                    plagiarism = u.Plagiarism,
                     comments = u.Comments.Select(c => new
                     {
                         assignmentCommentId = c.AssignmentCommentId,
@@ -132,7 +134,8 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
     public sealed record UploadInput(
         Guid SubjectId, string? Title,
         Stream Content, string? FileName, string? ContentType, long Length,
-        string? ProjectName = null, string? SupervisorName = null, int? WordCount = null);
+        string? ProjectName = null, string? SupervisorName = null, int? WordCount = null,
+        string? Plagiarism = null);
 
     /// <summary>Stores the file and the upload row. Returns an error string
     /// (null on success) plus the created id.</summary>
@@ -189,6 +192,7 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
             ProjectName = Trimmed(input.ProjectName),
             SupervisorName = Trimmed(input.SupervisorName),
             WordCount = input.WordCount,
+            Plagiarism = Trimmed(input.Plagiarism),
         });
         await db.SaveChangesAsync(ct);
         return (null, id);
@@ -203,6 +207,7 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
     public async Task<bool> UpdateProjectFieldsAsync(
         Guid assignmentUploadId, Guid enrollmentId,
         string? projectName, string? supervisorName, int? wordCount,
+        string? plagiarism,
         CancellationToken ct)
     {
         var upload = await db.AssignmentUploads.FirstOrDefaultAsync(a =>
@@ -212,6 +217,7 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
         upload.ProjectName = Trimmed(projectName);
         upload.SupervisorName = Trimmed(supervisorName);
         upload.WordCount = wordCount;
+        upload.Plagiarism = Trimmed(plagiarism);
         await db.SaveChangesAsync(ct);
         return true;
     }

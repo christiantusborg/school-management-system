@@ -42,6 +42,7 @@ public sealed class PartnerV1MyStudentsAssignmentsEndpoint : IEndpointMarker
         public string? ProjectName { get; init; }
         public string? SupervisorName { get; init; }
         public int? WordCount { get; init; }
+        public string? Plagiarism { get; init; }
     }
 
     private static async Task<(bool Ok, string? UserId)> OwnsAsync(
@@ -91,7 +92,8 @@ public sealed class PartnerV1MyStudentsAssignmentsEndpoint : IEndpointMarker
         var (error, id) = await svc.UploadAsync(enrollmentId,
             new AssignmentService.UploadInput(subjectId, form["title"].ToString(), src, file.FileName, file.ContentType, file.Length,
                 form["projectName"].ToString(), form["supervisorName"].ToString(),
-                int.TryParse(form["wordCount"].ToString(), out var wc) ? wc : null),
+                int.TryParse(form["wordCount"].ToString(), out var wc) ? wc : null,
+                form["plagiarism"].ToString()),
             role, name, userId, ct);
         return error is null ? Results.Ok(new { assignmentUploadId = id }) : Results.BadRequest(new { error });
     }
@@ -103,7 +105,7 @@ public sealed class PartnerV1MyStudentsAssignmentsEndpoint : IEndpointMarker
         var (ok, _) = await OwnsAsync(http, db, studentId, enrollmentId, ct);
         if (!ok) return Results.NotFound();
         var updated = await svc.UpdateProjectFieldsAsync(assignmentId, enrollmentId,
-            body.ProjectName, body.SupervisorName, body.WordCount, ct);
+            body.ProjectName, body.SupervisorName, body.WordCount, body.Plagiarism, ct);
         return updated ? Results.Ok(new { updated = true }) : Results.NotFound();
     }
 

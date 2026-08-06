@@ -43,14 +43,17 @@
                    placeholder="Supervisor" class="asg-proj-inp" />
             <input v-model="proj[u.assignmentUploadId].wordCount" type="number" min="0"
                    placeholder="Word count" class="asg-proj-inp asg-proj-wc" />
+            <input v-model="proj[u.assignmentUploadId].plagiarism" type="text" maxlength="200"
+                   placeholder="Plagiarism (e.g. 12%)" class="asg-proj-inp asg-proj-wc" />
             <button class="asg-btn" :disabled="savingProjId === u.assignmentUploadId"
                     @click="saveProjectFields(u)">
               {{ savingProjId === u.assignmentUploadId ? '…' : 'Save details' }}</button>
             <span v-if="projSavedId === u.assignmentUploadId" class="asg-proj-ok">✓ saved</span>
           </div>
-          <div v-else-if="m.isFinalProject && (u.projectName || u.supervisorName || u.wordCount)" class="asg-proj asg-proj-ro">
+          <div v-else-if="m.isFinalProject && (u.projectName || u.supervisorName || u.wordCount || u.plagiarism)" class="asg-proj asg-proj-ro">
             📘 {{ u.projectName || '—' }} · Supervisor: {{ u.supervisorName || '—' }}
             · {{ u.wordCount ? `${u.wordCount} words` : 'word count —' }}
+            · Plagiarism: {{ u.plagiarism || '—' }}
           </div>
 
           <!-- Comment chat -->
@@ -86,6 +89,8 @@
                    placeholder="Supervisor" class="asg-proj-inp" />
             <input v-model="newWordCount[m.subjectId]" type="number" min="0"
                    placeholder="Word count" class="asg-proj-inp asg-proj-wc" />
+            <input v-model="newPlagiarism[m.subjectId]" type="text" maxlength="200"
+                   placeholder="Plagiarism (e.g. 12%)" class="asg-proj-inp asg-proj-wc" />
           </template>
           <input type="file" :accept="ACCEPTED_DOC_ACCEPT_ATTR" class="asg-add-file"
                  @change="onFilePick(m.subjectId, $event)" />
@@ -133,6 +138,7 @@ const newFile = reactive({})
 const newProjectName = reactive({})
 const newSupervisor = reactive({})
 const newWordCount = reactive({})
+const newPlagiarism = reactive({})
 const proj = reactive({})
 const savingProjId = ref('')
 const projSavedId = ref('')
@@ -163,6 +169,7 @@ async function load() {
         projectName: u.projectName ?? '',
         supervisorName: u.supervisorName ?? '',
         wordCount: u.wordCount ?? '',
+        plagiarism: u.plagiarism ?? '',
       }
     }
   } catch (e) {
@@ -191,6 +198,7 @@ async function upload(m) {
       if ((newProjectName[m.subjectId] || '').trim()) fd.append('projectName', newProjectName[m.subjectId].trim())
       if ((newSupervisor[m.subjectId] || '').trim()) fd.append('supervisorName', newSupervisor[m.subjectId].trim())
       if (newWordCount[m.subjectId] !== '' && newWordCount[m.subjectId] != null) fd.append('wordCount', String(newWordCount[m.subjectId]))
+      if ((newPlagiarism[m.subjectId] || '').trim()) fd.append('plagiarism', newPlagiarism[m.subjectId].trim())
     }
     await api.post(props.apiBase, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     newTitle[m.subjectId] = ''
@@ -198,6 +206,7 @@ async function upload(m) {
     newProjectName[m.subjectId] = ''
     newSupervisor[m.subjectId] = ''
     newWordCount[m.subjectId] = ''
+    newPlagiarism[m.subjectId] = ''
     await load()
     open[m.subjectId] = true
   } catch (e) {
@@ -236,10 +245,12 @@ async function saveProjectFields(u) {
       projectName: (p.projectName || '').trim() || null,
       supervisorName: (p.supervisorName || '').trim() || null,
       wordCount: Number.isFinite(wc) ? wc : null,
+      plagiarism: (p.plagiarism || '').trim() || null,
     })
     u.projectName = (p.projectName || '').trim() || null
     u.supervisorName = (p.supervisorName || '').trim() || null
     u.wordCount = Number.isFinite(wc) ? wc : null
+    u.plagiarism = (p.plagiarism || '').trim() || null
     projSavedId.value = u.assignmentUploadId
     setTimeout(() => { if (projSavedId.value === u.assignmentUploadId) projSavedId.value = '' }, 2000)
   } catch (e) {

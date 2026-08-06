@@ -15,6 +15,7 @@ public static class LetterTagRegistry
         new LetterTag("[project title]",       "enrollment.projectTitle"),
         new LetterTag("[supervisor]",          "cohort.supervisor"),
         new LetterTag("[word count]",          "cohort.wordCount"),
+        new LetterTag("[plagiarism]",          "cohort.plagiarism"),
         new LetterTag("[specialization name]", "specialization.name"),
         new LetterTag("[grade]",               "enrollment.finalGrade"),
         new LetterTag("[transcript]",          "enrollment.transcriptTable"),
