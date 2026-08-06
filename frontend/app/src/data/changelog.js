@@ -1,18 +1,28 @@
 // In-app changelog shown on the SuperAdmin "Changelog" tab.
-// STANDING RULE: prepend a new entry here with EVERY deploy.
+// STANDING RULES: prepend a new entry here with EVERY deploy, and keep ONE
+// function per entry — only closely related changes share an entry.
 // Newest first. { id, date, title, summary, details } — details is an array
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
     id: 'approval-letters',
     date: '2026-08-06',
-    title: 'Final project approval letters + spec code editing',
-    summary: 'Proposal/Project approval letters auto-release at the pass mark; admission can edit spec codes.',
+    title: 'Final project approval letters',
+    summary: 'Proposal/Project approval letters auto-release when the cohort mark reaches the pass mark.',
     details: [
       'Two new letters on the Letters tab: "Proposal Approval Letter" and "Project Approval Letter", each with its own designer template per programme + partner and manual Generate / Send buttons.',
-      'They release AUTOMATICALLY when a mark saved in a "Dissertation Proposal" (proposal letter) or "Final Project / Dissertation" (project letter) cohort reaches the programme pass mark - configurable per programme on the Letters tab, default 40.',
-      'Admission can now edit the specialization CODE on custom programmes (partner- or admission-created) from the partner Programmes panel.',
-      'Partner programme editor also gained the Duration of study (min-max months) fields.',
+      'They release AUTOMATICALLY when a mark saved in a "Dissertation Proposal" (proposal letter) or "Final Project / Dissertation" (project letter) cohort reaches the programme pass mark.',
+      'The pass mark is configurable per programme on the Letters tab (🎯 input), default 40.',
+      'Already-released letters are never duplicated, and a missing template never blocks a grade save.',
+    ],
+  },
+  {
+    id: 'spec-code-edit',
+    date: '2026-08-06',
+    title: 'Admission can edit specialization codes',
+    summary: 'Specialization codes on custom programmes are editable from the Programmes panel.',
+    details: [
+      'A ✎ button next to each specialization code in the partner Programmes panel lets the Admission Office correct the code on custom programmes — whether created by the partner or by admission.',
     ],
   },
   {
@@ -26,15 +36,23 @@ export const CHANGELOG = [
     ],
   },
   {
-    id: 'mail-lead-history-sales',
+    id: 'mail-lead-history',
     date: '2026-08-05',
-    title: 'Full mail history on leads & students + Mail for Sales',
-    summary: 'Leads and converted students inherit the complete email history; Sales get their own Mail page.',
+    title: 'Full mail history on leads and converted students',
+    summary: 'Leads inherit the whole email archive with their address; conversion carries it to the student.',
     details: [
-      'Creating a lead (from the CRM, from a mail, or by setting its email) now links the ENTIRE archived mail history with that address — incoming and outgoing — not just future mail.',
-      'When a lead converts to a student, the student inherits the lead\'s complete mail history automatically.',
-      'Sales users now see the Mail tab, scoped to the mail accounts a SuperAdministrator grants them (e.g. their own sales address) — with the same webmail, linking and reply features.',
-      'Sales can also open the Mail tab on a partner\'s manage page to view linked mail and send new mail from their granted account.',
+      'Creating a lead (from the CRM, from a mail, or by setting its email) links the ENTIRE archived mail history with that address — incoming and outgoing — not just future mail.',
+      'When a lead converts to a student, the student inherits the lead’s complete mail history automatically, keeping the log unbroken from first contact to enrolment.',
+    ],
+  },
+  {
+    id: 'sales-mail-access',
+    date: '2026-08-05',
+    title: 'Mail for Sales users',
+    summary: 'Sales get the Mail tab, scoped to the accounts they are granted.',
+    details: [
+      'Sales users now see the Mail tab, limited to the mail accounts a SuperAdministrator grants them (e.g. their own sales address) — with the same webmail, linking and reply features.',
+      'Sales can also open the Mail tab on a partner’s manage page to view linked mail and send new mail from their granted account.',
     ],
   },
   {
@@ -49,16 +67,25 @@ export const CHANGELOG = [
     ],
   },
   {
-    id: 'student-ids-changelog',
+    id: 'student-ids',
     date: '2026-08-05',
-    title: 'Multiple Student IDs + this changelog',
-    summary: 'Students can carry several Student IDs; CSV import matches by email only.',
+    title: 'Multiple Student IDs',
+    summary: 'Students carry several IDs (one primary + aliases); CSV import matches by email only.',
     details: [
       'Students now hold multiple Student IDs: one primary (printed on lists and letters) plus any number of aliases with optional labels. Admission manages them from the student drawer (add, edit, make primary, remove); partners and students see the list read-only.',
       'Student IDs are globally unique — no two students can share an ID.',
       'CSV import matches rows by EMAIL ONLY. Existing students get only NEW programmes (programmes they already have are skipped) enrolled under the importing partner, and unknown Student IDs on their rows are attached as aliases labelled "CSV import". Rows whose ID belongs to a different student are rejected.',
       'The students overview search also finds alias IDs, and the export gains an "All student IDs" column.',
-      'This changelog tab (SuperAdmin only) — updated with every deploy from now on.',
+    ],
+  },
+  {
+    id: 'changelog-tab',
+    date: '2026-08-05',
+    title: 'This changelog',
+    summary: 'SuperAdmin changelog tab, updated with every deploy.',
+    details: [
+      'New Changelog tab (SuperAdministrator only): vertical entry list, newest first, each with a short title and summary; click for the detailed change list.',
+      'Every future deploy adds its entry here before shipping.',
     ],
   },
   {
@@ -109,15 +136,140 @@ export const CHANGELOG = [
     ],
   },
   {
-    id: 'aug4-catchup',
+    id: 'part-payments',
     date: '2026-08-04',
-    title: 'Payments, contacts and partner access rework',
-    summary: 'Part-payments, partner contact book, per-spec programme grants.',
+    title: 'Part-payments on installments and invoices',
+    summary: 'Multiple dated payments with notes; paid state derives automatically.',
     details: [
-      'Part-payment records per installment/invoice with notes; paid state derives automatically once covered; Amount paid columns and partner-visible history.',
-      'Partner contact book: typed contacts (Owner/Admission/Marketing/Finance + custom) with any number of contact methods (18 seeded channels, Email/Phone/WhatsApp enabled) and notes; Owner contacts are admission-only.',
-      'Core programme access became per-specialization: unticking one spec no longer revokes the whole programme, and the signup wizard respects partner toggles.',
-      'Partner “+ Add programme” on own students; specialization-level programme approval with per-spec review and cloning.',
+      'Every tuition installment and additional invoice can carry multiple payment records (amount, date, note such as where it was paid).',
+      'An item flips to Paid automatically once its payments cover the amount (paid date = latest payment) and back if a record is removed.',
+      'Amount-paid columns and totals count part-payments; partners see the payment history read-only.',
+    ],
+  },
+  {
+    id: 'partner-contacts',
+    date: '2026-08-04',
+    title: 'Partner contact book',
+    summary: 'Typed multi-contact book with configurable contact methods.',
+    details: [
+      'Any number of named contacts per partner, typed by role (Owner / Admission / Marketing / Finance + custom), each with any number of contact methods and a free-text note.',
+      'System Config → Contact Methods manages the channel list (18 seeded worldwide; Email, Phone and WhatsApp enabled by default) and the contact types.',
+      'Owner contacts can only be changed by the Admission Office; partners manage all other types from their portal Contacts tab.',
+    ],
+  },
+  {
+    id: 'per-spec-grants',
+    date: '2026-08-04',
+    title: 'Per-specialization core programme access',
+    summary: 'Grants and partner toggles work per specialization; signup respects them.',
+    details: [
+      'Core programme access is stored per specialization: unticking one spec no longer revokes the whole programme, and the partner’s own disable toggle keeps the grant.',
+      'The signup wizard lists a core programme only when at least one specialization is granted and enabled, showing only those specializations.',
+    ],
+  },
+  {
+    id: 'spec-approval',
+    date: '2026-08-04',
+    title: 'Specialization-level programme approval + cloning',
+    summary: 'Custom programmes are approved per specialization; specs can be cloned.',
+    details: [
+      'Each specialization of a custom programme has its own Draft → Pending → Approved/Rejected workflow; the programme goes live once one spec is approved.',
+      'Specializations can be cloned from the same programme or any core programme of the same award level; partner clones need review, admission clones are approved instantly.',
+      'Partners also gained “+ Add programme” on their own students, limited to their real access.',
+    ],
+  },
+  {
+    id: 'aug3-duration',
+    date: '2026-08-03',
+    title: 'Durations stored as value + unit',
+    summary: 'Study durations keep exactly what was entered — whole months or days.',
+    details: [
+      'Approved study durations are stored as the exact value + unit entered: months stay whole months, days stay days, and letters print precisely what was typed.',
+      'The Month|Day toggle clears the field on switch instead of converting.',
+      'All existing student durations were migrated and verified 1:1 against the pre-change backup.',
+    ],
+  },
+  {
+    id: 'signup-granted-only',
+    date: '2026-08-03',
+    title: 'Signup wizard shows only granted programmes',
+    summary: 'Partners’ public signup lists their granted and own programmes only.',
+    details: [
+      'The public signup wizard lists ONLY programmes granted to the partner (plus their own live custom programmes) instead of every core programme.',
+    ],
+  },
+  {
+    id: 'date-columns',
+    date: '2026-08-03',
+    title: 'Commencement + Graduation date columns',
+    summary: 'Both students overviews show the enrolment timeline dates.',
+    details: [
+      'Commencement date and Graduation date columns were added to the students overview in both the admission and partner portals, aligned per enrolment.',
+    ],
+  },
+  {
+    id: 'statistics-suite',
+    date: '2026-08-02',
+    title: 'Statistics tabs with exports',
+    summary: 'Outcomes, Grades, Teachers, Demographics, Operations, Finance, Trends — all exportable.',
+    details: [
+      'Statistics split into tabs: Outcomes, Grades (module difficulty + rubric criterion analysis), Teachers (deviation vs module average), Demographics (gender/age/nationality/industry/position/disability), Operations & QA, Finance and Trends with a month/quarter toggle.',
+      'Per-tab CSV/PDF export plus a full-report PDF and a real multi-sheet Excel workbook, all downloaded with normal header authentication.',
+    ],
+  },
+  {
+    id: 'sales-role',
+    date: '2026-08-02',
+    title: 'Sales role, leaderboard and configurable views',
+    summary: 'Sales staff scoping, signups leaderboard, referral links, custom column views.',
+    details: [
+      'New Sales admin level: sees only own students and assigned partners (assignable from the partner profile and Admin Users), with a trimmed portal.',
+      'Signups leaderboard with metric switcher (signup / paid / status), amounts and per-event details, per-staff and per-school views, CSV/PDF export.',
+      'Referral links (?ref=…) and actor attribution give every signup an “Added by”; “Handled by (Sales)” credits payments and status changes.',
+      'Per-user configurable column views on the students overview: show/hide and reorder columns, unlimited named views stored server-side.',
+    ],
+  },
+  {
+    id: 'combined-invoices',
+    date: '2026-08-02',
+    title: 'Combined invoices',
+    summary: 'One numbered invoice bundling items across a partner’s students.',
+    details: [
+      'Admission picks unpaid installments and additional invoices across a partner’s students and generates ONE numbered invoice (INV-{PARTNER}-{seq}); partners download read-only.',
+      'Mark paid updates the underlying items; SuperAdmin can revert; deletion allowed within 1 hour (SuperAdmin anytime, never while Paid).',
+      'Each partner can have its own invoice design template authored in the letter designer.',
+    ],
+  },
+  {
+    id: 'rubrics-grading',
+    date: '2026-08-02',
+    title: 'Rubrics grading',
+    summary: 'Weighted rubric templates for module grading.',
+    details: [
+      'Shared rubric templates in System Config plus per-module custom rubrics; criteria scored 1–100 and weighted by Max % (must total 100).',
+      'Grading happens on the cohort Grades tab with one save; the final grade is always calculated; rubric breakdowns appear on student grade sheets for admission and partners.',
+    ],
+  },
+  {
+    id: 'cards-intake',
+    date: '2026-08-02',
+    title: 'Student ID cards + intake questionnaires',
+    summary: 'Designable digital student cards and versioned evaluation forms.',
+    details: [
+      'Digital student ID cards with a designer template, generated at offer acceptance, with a per-student Student Card ID override that re-renders released cards.',
+      'Versioned intake questionnaires with targeting, anonymous statistics and six ready-made evaluation forms; cohort questionnaires gate grade visibility until filled.',
+    ],
+  },
+  {
+    id: 'overview-rework',
+    date: '2026-08-02',
+    title: 'Students overview + editors rework',
+    summary: 'Payment-stage filter, split columns, email editing, fonts, letter templates.',
+    details: [
+      'Students overview: payment-stage dropdown (Unpaid / Paid partially / Paid full / No plan), Enrolments / Specialization / Status split into columns, simplified status labels with tooltips.',
+      'Student email editable by admission and partner (login follows, back to unverified).',
+      'Font selector with the top-25 common fonts on all document designers, mapped to real server fonts.',
+      'Letter and email templates per (programme, partner); immutable student log notes with per-note visibility; per-module start/end dates with programme-level defaults; PartnerNumber + CSV student import.',
     ],
   },
 ]
