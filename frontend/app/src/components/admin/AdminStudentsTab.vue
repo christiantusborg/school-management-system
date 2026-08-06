@@ -928,12 +928,20 @@
                         <template v-if="dynEmailSend.preview.cc?.length"> · cc {{ dynEmailSend.preview.cc.join(', ') }}</template>
                         <template v-if="dynEmailSend.preview.bcc?.length"> · bcc {{ dynEmailSend.preview.bcc.join(', ') }}</template>
                       </p>
-                      <div class="dyn-mail-subject">{{ dynEmailSend.preview.subject }}</div>
-                      <div class="dyn-mail-preview" v-html="dynEmailSend.preview.bodyHtml"></div>
+                      <p v-if="dynEmailSend.preview.isDefault" class="muted" style="font-size:.74rem;margin:0 0 .4rem;color:#b66a00;">
+                        No email template authored for this programme + partner yet — below is a standard
+                        text you can rewrite freely before sending. To make a permanent template, use the
+                        ✉ chip on the programme's Letters row.
+                      </p>
+                      <input v-model="dynEmailSend.subject" class="dyn-mail-subject-input"
+                             @input="dynEmailSend.subjectEdited = true" placeholder="Subject" />
+                      <div ref="dynMailBodyEl" class="dyn-mail-preview dyn-mail-editable" contenteditable="true"
+                           @input="dynEmailSend.bodyEdited = true"></div>
+                      <p class="muted" style="font-size:.7rem;margin:.2rem 0 0;">The mail text is editable — click into it and rewrite anything before sending.</p>
                     </template>
                     <div style="margin-top:.6rem;">
-                      <label class="muted" style="font-size:.74rem;font-weight:700;">Additional text (optional — lands at the [additional text] spot, or at the end)</label>
-                      <textarea v-model="dynEmailSend.additionalText" rows="3" class="dyn-mail-extra"
+                      <label class="muted" style="font-size:.74rem;font-weight:700;">Additional text (optional — lands at the [additional text] spot{{ dynEmailSend.bodyEdited ? '; disabled while you are editing the mail text directly' : '' }})</label>
+                      <textarea v-model="dynEmailSend.additionalText" rows="2" class="dyn-mail-extra" :disabled="dynEmailSend.bodyEdited"
                                 placeholder="Anything extra for this student…" @input="debouncedDynPreview"></textarea>
                     </div>
                     <div style="display:flex;gap:.5rem;margin-top:.4rem;">
@@ -2646,7 +2654,8 @@ async function downloadLetterVersion(dl, v) {
 }
 
 // ── Send dialog for config-created letters (preview + additional text) ──────
-const dynEmailSend = ref({ open: false, dl: null, loading: false, preview: null, additionalText: '', cc: '', bcc: '', sending: false, error: '', ok: '' })
+const dynEmailSend = ref({ open: false, dl: null, loading: false, preview: null, subject: '', subjectEdited: false, bodyEdited: false, additionalText: '', cc: '', bcc: '', sending: false, error: '', ok: '' })
+const dynMailBodyEl = ref(null)
 let dynPreviewTimer = null
 
 async function loadDynEmailPreview() {
@@ -2659,6 +2668,11 @@ async function loadDynEmailPreview() {
       `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/dynamic-letters/${s.dl.letterTypeDefinitionId}/email-preview`,
       { params: s.additionalText.trim() ? { additionalText: s.additionalText.trim() } : {} })
     s.preview = res.data
+    if (!s.subjectEdited) s.subject = res.data.subject ?? ''
+    await nextTick()
+    // The body is a contenteditable div managed by hand: only overwrite it
+    // while the user hasn't started rewriting the mail.
+    if (dynMailBodyEl.value && !s.bodyEdited) dynMailBodyEl.value.innerHTML = res.data.bodyHtml ?? ''
   } catch (e) {
     s.preview = null
     s.error = e.response?.data?.error ?? e.message ?? 'Preview failed'
@@ -2668,12 +2682,13 @@ async function loadDynEmailPreview() {
 }
 
 function debouncedDynPreview() {
+  if (dynEmailSend.value.bodyEdited) return
   clearTimeout(dynPreviewTimer)
   dynPreviewTimer = setTimeout(loadDynEmailPreview, 500)
 }
 
 function openDynEmailSend(dl) {
-  dynEmailSend.value = { open: true, dl, loading: true, preview: null, additionalText: '', cc: '', bcc: '', sending: false, error: '', ok: '' }
+  dynEmailSend.value = { open: true, dl, loading: true, preview: null, subject: '', subjectEdited: false, bodyEdited: false, additionalText: '', cc: '', bcc: '', sending: false, error: '', ok: '' }
   loadDynEmailPreview()
 }
 
@@ -2684,7 +2699,13 @@ async function sendDynEmail() {
   try {
     const res = await api.post(
       `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/dynamic-letters/${s.dl.letterTypeDefinitionId}/email`,
-      { cc: splitEmails(s.cc), bcc: splitEmails(s.bcc), additionalText: s.additionalText.trim() || null })
+      {
+        cc: splitEmails(s.cc),
+        bcc: splitEmails(s.bcc),
+        additionalText: s.bodyEdited ? null : (s.additionalText.trim() || null),
+        subject: s.subject.trim() || null,
+        bodyHtml: dynMailBodyEl.value?.innerHTML ?? s.preview?.bodyHtml ?? null,
+      })
     s.ok = `Sent to ${res.data?.to ?? 'the student'}.`
   } catch (e) {
     s.error = e.response?.data?.error ?? e.message ?? 'Send failed'
@@ -4336,8 +4357,9 @@ async function runExport() {
 .letter-name { font-weight: 600; font-size: .88rem; color: #1a2d4f; }
 .letter-sub { font-size: .76rem; color: #6b7888; }
 .letter-versions { margin-top: .35rem; border-top: 1px dashed #dbe4ee; padding-top: .35rem; display: flex; flex-direction: column; gap: .2rem; }
-.dyn-mail-subject { font-weight: 700; font-size: .9rem; color: #1a2d4f; border: 1px solid #e3e9f1; border-bottom: none; border-radius: 7px 7px 0 0; padding: .45rem .6rem; background: #f7f9fc; }
+.dyn-mail-subject-input { width: 100%; box-sizing: border-box; font-weight: 700; font-size: .9rem; color: #1a2d4f; border: 1px solid #e3e9f1; border-bottom: none; border-radius: 7px 7px 0 0; padding: .45rem .6rem; background: #f7f9fc; font-family: inherit; }
 .dyn-mail-preview { border: 1px solid #e3e9f1; border-radius: 0 0 7px 7px; padding: .6rem .7rem; max-height: 260px; overflow: auto; font-size: .84rem; background: #fff; }
+.dyn-mail-editable:focus { outline: 2px solid #1a4d8c33; }
 .dyn-mail-extra { width: 100%; box-sizing: border-box; padding: .45rem .55rem; border: 1px solid #ccd5e0; border-radius: 6px; font-size: .85rem; font-family: inherit; margin-top: .2rem; }
 .letter-version-row { display: flex; align-items: center; gap: .5rem; font-size: .74rem; color: #4b5a6d; }
 .btn-mini { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }

@@ -150,7 +150,7 @@ public sealed class LetterEmailService(
     /// by <see cref="SendForDynamicLetterAsync"/> so what you preview is what
     /// sends.
     /// </summary>
-    public async Task<(LetterEmailResult? Fail, string Subject, string BodyHtml, string To, List<string> Cc, List<string> Bcc, bool IsEnabled)>
+    public async Task<(LetterEmailResult? Fail, string Subject, string BodyHtml, string To, List<string> Cc, List<string> Bcc, bool IsEnabled, bool IsDefault)>
         ComposeDynamicAsync(
             Guid enrollmentId, Guid letterTypeDefinitionId,
             IEnumerable<string>? adHocCc, IEnumerable<string>? adHocBcc,
@@ -172,24 +172,47 @@ public sealed class LetterEmailService(
             })
             .FirstOrDefaultAsync(ct);
         if (enrollment is null)
-            return (new LetterEmailResult(LetterEmailOutcome.NoTemplate, Error: "Enrolment not found."), "", "", "", [], [], false);
+            return (new LetterEmailResult(LetterEmailOutcome.NoTemplate, Error: "Enrolment not found."), "", "", "", [], [], false, false);
+        if (string.IsNullOrWhiteSpace(enrollment.StudentEmail))
+            return (new LetterEmailResult(LetterEmailOutcome.NoRecipient, Error: "Student has no email address."), "", "", "", [], [], false, false);
 
         var template = await db.LetterEmailTemplates.FirstOrDefaultAsync(t =>
             t.ProgrammeId == enrollment.ProgrammeId &&
             t.PartnerId == enrollment.PartnerId &&
             t.LetterTypeDefinitionId == letterTypeDefinitionId &&
             t.DeletedAt == null, ct);
-        if (template is null || string.IsNullOrWhiteSpace(template.Subject) || string.IsNullOrWhiteSpace(template.BodyHtml))
-            return (new LetterEmailResult(LetterEmailOutcome.NoTemplate, Error: "No email template authored for this letter (programme + partner)."), "", "", "", [], [], false);
-        if (string.IsNullOrWhiteSpace(enrollment.StudentEmail))
-            return (new LetterEmailResult(LetterEmailOutcome.NoRecipient, Error: "Student has no email address."), "", "", "", [], [], false);
 
         var tags = await tagResolver.ResolveAsync(enrollmentId, ct);
-        var subject = ApplyAdditionalText(ApplyTags(template.Subject!, tags), additionalText, htmlBody: false);
-        var bodyHtml = ApplyAdditionalText(ApplyTags(template.BodyHtml!, tags), additionalText, htmlBody: true);
-        var cc = MergeRecipients(template.CcRecipientsJson, adHocCc);
-        var bcc = MergeRecipients(template.BccRecipientsJson, adHocBcc);
-        return (null, subject, bodyHtml, enrollment.StudentEmail!, cc, bcc, template.IsEmailEnabled);
+        string rawSubject, rawBody;
+        var isDefault = template is null || string.IsNullOrWhiteSpace(template.Subject) || string.IsNullOrWhiteSpace(template.BodyHtml);
+        if (isDefault)
+        {
+            // No authored template: compose a complete starting mail the
+            // staff can rewrite in the Send dialog. Never auto-sends
+            // (IsEnabled stays false without an authored+enabled template).
+            var letterName = await db.LetterTypeDefinitions
+                .Where(d => d.LetterTypeDefinitionId == letterTypeDefinitionId)
+                .Select(d => d.Name)
+                .FirstOrDefaultAsync(ct) ?? "Letter";
+            rawSubject = $"{letterName} — [student full name]";
+            rawBody =
+                "<p>Dear [student firstname],</p>" +
+                $"<p>Please find your {letterName} attached to this email. " +
+                "It was issued for your enrolment in [program name] ([specialization name]) at [partner name].</p>" +
+                "<p>[additional text]</p>" +
+                "<p>Kind regards,<br>[school name]</p>";
+        }
+        else
+        {
+            rawSubject = template!.Subject!;
+            rawBody = template.BodyHtml!;
+        }
+
+        var subject = ApplyAdditionalText(ApplyTags(rawSubject, tags), additionalText, htmlBody: false);
+        var bodyHtml = ApplyAdditionalText(ApplyTags(rawBody, tags), additionalText, htmlBody: true);
+        var cc = MergeRecipients(template?.CcRecipientsJson, adHocCc);
+        var bcc = MergeRecipients(template?.BccRecipientsJson, adHocBcc);
+        return (null, subject, bodyHtml, enrollment.StudentEmail!, cc, bcc, template?.IsEmailEnabled == true && !isDefault, isDefault);
     }
 
     /// <summary>
@@ -203,12 +226,17 @@ public sealed class LetterEmailService(
     public async Task<LetterEmailResult> SendForDynamicLetterAsync(
         Guid enrollmentId, Guid letterTypeDefinitionId,
         IEnumerable<string>? adHocCc, IEnumerable<string>? adHocBcc,
-        string? additionalText, bool requireEnabled, CancellationToken ct)
+        string? additionalText, bool requireEnabled, CancellationToken ct,
+        string? overrideSubject = null, string? overrideBodyHtml = null)
     {
-        var (fail, subject, bodyHtml, to, cc, bcc, isEnabled) = await ComposeDynamicAsync(
+        var (fail, subject, bodyHtml, to, cc, bcc, isEnabled, _) = await ComposeDynamicAsync(
             enrollmentId, letterTypeDefinitionId, adHocCc, adHocBcc, additionalText, ct);
         if (fail is not null) return fail;
         if (requireEnabled && !isEnabled) return new LetterEmailResult(LetterEmailOutcome.Disabled);
+        // The Send dialog lets staff rewrite the composed mail; what they
+        // edited wins verbatim over the template composition.
+        if (!string.IsNullOrWhiteSpace(overrideSubject)) subject = overrideSubject.Trim();
+        if (!string.IsNullOrWhiteSpace(overrideBodyHtml)) bodyHtml = overrideBodyHtml;
 
         var meta = await db.Enrollments
             .Where(e => e.StudentEnrollmentId == enrollmentId)

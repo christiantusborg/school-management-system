@@ -29,6 +29,10 @@ public sealed class AdminV1DynamicLetterEmailEndpoint : IEndpointMarker
         public List<string>? Cc { get; init; }
         public List<string>? Bcc { get; init; }
         public string? AdditionalText { get; init; }
+        /// <summary>Staff-edited subject/body from the dialog; win verbatim
+        /// over the template composition when present.</summary>
+        public string? Subject { get; init; }
+        public string? BodyHtml { get; init; }
     }
 
     private static async Task<IResult?> GuardAsync(
@@ -63,11 +67,11 @@ public sealed class AdminV1DynamicLetterEmailEndpoint : IEndpointMarker
         OdinDbContext db, LetterEmailService letterEmail, CancellationToken ct)
     {
         if (await GuardAsync(http, userManager, db, studentId, enrollmentId, definitionId, ct) is { } fail) return fail;
-        var (composeFail, subject, bodyHtml, to, cc, bcc, isEnabled) = await letterEmail.ComposeDynamicAsync(
+        var (composeFail, subject, bodyHtml, to, cc, bcc, isEnabled, isDefault) = await letterEmail.ComposeDynamicAsync(
             enrollmentId, definitionId, adHocCc: null, adHocBcc: null, additionalText, ct);
         if (composeFail is not null)
             return Results.BadRequest(new { error = composeFail.Error ?? composeFail.Outcome.ToString() });
-        return Results.Ok(new { subject, bodyHtml, to, cc, bcc, isEnabled });
+        return Results.Ok(new { subject, bodyHtml, to, cc, bcc, isEnabled, isDefault });
     }
 
     private static async Task<IResult> SendAsync(
@@ -78,7 +82,8 @@ public sealed class AdminV1DynamicLetterEmailEndpoint : IEndpointMarker
     {
         if (await GuardAsync(http, userManager, db, studentId, enrollmentId, definitionId, ct) is { } fail) return fail;
         var result = await letterEmail.SendForDynamicLetterAsync(
-            enrollmentId, definitionId, body.Cc, body.Bcc, body.AdditionalText, requireEnabled: false, ct);
+            enrollmentId, definitionId, body.Cc, body.Bcc, body.AdditionalText, requireEnabled: false, ct,
+            overrideSubject: body.Subject, overrideBodyHtml: body.BodyHtml);
         return result.Outcome == LetterEmailOutcome.Sent
             ? Results.Ok(new { sent = true, to = result.To, cc = result.Cc, bcc = result.Bcc })
             : Results.BadRequest(new { error = result.Error ?? result.Outcome.ToString() });

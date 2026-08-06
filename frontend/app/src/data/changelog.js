@@ -5,6 +5,19 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'dynamic-letter-email-editable',
+    date: '2026-08-06',
+    title: 'Letter Send dialog: full text always ready, rewrite freely',
+    summary: 'The ✉ Send dialog for config-created letters never dead-ends — it starts from the template or a standard text, and subject + body are editable.',
+    details: [
+      'WHERE: student drawer → Letters tab → ✉ Send on a config-created letter row.',
+      'NO TEMPLATE NEEDED: if no email template is authored for the programme + partner, the dialog now opens with a complete standard mail (greeting, letter attached, sign-off — tags already filled for the student) instead of the "No email template authored" error.',
+      'REWRITE FREELY: the subject line and the mail text are directly editable in the dialog — click into the text and change anything; what you see is exactly what sends, with the PDF attached.',
+      'The [additional text] quick-box still works until you start editing the mail text directly (then it hands over to your manual edits).',
+      'Auto-send on release still requires a saved + enabled template — the standard fallback text is only ever sent by a person clicking Send.',
+    ],
+  },
+  {
     id: 'dynamic-letter-template-index-fix',
     date: '2026-08-06',
     title: 'Fix: saving a second config-created letter template failed',
