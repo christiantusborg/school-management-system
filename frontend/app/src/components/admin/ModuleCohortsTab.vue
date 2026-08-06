@@ -349,7 +349,8 @@
                 <AssignmentsPanel v-if="asgOpen[s.enrollmentId]"
                   :api-base="assignmentsBase(s)"
                   :subject-id="det.cohort.subjectId"
-                  :student-name="`${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() || s.studentNumber" />
+                  :student-name="`${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() || s.studentNumber"
+                  :can-edit-project-fields="true" />
               </div>
             </template>
             <p v-else class="mc-sub">No students assigned to this cohort yet.</p>

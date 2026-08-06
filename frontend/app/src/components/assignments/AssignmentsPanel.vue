@@ -32,6 +32,27 @@
             <span class="asg-role-pill">{{ u.uploadedByRole }}</span> · {{ fmtDate(u.uploadedAt) }}
           </div>
 
+          <!-- Final-project details: only on Final Project / Dissertation
+               cohorts. Staff (admission / partner / teacher) edit; students
+               see them read-only. Printed on the approval letters via the
+               [project title] / [supervisor] / [word count] tags. -->
+          <div v-if="m.isFinalProject && canEditProjectFields && proj[u.assignmentUploadId]" class="asg-proj">
+            <input v-model="proj[u.assignmentUploadId].projectName" type="text" maxlength="500"
+                   placeholder="Final project name" class="asg-proj-inp asg-proj-name" />
+            <input v-model="proj[u.assignmentUploadId].supervisorName" type="text" maxlength="300"
+                   placeholder="Supervisor" class="asg-proj-inp" />
+            <input v-model="proj[u.assignmentUploadId].wordCount" type="number" min="0"
+                   placeholder="Word count" class="asg-proj-inp asg-proj-wc" />
+            <button class="asg-btn" :disabled="savingProjId === u.assignmentUploadId"
+                    @click="saveProjectFields(u)">
+              {{ savingProjId === u.assignmentUploadId ? '…' : 'Save details' }}</button>
+            <span v-if="projSavedId === u.assignmentUploadId" class="asg-proj-ok">✓ saved</span>
+          </div>
+          <div v-else-if="m.isFinalProject && (u.projectName || u.supervisorName || u.wordCount)" class="asg-proj asg-proj-ro">
+            📘 {{ u.projectName || '—' }} · Supervisor: {{ u.supervisorName || '—' }}
+            · {{ u.wordCount ? `${u.wordCount} words` : 'word count —' }}
+          </div>
+
           <!-- Comment chat -->
           <div class="asg-chat">
             <div v-for="c in u.comments" :key="c.assignmentCommentId"
@@ -58,6 +79,14 @@
         <div v-if="canUpload" class="asg-add">
           <input v-model="newTitle[m.subjectId]" type="text" maxlength="300"
                  placeholder="Document title (required)" class="asg-add-title" />
+          <template v-if="m.isFinalProject && canEditProjectFields">
+            <input v-model="newProjectName[m.subjectId]" type="text" maxlength="500"
+                   placeholder="Final project name" class="asg-add-title" />
+            <input v-model="newSupervisor[m.subjectId]" type="text" maxlength="300"
+                   placeholder="Supervisor" class="asg-proj-inp" />
+            <input v-model="newWordCount[m.subjectId]" type="number" min="0"
+                   placeholder="Word count" class="asg-proj-inp asg-proj-wc" />
+          </template>
           <input type="file" :accept="ACCEPTED_DOC_ACCEPT_ATTR" class="asg-add-file"
                  @change="onFilePick(m.subjectId, $event)" />
           <button class="asg-btn asg-btn-primary"
@@ -86,6 +115,10 @@ const props = defineProps({
   // Shown on uploads and the upload button so it is unmistakable WHICH
   // student a staff upload attaches to (cohort context).
   studentName: { type: String, default: '' },
+  // Staff surfaces (admission / partner / teacher) may fill the final-project
+  // details on uploads in Final Project / Dissertation cohorts; students only
+  // see them read-only.
+  canEditProjectFields: { type: Boolean, default: false },
 })
 
 const allModules = ref([])
@@ -97,6 +130,12 @@ const open = reactive({})
 const drafts = reactive({})
 const newTitle = reactive({})
 const newFile = reactive({})
+const newProjectName = reactive({})
+const newSupervisor = reactive({})
+const newWordCount = reactive({})
+const proj = reactive({})
+const savingProjId = ref('')
+const projSavedId = ref('')
 const downloadingId = ref('')
 const sendingId = ref('')
 const uploadingSubject = ref('')
@@ -118,6 +157,14 @@ async function load() {
     allModules.value = res.data.modules ?? []
     // Auto-open modules that already have uploads.
     for (const m of modules.value) if (m.uploads.length && open[m.subjectId] === undefined) open[m.subjectId] = true
+    // Editable copies of the final-project details per upload.
+    for (const m of allModules.value) for (const u of m.uploads) {
+      proj[u.assignmentUploadId] = {
+        projectName: u.projectName ?? '',
+        supervisorName: u.supervisorName ?? '',
+        wordCount: u.wordCount ?? '',
+      }
+    }
   } catch (e) {
     error.value = e.response?.data?.error ?? e.message ?? 'Failed to load assignments'
   } finally {
@@ -140,9 +187,17 @@ async function upload(m) {
     fd.append('subjectId', m.subjectId)
     fd.append('title', title)
     fd.append('file', file)
+    if (m.isFinalProject && props.canEditProjectFields) {
+      if ((newProjectName[m.subjectId] || '').trim()) fd.append('projectName', newProjectName[m.subjectId].trim())
+      if ((newSupervisor[m.subjectId] || '').trim()) fd.append('supervisorName', newSupervisor[m.subjectId].trim())
+      if (newWordCount[m.subjectId] !== '' && newWordCount[m.subjectId] != null) fd.append('wordCount', String(newWordCount[m.subjectId]))
+    }
     await api.post(props.apiBase, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     newTitle[m.subjectId] = ''
     newFile[m.subjectId] = null
+    newProjectName[m.subjectId] = ''
+    newSupervisor[m.subjectId] = ''
+    newWordCount[m.subjectId] = ''
     await load()
     open[m.subjectId] = true
   } catch (e) {
@@ -167,6 +222,30 @@ async function download(u) {
     error.value = 'Download failed'
   } finally {
     downloadingId.value = ''
+  }
+}
+
+async function saveProjectFields(u) {
+  const p = proj[u.assignmentUploadId]
+  if (!p || savingProjId.value) return
+  savingProjId.value = u.assignmentUploadId
+  error.value = ''
+  try {
+    const wc = p.wordCount === '' || p.wordCount == null ? null : Number(p.wordCount)
+    await api.patch(`${props.apiBase}/${u.assignmentUploadId}/project-fields`, {
+      projectName: (p.projectName || '').trim() || null,
+      supervisorName: (p.supervisorName || '').trim() || null,
+      wordCount: Number.isFinite(wc) ? wc : null,
+    })
+    u.projectName = (p.projectName || '').trim() || null
+    u.supervisorName = (p.supervisorName || '').trim() || null
+    u.wordCount = Number.isFinite(wc) ? wc : null
+    projSavedId.value = u.assignmentUploadId
+    setTimeout(() => { if (projSavedId.value === u.assignmentUploadId) projSavedId.value = '' }, 2000)
+  } catch (e) {
+    error.value = e.response?.data?.error ?? e.message ?? 'Saving details failed'
+  } finally {
+    savingProjId.value = ''
   }
 }
 
@@ -225,4 +304,10 @@ defineExpose({ reload: load })
 .asg-add { display: flex; gap: .45rem; align-items: center; flex-wrap: wrap; border-top: 1px dashed #e3e9f1; padding-top: .55rem; margin-top: .3rem; }
 .asg-add-title { flex: 1 1 220px; padding: .35rem .55rem; border: 1px solid #ccd5e0; border-radius: 6px; font-size: .82rem; }
 .asg-add-file { font-size: .78rem; max-width: 260px; }
+.asg-proj { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; margin-top: .45rem; background: #f4f8ff; border: 1px dashed #c9d8ec; border-radius: 6px; padding: .4rem .5rem; }
+.asg-proj-inp { padding: .3rem .5rem; border: 1px solid #ccd5e0; border-radius: 6px; font-size: .8rem; flex: 0 1 160px; }
+.asg-proj-name { flex: 1 1 220px; }
+.asg-proj-wc { flex: 0 1 110px; }
+.asg-proj-ok { color: #1c7a4a; font-size: .78rem; font-weight: 700; }
+.asg-proj-ro { color: #33475e; font-size: .8rem; display: block; }
 </style>

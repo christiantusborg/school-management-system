@@ -36,17 +36,28 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
             where mcs.StudentEnrollmentId == enrollmentId && mcs.DeletedAt == null
                 && mc.DeletedAt == null && s.DeletedAt == null
             orderby s.Code
-            select new { s.SubjectId, s.Code, s.Name, mc.CohortNumber })
+            select new
+            {
+                s.SubjectId, s.Code, s.Name, mc.CohortNumber,
+                CohortTypeName = db.CohortTypes
+                    .Where(t => t.CohortTypeId == mc.CohortTypeId)
+                    .Select(t => t.Name)
+                    .FirstOrDefault() ?? string.Empty,
+            })
             .ToListAsync(ct);
 
         var subjects = cohortModules.Count > 0
-            ? cohortModules.Select(x => new { x.SubjectId, x.Code, x.Name, CohortNumber = (string?)x.CohortNumber }).ToList()
+            ? cohortModules.Select(x => new
+            {
+                x.SubjectId, x.Code, x.Name, CohortNumber = (string?)x.CohortNumber,
+                IsFinalProject = IsFinalProjectCohortType(x.CohortTypeName),
+            }).ToList()
             : (await db.Subjects
                 .Where(s => s.SpecializationId == specId && s.DeletedAt == null)
                 .OrderBy(s => s.Code)
                 .Select(s => new { s.SubjectId, s.Code, s.Name })
                 .ToListAsync(ct))
-                .Select(s => new { s.SubjectId, s.Code, s.Name, CohortNumber = (string?)null })
+                .Select(s => new { s.SubjectId, s.Code, s.Name, CohortNumber = (string?)null, IsFinalProject = false })
                 .ToList();
 
         var uploads = await db.AssignmentUploads
@@ -61,6 +72,9 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
                 a.UploadedByRole,
                 a.UploadedByName,
                 a.UploadedAt,
+                a.ProjectName,
+                a.SupervisorName,
+                a.WordCount,
                 Comments = a.Comments.OrderBy(c => c.CreatedAt).Select(c => new
                 {
                     c.AssignmentCommentId,
@@ -81,6 +95,7 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
                 code = s.Code,
                 name = s.Name,
                 cohortNumber = s.CohortNumber,
+                isFinalProject = s.IsFinalProject,
                 uploads = bySubject[s.SubjectId].Select(u => new
                 {
                     assignmentUploadId = u.AssignmentUploadId,
@@ -89,6 +104,9 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
                     uploadedByRole = u.UploadedByRole,
                     uploadedByName = u.UploadedByName,
                     uploadedAt = u.UploadedAt,
+                    projectName = u.ProjectName,
+                    supervisorName = u.SupervisorName,
+                    wordCount = u.WordCount,
                     comments = u.Comments.Select(c => new
                     {
                         assignmentCommentId = c.AssignmentCommentId,
@@ -102,9 +120,19 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
         };
     }
 
+    /// <summary>"Dissertation Proposal" also contains "dissertation", so the
+    /// proposal check comes first — same heuristic as the grade-save
+    /// auto-release in ModuleCohortLogic.</summary>
+    public static bool IsFinalProjectCohortType(string? typeName) =>
+        !string.IsNullOrEmpty(typeName)
+        && !typeName.Contains("proposal", StringComparison.OrdinalIgnoreCase)
+        && (typeName.Contains("final project", StringComparison.OrdinalIgnoreCase)
+            || typeName.Contains("dissertation", StringComparison.OrdinalIgnoreCase));
+
     public sealed record UploadInput(
         Guid SubjectId, string? Title,
-        Stream Content, string? FileName, string? ContentType, long Length);
+        Stream Content, string? FileName, string? ContentType, long Length,
+        string? ProjectName = null, string? SupervisorName = null, int? WordCount = null);
 
     /// <summary>Stores the file and the upload row. Returns an error string
     /// (null on success) plus the created id.</summary>
@@ -158,9 +186,34 @@ public sealed class AssignmentService(OdinDbContext db, IFileStorage storage)
             UploadedByName = uploaderName,
             UploadedByUserId = uploaderUserId,
             UploadedAt = DateTime.UtcNow,
+            ProjectName = Trimmed(input.ProjectName),
+            SupervisorName = Trimmed(input.SupervisorName),
+            WordCount = input.WordCount,
         });
         await db.SaveChangesAsync(ct);
         return (null, id);
+    }
+
+    private static string? Trimmed(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>Updates the final-project details on an existing upload
+    /// (staff-only surfaces call this). Returns false when the upload does
+    /// not belong to the enrolment.</summary>
+    public async Task<bool> UpdateProjectFieldsAsync(
+        Guid assignmentUploadId, Guid enrollmentId,
+        string? projectName, string? supervisorName, int? wordCount,
+        CancellationToken ct)
+    {
+        var upload = await db.AssignmentUploads.FirstOrDefaultAsync(a =>
+            a.AssignmentUploadId == assignmentUploadId
+            && a.StudentEnrollmentId == enrollmentId && a.DeletedAt == null, ct);
+        if (upload is null) return false;
+        upload.ProjectName = Trimmed(projectName);
+        upload.SupervisorName = Trimmed(supervisorName);
+        upload.WordCount = wordCount;
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     public async Task<object?> AddCommentAsync(

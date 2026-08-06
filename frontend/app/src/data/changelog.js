@@ -5,15 +5,15 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
-    id: 'final-project-cohort-fields',
+    id: 'final-project-upload-fields',
     date: '2026-08-06',
-    title: 'Final project details: Supervisor, Word count, Project name',
-    summary: 'Final-project cohorts carry Supervisor / Word count / Project name, printable in the approval letters.',
+    title: 'Final project details: Project name, Supervisor, Word count',
+    summary: 'Per-student project details on final-project assignment uploads, printable in the approval letters.',
     details: [
-      'WHERE: Module Cohorts → open a cohort whose type is "Final Project / Dissertation" → Record tab → "additional data" section, next to the Project documents upload.',
-      'HOW: fill in Final project name, Supervisor and Word count when you upload the student\'s project document, then Save. The values are per cohort, so keep one student per dissertation cohort.',
-      'USE IN LETTERS: the letter designer (Partners → Programmes → Letters row) now offers [supervisor] and [word count] tags; [project title] prints the cohort\'s Final project name and falls back to the grade-modal Project Title.',
-      'The Proposal Approval letter reads the student\'s Dissertation Proposal cohort first, the Project Approval letter the Final Project cohort; missing values fall back to the other cohort.',
+      'WHERE: Module Cohorts → open a "Final Project / Dissertation" cohort → Uploaded Assignments tab → open the student\'s fold-out. The three fields sit on each uploaded file and on the upload form.',
+      'HOW: fill in Final project name, Supervisor and Word count when uploading the student\'s project file, or on an existing upload and press "Save details". Admission, partner staff and teachers can edit; the student sees the values read-only.',
+      'USE IN LETTERS: the letter designer (Partners → Programmes → Letters row) offers [supervisor] and [word count] tags; [project title] prints the upload\'s Final project name and falls back to the grade-modal Project Title.',
+      'The Proposal Approval letter reads uploads in the student\'s Dissertation Proposal cohort first, the Project Approval letter the Final Project cohort; missing values fall back to the other cohort, newest upload first.',
       'After changing values, use the letter\'s Generate button on the student drawer\'s Letters tab to re-render the PDF.',
     ],
   },

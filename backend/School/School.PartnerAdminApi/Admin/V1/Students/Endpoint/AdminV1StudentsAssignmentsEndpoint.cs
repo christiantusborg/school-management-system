@@ -20,12 +20,20 @@ public sealed class AdminV1StudentsAssignmentsEndpoint : IEndpointMarker
         app.MapPost(baseRoute, UploadAsync).RequireAuthorization("AdminOnly").DisableAntiforgery();
         app.MapGet(baseRoute + "/{assignmentId:guid}/file", FileAsync).RequireAuthorization("AdminOnly");
         app.MapPost(baseRoute + "/{assignmentId:guid}/comments", CommentAsync).RequireAuthorization("AdminOnly");
+        app.MapPatch(baseRoute + "/{assignmentId:guid}/project-fields", ProjectFieldsAsync).RequireAuthorization("AdminOnly");
         return app;
     }
 
     public sealed class CommentBody
     {
         public string? Text { get; init; }
+    }
+
+    public sealed class ProjectFieldsBody
+    {
+        public string? ProjectName { get; init; }
+        public string? SupervisorName { get; init; }
+        public int? WordCount { get; init; }
     }
 
     private static async Task<bool> OwnsAsync(OdinDbContext db, Guid studentId, Guid enrollmentId, CancellationToken ct) =>
@@ -58,9 +66,21 @@ public sealed class AdminV1StudentsAssignmentsEndpoint : IEndpointMarker
 
         await using var src = file.OpenReadStream();
         var (error, id) = await svc.UploadAsync(enrollmentId,
-            new AssignmentService.UploadInput(subjectId, form["title"].ToString(), src, file.FileName, file.ContentType, file.Length),
+            new AssignmentService.UploadInput(subjectId, form["title"].ToString(), src, file.FileName, file.ContentType, file.Length,
+                form["projectName"].ToString(), form["supervisorName"].ToString(),
+                int.TryParse(form["wordCount"].ToString(), out var wc) ? wc : null),
             "Admission Office", name, callerId, ct);
         return error is null ? Results.Ok(new { assignmentUploadId = id }) : Results.BadRequest(new { error });
+    }
+
+    private static async Task<IResult> ProjectFieldsAsync(
+        Guid studentId, Guid enrollmentId, Guid assignmentId, [FromBody] ProjectFieldsBody body,
+        OdinDbContext db, AssignmentService svc, CancellationToken ct)
+    {
+        if (!await OwnsAsync(db, studentId, enrollmentId, ct)) return Results.NotFound();
+        var ok = await svc.UpdateProjectFieldsAsync(assignmentId, enrollmentId,
+            body.ProjectName, body.SupervisorName, body.WordCount, ct);
+        return ok ? Results.Ok(new { updated = true }) : Results.NotFound();
     }
 
     private static async Task<IResult> FileAsync(

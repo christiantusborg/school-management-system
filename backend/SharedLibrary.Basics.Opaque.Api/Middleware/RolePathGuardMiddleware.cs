@@ -109,6 +109,10 @@ public sealed class RolePathGuardMiddleware
         path.EndsWith("/grades/draft", StringComparison.OrdinalIgnoreCase)
         || (path.Contains("/assignments/", StringComparison.OrdinalIgnoreCase)
             && path.EndsWith("/comments", StringComparison.OrdinalIgnoreCase))
+        // Final-project details on an upload (project name / supervisor /
+        // word count) are teacher-editable by design.
+        || (path.Contains("/assignments/", StringComparison.OrdinalIgnoreCase)
+            && path.EndsWith("/project-fields", StringComparison.OrdinalIgnoreCase))
         || (TeacherCanUploadAssignments
             && path.EndsWith("/assignments", StringComparison.OrdinalIgnoreCase))
         // Teacher portal: uploads on the teacher's OWN cohorts (endpoints

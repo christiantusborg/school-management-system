@@ -160,33 +160,31 @@ public sealed class LetterTagResolver(OdinDbContext db)
         result["[student address]"]   = address;
         result["[passport id]"]       = enrollment.Student?.PassportId ?? string.Empty;
 
-        // ── Dissertation cohort fields ───────────────────────────────────
-        // The "Final Project / Dissertation" cohort type carries Supervisor /
-        // Word count / Final project name as builder data fields on the
-        // cohort Record tab. The letter being rendered picks which of the
-        // enrolment's cohorts to read first: the proposal approval letter
-        // prefers a "Dissertation Proposal" cohort, everything else the
-        // final-project cohort. The other dissertation cohort fills gaps —
-        // the proposal type has no such fields today, so a proposal letter
-        // still prints what was entered on the final-project cohort. Values
-        // are cohort-level: dissertation cohorts are expected to hold one
-        // student each.
-        var dissertationCohorts = await db.ModuleCohortStudents
+        // ── Final-project details from assignment uploads ────────────────
+        // Project name / Supervisor / Word count live on the PER-STUDENT
+        // assignment uploads (Uploaded Assignments tab), filled by partner
+        // staff, teachers or the Admission Office on uploads in the
+        // dissertation cohorts. The letter being rendered picks which cohort's
+        // module to read first: the proposal approval letter prefers the
+        // "Dissertation Proposal" cohort's uploads, everything else the
+        // final-project cohort's. The other cohort's uploads fill gaps, and
+        // within a cohort the newest value wins.
+        var dissertationUploads = await db.ModuleCohortStudents
             .Where(cs => cs.StudentEnrollmentId == enrollmentId && cs.DeletedAt == null)
             .Join(db.ModuleCohorts.Where(c => c.DeletedAt == null),
                 cs => cs.ModuleCohortId, c => c.ModuleCohortId, (cs, c) => c)
             .Select(c => new
             {
-                c.CreatedAt,
+                c.SubjectId,
                 TypeName = db.CohortTypes
                     .Where(t => t.CohortTypeId == c.CohortTypeId)
                     .Select(t => t.Name)
                     .FirstOrDefault() ?? string.Empty,
-                Fields = db.CohortFieldValues
-                    .Where(v => v.ModuleCohortId == c.ModuleCohortId)
-                    .Join(db.CohortTypeFields.Where(f => f.DeletedAt == null),
-                        v => v.CohortTypeFieldId, f => f.CohortTypeFieldId,
-                        (v, f) => new { f.Label, v.Value })
+                Uploads = db.AssignmentUploads
+                    .Where(a => a.StudentEnrollmentId == enrollmentId
+                        && a.SubjectId == c.SubjectId && a.DeletedAt == null)
+                    .OrderByDescending(a => a.UploadedAt)
+                    .Select(a => new { a.ProjectName, a.SupervisorName, a.WordCount })
                     .ToList(),
             })
             .ToListAsync(ct);
@@ -198,25 +196,21 @@ public sealed class LetterTagResolver(OdinDbContext db)
             n.Contains("final project", StringComparison.OrdinalIgnoreCase)
             || n.Contains("dissertation", StringComparison.OrdinalIgnoreCase);
         var preferProposal = letterType == LetterType.FinalProposalApproval;
-        var orderedCohorts = dissertationCohorts
+        var orderedUploads = dissertationUploads
             .Where(c => IsProposalType(c.TypeName) || IsFinalType(c.TypeName))
             .OrderByDescending(c => IsProposalType(c.TypeName) == preferProposal)
-            .ThenByDescending(c => c.CreatedAt)
+            .SelectMany(c => c.Uploads)
             .ToList();
-        string CohortField(string label) => orderedCohorts
-            .SelectMany(c => c.Fields)
-            .Where(f => string.Equals(f.Label, label, StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(f.Value))
-            .Select(f => f.Value)
-            .FirstOrDefault() ?? string.Empty;
+        string FirstFilled(IEnumerable<string?> values) =>
+            values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim() ?? string.Empty;
 
-        result["[supervisor]"] = CohortField("Supervisor");
-        result["[word count]"] = CohortField("Word count");
-        // The cohort's "Final project name" wins over the enrolment's Project
-        // Title from the grade-submit modal when both are filled.
-        var cohortProjectName = CohortField("Final project name");
-        result["[project title]"]     = !string.IsNullOrWhiteSpace(cohortProjectName)
-            ? cohortProjectName
+        result["[supervisor]"] = FirstFilled(orderedUploads.Select(u => u.SupervisorName));
+        result["[word count]"] = FirstFilled(orderedUploads.Select(u => u.WordCount?.ToString(CultureInfo.InvariantCulture)));
+        // The upload's Project name wins over the enrolment's Project Title
+        // from the grade-submit modal when both are filled.
+        var uploadProjectName = FirstFilled(orderedUploads.Select(u => u.ProjectName));
+        result["[project title]"]     = !string.IsNullOrWhiteSpace(uploadProjectName)
+            ? uploadProjectName
             : enrollment.ProjectTitle ?? string.Empty;
         // [date] is the letter's issuance date. Offer/admission letters honour
         // an Admission-Office override (reference prefix tells which letter this

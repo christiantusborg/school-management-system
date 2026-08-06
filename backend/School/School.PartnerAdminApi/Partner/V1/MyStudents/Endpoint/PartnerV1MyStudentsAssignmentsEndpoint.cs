@@ -25,12 +25,23 @@ public sealed class PartnerV1MyStudentsAssignmentsEndpoint : IEndpointMarker
         app.MapPost(baseRoute, UploadAsync).RequireAuthorization("PartnerOnly").DisableAntiforgery();
         app.MapGet(baseRoute + "/{assignmentId:guid}/file", FileAsync).RequireAuthorization("PartnerOnly");
         app.MapPost(baseRoute + "/{assignmentId:guid}/comments", CommentAsync).RequireAuthorization("PartnerOnly");
+        // Final-project details (project name / supervisor / word count):
+        // partner staff AND teachers may edit — the route is whitelisted for
+        // teachers in RolePathGuardMiddleware.
+        app.MapPatch(baseRoute + "/{assignmentId:guid}/project-fields", ProjectFieldsAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
     public sealed class CommentBody
     {
         public string? Text { get; init; }
+    }
+
+    public sealed class ProjectFieldsBody
+    {
+        public string? ProjectName { get; init; }
+        public string? SupervisorName { get; init; }
+        public int? WordCount { get; init; }
     }
 
     private static async Task<(bool Ok, string? UserId)> OwnsAsync(
@@ -78,9 +89,22 @@ public sealed class PartnerV1MyStudentsAssignmentsEndpoint : IEndpointMarker
         var (role, name) = await AuthorAsync(db, userId, ct);
         await using var src = file.OpenReadStream();
         var (error, id) = await svc.UploadAsync(enrollmentId,
-            new AssignmentService.UploadInput(subjectId, form["title"].ToString(), src, file.FileName, file.ContentType, file.Length),
+            new AssignmentService.UploadInput(subjectId, form["title"].ToString(), src, file.FileName, file.ContentType, file.Length,
+                form["projectName"].ToString(), form["supervisorName"].ToString(),
+                int.TryParse(form["wordCount"].ToString(), out var wc) ? wc : null),
             role, name, userId, ct);
         return error is null ? Results.Ok(new { assignmentUploadId = id }) : Results.BadRequest(new { error });
+    }
+
+    private static async Task<IResult> ProjectFieldsAsync(
+        Guid studentId, Guid enrollmentId, Guid assignmentId, [FromBody] ProjectFieldsBody body,
+        HttpContext http, OdinDbContext db, AssignmentService svc, CancellationToken ct)
+    {
+        var (ok, _) = await OwnsAsync(http, db, studentId, enrollmentId, ct);
+        if (!ok) return Results.NotFound();
+        var updated = await svc.UpdateProjectFieldsAsync(assignmentId, enrollmentId,
+            body.ProjectName, body.SupervisorName, body.WordCount, ct);
+        return updated ? Results.Ok(new { updated = true }) : Results.NotFound();
     }
 
     private static async Task<IResult> FileAsync(

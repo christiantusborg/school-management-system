@@ -31,6 +31,14 @@ public class AssignmentUpload : IDeletedAtEntity
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
     public DateTime? DeletedAt { get; set; }
 
+    /// <summary>Final-project details, filled by partner staff, teachers or
+    /// the Admission Office on uploads in Final Project / Dissertation
+    /// cohorts. Printed on the approval letters via the [project title],
+    /// [supervisor] and [word count] tags.</summary>
+    public string? ProjectName { get; set; }
+    public string? SupervisorName { get; set; }
+    public int? WordCount { get; set; }
+
     public ICollection<AssignmentComment> Comments { get; set; } = [];
 }
 
