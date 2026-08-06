@@ -273,6 +273,15 @@
                   </div>
                   <button class="btn-mini" :disabled="!canDownloadCertificate(selectedEnr)" @click="downloadCertificate(selectedEnr)">Download</button>
                 </div>
+                <!-- Config-created letters released for this enrolment. -->
+                <div v-for="dl in (selectedEnr.dynamicLetters ?? [])" :key="dl.letterTypeDefinitionId" class="doc-mini">
+                  <div class="doc-mini-icon">📄</div>
+                  <div class="doc-mini-info">
+                    <div class="doc-mini-name">{{ dl.name }}</div>
+                    <div class="doc-mini-sub">Ready · {{ dl.letter?.fileName }}</div>
+                  </div>
+                  <button class="btn-mini" @click="downloadLetter(dl.letter)">Download</button>
+                </div>
               </div>
 
               <EnrollmentActivityLog :key="`act-${selectedEnr.enrollmentId}`"

@@ -242,6 +242,10 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
             }
         }
 
+        // Config-created letter types triggered by the status just reached
+        // release now (fire-once, best-effort).
+        await LetterStatusTriggers.FireAsync(db, letterRelease, logger, enrollmentId, enrollment.StatusId, ct);
+
         return Results.Ok(new
         {
             studentId,

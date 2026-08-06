@@ -44,7 +44,13 @@ public sealed class AdminProgrammesV1LetterTemplatesEndpoint : IEndpointMarker
                 letterTemplateId = t.LetterTemplateId,
                 programmeId = t.ProgrammeId,
                 partnerId = t.PartnerId,
-                letterType = t.LetterType.ToString(),
+                // Dynamic (config-created) templates carry a definition id and
+                // report no enum letterType, so the built-in publish badges
+                // never get polluted by a definition row (whose enum column
+                // sits at its default value).
+                letterType = t.LetterTypeDefinitionId == null ? t.LetterType.ToString() : null,
+                letterTypeDefinitionId = t.LetterTypeDefinitionId,
+                language = t.Language,
                 bodyHtml = t.BodyHtml,
                 certificateBackgroundPath = t.CertificateBackgroundPath,
                 certificateLayoutJson = t.CertificateLayoutJson,
@@ -63,11 +69,31 @@ public sealed class AdminProgrammesV1LetterTemplatesEndpoint : IEndpointMarker
         string type,
         [FromBody] WriteRequest body,
         CancellationToken ct,
-        [FromQuery] Guid? partnerId = null)
+        [FromQuery] Guid? partnerId = null,
+        [FromQuery] string? language = null)
     {
-        if (!Enum.TryParse<LetterType>(type, ignoreCase: true, out var letterType))
+        // The route's {type} is either a built-in enum name (OfferLetter…) or
+        // the GUID of a config-created LetterTypeDefinition.
+        LetterType letterType = default;
+        Guid? definitionId = null;
+        if (Guid.TryParse(type, out var parsedDefId))
+        {
+            var defExists = await db.LetterTypeDefinitions
+                .AnyAsync(d => d.LetterTypeDefinitionId == parsedDefId && d.DeletedAt == null, ct);
+            if (!defExists) return Results.BadRequest(new { message = "unknown letter type" });
+            definitionId = parsedDefId;
+        }
+        else if (!Enum.TryParse(type, ignoreCase: true, out letterType))
+        {
             return Results.BadRequest(new { message = "unknown letter type" });
+        }
         if (partnerId is null) return Results.BadRequest(new { message = "partnerId is required" });
+
+        // Language versions: null/blank = the English default; anything else
+        // must be on the configured letter-language list.
+        var lang = string.IsNullOrWhiteSpace(language) ? null : language.Trim();
+        if (lang is not null && !await db.LetterLanguages.AnyAsync(l => l.Name == lang && l.DeletedAt == null, ct))
+            return Results.BadRequest(new { message = $"language '{lang}' is not on the letter-language list" });
 
         var programmeExists = await db.Programmes.AnyAsync(p => p.ProgrammeId == programmeId, ct);
         if (!programmeExists) return Results.NotFound(new { message = "programme not found" });
@@ -75,7 +101,10 @@ public sealed class AdminProgrammesV1LetterTemplatesEndpoint : IEndpointMarker
         var entity = await db.LetterTemplates.FirstOrDefaultAsync(t =>
             t.ProgrammeId == programmeId &&
             t.PartnerId == partnerId &&
-            t.LetterType == letterType &&
+            (definitionId == null
+                ? t.LetterTypeDefinitionId == null && t.LetterType == letterType
+                : t.LetterTypeDefinitionId == definitionId) &&
+            t.Language == lang &&
             t.DeletedAt == null, ct);
 
         if (entity is null)
@@ -86,6 +115,8 @@ public sealed class AdminProgrammesV1LetterTemplatesEndpoint : IEndpointMarker
                 ProgrammeId = programmeId,
                 PartnerId = partnerId.Value,
                 LetterType = letterType,
+                LetterTypeDefinitionId = definitionId,
+                Language = lang,
             };
             db.LetterTemplates.Add(entity);
         }

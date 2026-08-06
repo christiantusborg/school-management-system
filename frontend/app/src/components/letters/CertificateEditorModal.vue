@@ -332,10 +332,17 @@ const props = defineProps({
   // Combined-invoice TEMPLATE mode: per-partner design used for that
   // partner's combined invoices (loads/saves at /invoice-template).
   invoicePartnerId: { type: String, default: '' },
+  // Config-created (dynamic) letter types: letterType carries the definition
+  // GUID; letterName supplies the human title the enum switch can't.
+  letterName: { type: String, default: '' },
+  // Language version being edited ('' = the English default template).
+  language: { type: String, default: '' },
 })
 const emit = defineEmits(['close', 'saved'])
 
 function titleFor(t) {
+  if (props.letterName)
+    return props.language ? `${props.letterName} — ${props.language}` : props.letterName
   switch (t) {
     case 'OfferLetter':            return 'Offer Letter'
     case 'AdmissionLetter':        return 'Admission Letter'
@@ -1028,7 +1035,9 @@ async function copyFromProgramme() {
     const r = await apiClient.get(`/v1/admin/programmes/${copyFromProgrammeId.value}/letter-templates`, {
       params: { partnerId: copyFromPartnerId.value || props.partnerId },
     })
-    const source = (r.data.items ?? []).find(t => t.letterType === props.letterType)
+    const source = (r.data.items ?? []).find(t => props.letterName
+      ? (t.letterTypeDefinitionId === props.letterType && (t.language ?? '') === (props.language ?? ''))
+      : t.letterType === props.letterType)
     if (!source || !source.certificateLayoutJson) {
       alert(`"${srcLabel}" has no saved ${titleFor(props.letterType)}.`)
       return
@@ -1186,7 +1195,10 @@ async function load() {
     assetUrls.value = urlMap
     let existing = props.partnerDocTypeId
       ? tplRes.data
-      : (tplRes.data.items ?? []).find(t => t.letterType === props.letterType)
+      : (tplRes.data.items ?? []).find(t =>
+          props.letterName
+            ? (t.letterTypeDefinitionId === props.letterType && (t.language ?? '') === (props.language ?? ''))
+            : t.letterType === props.letterType)
     if (props.invoicePartnerId) existing = tplRes.data
     isPublished.value = (props.partnerDocTypeId || props.invoicePartnerId) ? true : !!existing?.isPublished
     let next
@@ -1309,7 +1321,7 @@ async function onSave() {
       await apiClient.put(`/v1/admin/partner-document-types/${props.partnerDocTypeId}`, payload)
     } else {
       await apiClient.put(`/v1/admin/programmes/${props.programmeId}/letter-templates/${props.letterType}`, payload,
-        { params: { partnerId: props.partnerId } })
+        { params: { partnerId: props.partnerId, ...(props.language ? { language: props.language } : {}) } })
     }
     emit('saved')
     emit('close')

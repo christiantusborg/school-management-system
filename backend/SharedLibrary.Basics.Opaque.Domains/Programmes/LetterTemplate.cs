@@ -16,6 +16,15 @@ public class LetterTemplate : IDeletedAtEntity
 
     public LetterType LetterType { get; set; }
 
+    /// <summary>Config-created letter type this template belongs to; null =
+    /// one of the built-in LetterType enum letters (LetterType stays 0 for
+    /// definition-based rows).</summary>
+    public Guid? LetterTypeDefinitionId { get; set; }
+
+    /// <summary>Language version; null = English (the default). One template
+    /// row per (programme, partner, type, language).</summary>
+    public string? Language { get; set; }
+
     public string? BodyHtml { get; set; }
 
     public string? CertificateBackgroundPath { get; set; }

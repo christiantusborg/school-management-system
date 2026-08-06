@@ -867,6 +867,47 @@
                     </div>
                   </div>
                 </template>
+
+                <!-- Config-created letter types (System Config → Letter Types).
+                     Generate is open to every non-read-only admin level; each
+                     render records a version browsable via History. -->
+                <div v-for="dl in (activeEnrollment.dynamicLetters ?? [])" :key="dl.letterTypeDefinitionId" class="letter-row">
+                  <span class="letter-icon">📄</span>
+                  <div class="letter-info">
+                    <div class="letter-name">{{ dl.name }}
+                      <span v-if="!dl.visibleToStudent" class="muted" style="font-size:.68rem;" title="Hidden from the student">(hidden: student)</span>
+                      <span v-if="!dl.visibleToPartner" class="muted" style="font-size:.68rem;" title="Hidden from the partner">(hidden: partner)</span>
+                    </div>
+                    <div class="letter-sub">
+                      <template v-if="dl.letter">{{ dl.letter.fileName }} · released {{ formatDate(dl.letter.uploadedAt) }}</template>
+                      <template v-else>Not yet released</template>
+                    </div>
+                    <div v-if="letterVersions[dl.letterTypeDefinitionId]?.open" class="letter-versions">
+                      <div v-if="letterVersions[dl.letterTypeDefinitionId].loading" class="muted">Loading…</div>
+                      <div v-else-if="!letterVersions[dl.letterTypeDefinitionId].items.length" class="muted">No versions recorded yet.</div>
+                      <div v-for="v in (letterVersions[dl.letterTypeDefinitionId].items ?? [])" :key="v.studentDocumentVersionId" class="letter-version-row">
+                        <span>v{{ v.versionNumber }} · {{ formatDate(v.createdAt) }} · {{ v.trigger === 'StatusTrigger' ? 'Auto (status)' : v.trigger }}<template v-if="v.generatedByName"> · {{ v.generatedByName }}</template><template v-if="v.language"> · {{ v.language }}</template></span>
+                        <button class="btn-mini" @click="downloadLetterVersion(dl, v)">⤓</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="letter-actions">
+                    <select v-if="letterLanguages.length && canGenerateApprovalLetters" v-model="dynLetterLang[dl.letterTypeDefinitionId]"
+                            class="dur-input" style="width:auto;" title="Language to render (missing translation falls back to English)">
+                      <option value="">English</option>
+                      <option v-for="l in letterLanguages" :key="l.letterLanguageId" :value="l.name">{{ l.name }}</option>
+                    </select>
+                    <button class="btn-mini" :disabled="!dl.letter" @click="downloadLetter(dl.letter)">Download</button>
+                    <button v-if="canGenerateApprovalLetters" class="btn-mini btn-mini-ghost"
+                            :disabled="regeneratingLetterKey === dl.letterTypeDefinitionId"
+                            @click="generateDynamicLetter(dl)">
+                      {{ regeneratingLetterKey === dl.letterTypeDefinitionId
+                          ? (dl.letter ? 'Regenerating…' : 'Generating…')
+                          : (dl.letter ? 'Regenerate' : 'Generate') }}
+                    </button>
+                    <button v-if="dl.letter" class="btn-mini btn-mini-ghost" @click="toggleLetterVersions(dl)">🕘 History</button>
+                  </div>
+                </div>
                 <p v-if="letterRegenResult" class="muted" style="margin-top:.4rem;">{{ letterRegenResult }}</p>
                 <input ref="legacyLetterInput" type="file" accept="application/pdf" style="display:none"
                        @change="uploadLegacyLetter" />
@@ -2494,6 +2535,71 @@ async function regenerateLetter(t) {
     letterRegenResult.value = err.response?.data?.error ?? err.message ?? 'Regenerate failed'
   } finally {
     regeneratingLetterKey.value = ''
+  }
+}
+
+// ── Config-created (dynamic) letter types ───────────────────────────────────
+const letterLanguages = ref([])
+const dynLetterLang = reactive({})
+const letterVersions = reactive({})
+async function loadLetterLanguages() {
+  try { letterLanguages.value = (await api.get('/v1/admin/letter-languages')).data.items ?? [] }
+  catch { letterLanguages.value = [] }
+}
+loadLetterLanguages()
+
+async function generateDynamicLetter(dl) {
+  if (!detailModal.value?.studentId || !activeEnrollment.value) return
+  const wasReleased = !!dl.letter
+  regeneratingLetterKey.value = dl.letterTypeDefinitionId
+  letterRegenResult.value = ''
+  try {
+    const lang = dynLetterLang[dl.letterTypeDefinitionId] || ''
+    const res = await api.post(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/regenerate`,
+      null, { params: { letterType: dl.letterTypeDefinitionId, ...(lang ? { language: lang } : {}) } })
+    letterRegenResult.value = (res.data?.regenerated ?? []).length
+      ? `${dl.name} ${wasReleased ? 'regenerated' : 'generated'}.`
+      : `Nothing for ${dl.name} (template not published for this programme + partner).`
+    await refreshDetailModal()
+    const vstate = letterVersions[dl.letterTypeDefinitionId]
+    if (vstate?.open) await loadLetterVersions(dl)
+  } catch (err) {
+    letterRegenResult.value = err.response?.data?.error ?? err.message ?? 'Generate failed'
+  } finally {
+    regeneratingLetterKey.value = ''
+  }
+}
+
+async function loadLetterVersions(dl) {
+  const cur = activeEnrollment.value?.dynamicLetters?.find(x => x.letterTypeDefinitionId === dl.letterTypeDefinitionId)
+  const docId = cur?.letter?.studentDocumentId ?? dl.letter?.studentDocumentId
+  if (!docId) return
+  const state = letterVersions[dl.letterTypeDefinitionId]
+  state.loading = true
+  try {
+    const res = await api.get(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/${docId}/versions`)
+    state.items = res.data.items ?? []
+  } catch { state.items = [] }
+  finally { state.loading = false }
+}
+
+async function toggleLetterVersions(dl) {
+  const state = letterVersions[dl.letterTypeDefinitionId] ?? (letterVersions[dl.letterTypeDefinitionId] = { open: false, loading: false, items: [] })
+  state.open = !state.open
+  if (state.open) await loadLetterVersions(dl)
+}
+
+async function downloadLetterVersion(dl, v) {
+  try {
+    const docId = dl.letter?.studentDocumentId
+    const res = await api.get(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/${docId}/versions/${v.studentDocumentVersionId}/file`,
+      { responseType: 'blob' })
+    openBlobPdf(res.data, v.fileName)
+  } catch {
+    letterRegenResult.value = 'Version download failed'
   }
 }
 
@@ -4139,6 +4245,8 @@ async function runExport() {
 .letter-info { flex: 1; min-width: 0; }
 .letter-name { font-weight: 600; font-size: .88rem; color: #1a2d4f; }
 .letter-sub { font-size: .76rem; color: #6b7888; }
+.letter-versions { margin-top: .35rem; border-top: 1px dashed #dbe4ee; padding-top: .35rem; display: flex; flex-direction: column; gap: .2rem; }
+.letter-version-row { display: flex; align-items: center; gap: .5rem; font-size: .74rem; color: #4b5a6d; }
 .btn-mini { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }
 .btn-mini:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }
 .btn-mini:hover:not(:disabled) { background: #143b6c; }

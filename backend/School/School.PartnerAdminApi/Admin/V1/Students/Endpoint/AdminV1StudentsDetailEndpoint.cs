@@ -224,6 +224,23 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             };
         }
 
+        // Config-created (dynamic) letter types: one row per active
+        // definition per enrolment, with the released document when present.
+        // Admission sees every type regardless of visibility switches.
+        var letterDefinitions = await db.LetterTypeDefinitions
+            .Where(d => d.DeletedAt == null)
+            .OrderBy(d => d.SortOrder).ThenBy(d => d.Name)
+            .Select(d => new
+            {
+                d.LetterTypeDefinitionId,
+                d.Name,
+                d.DocumentTypeId,
+                d.VisibleToStudent,
+                d.VisibleToPartner,
+                d.AllowLegacyUpload,
+            })
+            .ToListAsync(ct);
+
         var enrollments = enrollmentsRaw.Select(e => new
         {
             e.studentEnrollmentId,
@@ -266,6 +283,15 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 finalProposalApproval  = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.FinalProposalApproval),
                 finalProjectApproval   = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.FinalProjectApproval),
             },
+            dynamicLetters = letterDefinitions.Select(d => new
+            {
+                letterTypeDefinitionId = d.LetterTypeDefinitionId,
+                name = d.Name,
+                visibleToStudent = d.VisibleToStudent,
+                visibleToPartner = d.VisibleToPartner,
+                allowLegacyUpload = d.AllowLegacyUpload,
+                letter = PickLetter(e.studentEnrollmentId, d.DocumentTypeId),
+            }).ToList(),
             issueDigitalStudentCard = db.Programmes
                 .Where(p => p.ProgrammeId == e.programmeId)
                 .Select(p => p.IssueDigitalStudentCard)

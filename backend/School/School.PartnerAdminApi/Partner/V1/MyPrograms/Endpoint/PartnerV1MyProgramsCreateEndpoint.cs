@@ -89,8 +89,13 @@ public sealed class PartnerV1MyProgramsCreateEndpoint : IEndpointMarker
             // type; collapse to exactly one per LetterType (preferring the
             // creating partner's own version) so the new programme gets a single
             // template per type and doesn't violate the unique index.
+            // Built-in enum letters only: config-created (definition) rows all
+            // share the enum default value, so grouping them by LetterType
+            // would collapse distinct dynamic letters into one. Dynamic
+            // templates for a custom programme are authored fresh instead.
             var sourceLettersRaw = await db.LetterTemplates
-                .Where(t => t.ProgrammeId == sourceId && t.DeletedAt == null)
+                .Where(t => t.ProgrammeId == sourceId && t.DeletedAt == null
+                    && t.LetterTypeDefinitionId == null && t.Language == null)
                 .Select(t => new
                 {
                     t.PartnerId,

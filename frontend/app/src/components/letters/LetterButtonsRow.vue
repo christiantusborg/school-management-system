@@ -11,12 +11,29 @@
       <button v-if="EMAILABLE.includes(t.code)" class="lbtn lbtn-email"
               @click="openEmail(t.code)" title="Edit the email sent with this letter">✉</button>
     </span>
+    <!-- Config-created letter types (System Config → Letter Types). One chip
+         per type editing the English default; language mini-buttons edit the
+         per-language versions. -->
+    <span v-for="d in dynamicTypes" :key="d.letterTypeDefinitionId" class="lbtn-group">
+      <button class="lbtn" :class="dynPublished(d.letterTypeDefinitionId, '') ? 'lbtn-pub' : 'lbtn-draft'"
+              @click="openDynamic(d, '')"
+              :title="dynPublished(d.letterTypeDefinitionId, '') ? 'Published — releases are live' : 'Draft — no releases until you save'">
+        <span class="lbtn-dot">{{ dynPublished(d.letterTypeDefinitionId, '') ? '🟢' : '🟠' }}</span>
+        {{ d.name }}
+      </button>
+      <button v-for="l in languages" :key="l.letterLanguageId" class="lbtn lbtn-lang"
+              :class="dynPublished(d.letterTypeDefinitionId, l.name) ? 'lbtn-pub' : 'lbtn-draft'"
+              :title="`${d.name} — ${l.name} version (falls back to English until saved)`"
+              @click="openDynamic(d, l.name)">{{ langCode(l.name) }}</button>
+    </span>
     <CertificateEditorModal
       :open="modalOpen"
       :programme-id="programmeId"
       :programme-name="programmeName"
       :partner-id="partnerId"
       :letter-type="activeType"
+      :letter-name="activeName"
+      :language="activeLanguage"
       @close="modalOpen = false"
       @saved="onSaved"
     />
@@ -65,7 +82,36 @@ const EMAILABLE = ['OfferLetter', 'AdmissionLetter']
 const modalOpen = ref(false)
 const emailModalOpen = ref(false)
 const activeType = ref('')
+const activeName = ref('')
+const activeLanguage = ref('')
 const published = ref(Object.fromEntries(ALL_TYPES.map(t => [t.code, false])))
+
+// Config-created letter types + language list + per-(type, language) publish
+// state, keyed `${definitionId}:${language}` ('' = English default).
+const dynamicTypes = ref([])
+const languages = ref([])
+const dynPublishedMap = ref({})
+function dynPublished(defId, lang) { return !!dynPublishedMap.value[`${defId}:${lang || ''}`] }
+function langCode(name) { return (name || '').slice(0, 2).toUpperCase() }
+
+async function loadDynamicTypes() {
+  try {
+    const [defs, langs] = await Promise.all([
+      apiClient.get('/v1/admin/letter-type-definitions'),
+      apiClient.get('/v1/admin/letter-languages'),
+    ])
+    dynamicTypes.value = defs.data.items ?? []
+    languages.value = langs.data.items ?? []
+  } catch { dynamicTypes.value = []; languages.value = [] }
+}
+loadDynamicTypes()
+
+function openDynamic(d, lang) {
+  activeType.value = d.letterTypeDefinitionId
+  activeName.value = d.name
+  activeLanguage.value = lang || ''
+  modalOpen.value = true
+}
 
 function openEmail(type) {
   activeType.value = type
@@ -83,15 +129,21 @@ async function loadPublishStatus() {
       params: { partnerId: props.partnerId },
     })
     const next = Object.fromEntries(ALL_TYPES.map(t => [t.code, false]))
+    const dynNext = {}
     for (const row of (r.data.items ?? [])) {
-      if (row.letterType in next) next[row.letterType] = !!row.isPublished
+      if (row.letterTypeDefinitionId)
+        dynNext[`${row.letterTypeDefinitionId}:${row.language ?? ''}`] = !!row.isPublished
+      else if (row.letterType in next) next[row.letterType] = !!row.isPublished
     }
     published.value = next
+    dynPublishedMap.value = dynNext
   } catch { /* leave defaults; fetched again on next save */ }
 }
 
 function open(type) {
   activeType.value = type
+  activeName.value = ''
+  activeLanguage.value = ''
   modalOpen.value = true
 }
 function onSaved() {
@@ -117,4 +169,5 @@ watch(() => [props.programmeId, props.partnerId], loadPublishStatus, { immediate
 .lbtn-group { display: inline-flex; align-items: center; gap: .15rem; }
 .lbtn-email { padding: .25rem .5rem; border-color: #6b4ea3; color: #6b4ea3; }
 .lbtn-email:hover { background: #f1ecf9; }
+.lbtn-lang { padding: .25rem .45rem; font-size: .68rem; }
 </style>

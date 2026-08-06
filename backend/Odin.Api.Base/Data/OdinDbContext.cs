@@ -104,6 +104,9 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<SpecializationPartner> SpecializationPartners => Set<SpecializationPartner>();
     public DbSet<SpecializationModeOfStudy> SpecializationModesOfStudy => Set<SpecializationModeOfStudy>();
     public DbSet<LetterTemplate> LetterTemplates => Set<LetterTemplate>();
+    public DbSet<LetterTypeDefinition> LetterTypeDefinitions => Set<LetterTypeDefinition>();
+    public DbSet<LetterLanguage> LetterLanguages => Set<LetterLanguage>();
+    public DbSet<StudentDocumentVersion> StudentDocumentVersions => Set<StudentDocumentVersion>();
     public DbSet<LetterEmailTemplate> LetterEmailTemplates => Set<LetterEmailTemplate>();
     public DbSet<Odin.Api.Base.Email.MailSettings> MailSettings => Set<Odin.Api.Base.Email.MailSettings>();
     public DbSet<Odin.Api.Base.Email.SchoolMailSettings> SchoolMailSettings => Set<Odin.Api.Base.Email.SchoolMailSettings>();

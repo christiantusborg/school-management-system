@@ -529,6 +529,31 @@
                     </button>
                   </div>
                 </template>
+
+                <!-- Config-created letter types visible to partners. -->
+                <div v-for="dl in (activeEnrollment.dynamicLetters ?? [])" :key="dl.letterTypeDefinitionId"
+                     class="letter-row" :class="{ disabled: !dl.letter }">
+                  <span class="letter-icon">📄</span>
+                  <div class="letter-info">
+                    <div class="letter-name">{{ dl.name }}</div>
+                    <div class="letter-sub">
+                      <template v-if="dl.letter">{{ dl.letter.fileName }} · released {{ formatDateD(dl.letter.uploadedAt) }}</template>
+                      <template v-else>Not yet released</template>
+                    </div>
+                    <div v-if="dynVersions[dl.letterTypeDefinitionId]?.open" class="letter-sub" style="margin-top:.3rem;">
+                      <div v-if="dynVersions[dl.letterTypeDefinitionId].loading">Loading…</div>
+                      <div v-else-if="!dynVersions[dl.letterTypeDefinitionId].items.length">No versions recorded yet.</div>
+                      <div v-for="v in (dynVersions[dl.letterTypeDefinitionId].items ?? [])" :key="v.studentDocumentVersionId"
+                           style="display:flex;align-items:center;gap:.4rem;">
+                        <span>v{{ v.versionNumber }} · {{ formatDateD(v.createdAt) }}<template v-if="v.language"> · {{ v.language }}</template></span>
+                        <button class="btn-mini-d" @click="downloadDynVersion(dl, v)">⤓</button>
+                      </div>
+                    </div>
+                  </div>
+                  <button class="btn-mini-d" :disabled="!dl.letter"
+                          @click="downloadLetterPartner(dl.letter)">Download</button>
+                  <button v-if="dl.letter" class="btn-mini-d" @click="toggleDynVersions(dl)">🕘 History</button>
+                </div>
               </div>
 
               <!-- Ad-hoc send dialog — same flow as the admin portal -->
@@ -1268,6 +1293,34 @@ async function downloadLetterProvisionalPartner() {
   } finally {
     downloadingLetterProvisional.value = false
   }
+}
+
+// ── Config-created (dynamic) letters: version history ───────────────────────
+const dynVersions = reactive({})
+async function toggleDynVersions(dl) {
+  const state = dynVersions[dl.letterTypeDefinitionId]
+    ?? (dynVersions[dl.letterTypeDefinitionId] = { open: false, loading: false, items: [] })
+  state.open = !state.open
+  if (!state.open || !dl.letter?.studentDocumentId) return
+  state.loading = true
+  try {
+    const res = await api.get(
+      `/v1/partner/my-students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/${dl.letter.studentDocumentId}/versions`)
+    state.items = res.data.items ?? []
+  } catch { state.items = [] }
+  finally { state.loading = false }
+}
+async function downloadDynVersion(dl, v) {
+  try {
+    const res = await api.get(
+      `/v1/partner/my-students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/letters/${dl.letter.studentDocumentId}/versions/${v.studentDocumentVersionId}/file`,
+      { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url; a.download = v.fileName ?? 'letter.pdf'; a.target = '_blank'
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch { /* toast below handles the common case */ }
 }
 
 async function downloadLetterPartner(letter) {

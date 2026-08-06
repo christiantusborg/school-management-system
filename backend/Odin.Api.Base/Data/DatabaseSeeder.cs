@@ -650,7 +650,7 @@ public static class DatabaseSeeder
         if (pairs.Count == 0) return;
 
         var have = (await context.LetterTemplates
-            .Where(t => t.LetterType == type && t.DeletedAt == null)
+            .Where(t => t.LetterType == type && t.LetterTypeDefinitionId == null && t.DeletedAt == null)
             .Select(t => new { t.ProgrammeId, t.PartnerId })
             .ToListAsync())
             .Select(x => (x.ProgrammeId, x.PartnerId))
@@ -733,6 +733,7 @@ public static class DatabaseSeeder
             // saves don't change the fingerprint they originally read.
             var rows = await context.LetterTemplates
                 .Where(t => t.LetterType == type
+                    && t.LetterTypeDefinitionId == null
                     && programmeIds.Contains(t.ProgrammeId)
                     && t.DeletedAt == null)
                 .ToListAsync();
@@ -824,7 +825,7 @@ public static class DatabaseSeeder
         // CertificateLayoutJson is jsonb — Postgres has no LIKE for jsonb, so
         // the substring check must run in memory. Card templates are few.
         var cardTemplates = await context.LetterTemplates
-            .Where(t => t.LetterType == LetterType.StudentIdCard && t.DeletedAt == null)
+            .Where(t => t.LetterType == LetterType.StudentIdCard && t.LetterTypeDefinitionId == null && t.DeletedAt == null)
             .ToListAsync();
         var stale = cardTemplates
             .Where(t => t.CertificateLayoutJson != null

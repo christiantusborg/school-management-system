@@ -213,6 +213,13 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
             };
         }
 
+        // Config-created (dynamic) letter types the partner may see.
+        var letterDefinitions = await db.LetterTypeDefinitions
+            .Where(d => d.DeletedAt == null && d.VisibleToPartner)
+            .OrderBy(d => d.SortOrder).ThenBy(d => d.Name)
+            .Select(d => new { d.LetterTypeDefinitionId, d.Name, d.DocumentTypeId })
+            .ToListAsync(ct);
+
         var enrollments = enrollmentsRaw.Select(e => new
         {
             e.studentEnrollmentId,
@@ -249,6 +256,12 @@ public sealed class PartnerV1MyStudentsDetailEndpoint : IEndpointMarker
                 finalProposalApproval  = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.FinalProposalApproval),
                 finalProjectApproval   = PickLetter(e.studentEnrollmentId, SystemDocumentTypeIds.FinalProjectApproval),
             },
+            dynamicLetters = letterDefinitions.Select(d => new
+            {
+                letterTypeDefinitionId = d.LetterTypeDefinitionId,
+                name = d.Name,
+                letter = PickLetter(e.studentEnrollmentId, d.DocumentTypeId),
+            }).ToList(),
         }).ToList();
 
         var languages = await db.UserLanguages

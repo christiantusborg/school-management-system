@@ -57,6 +57,10 @@ public sealed class LetterReleaseService(
                 t.ProgrammeId == enrollment.ProgrammeId &&
                 t.PartnerId == enrollment.PartnerId &&
                 t.LetterType == letterType &&
+                // Enum letters only: config-created (definition) rows keep the
+                // enum column at its default and must never match here.
+                t.LetterTypeDefinitionId == null &&
+                t.Language == null &&
                 t.DeletedAt == null, ct);
 
         if (template is null)
@@ -87,86 +91,8 @@ public sealed class LetterReleaseService(
             return null;
         }
 
-        async Task<byte[]> ReadAssetAsync(Guid id)
-        {
-            var path = await db.LetterAssets
-                .Where(a => a.LetterAssetId == id && a.DeletedAt == null)
-                .Select(a => a.StoragePath)
-                .FirstOrDefaultAsync(ct);
-            if (path is null) return Array.Empty<byte>();
-            using var s = await storage.OpenReadAsync(path, ct);
-            using var ms = new MemoryStream();
-            await s.CopyToAsync(ms, ct);
-            return ms.ToArray();
-        }
-
-        async Task<Dictionary<Guid, byte[]>> ReadAssetsAsync(IEnumerable<Guid> ids)
-        {
-            var dict = new Dictionary<Guid, byte[]>();
-            foreach (var id in ids.Distinct())
-            {
-                var b = await ReadAssetAsync(id);
-                if (b.Length > 0) dict[id] = b;
-            }
-            return dict;
-        }
-
-        // All letter types now author via the Konva layout editor. Storage:
-        // CertificateLayoutJson (preferred) and BodyHtml (legacy fallback).
-        // For each release, prefer the layout; fall back to the HTML body if
-        // the admin hasn't authored a layout yet for this letter.
-        var layout = CertificateLayout.TryParse(template.CertificateLayoutJson);
-        byte[] pdfBytes;
-        if (layout is not null)
-        {
-            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference, letterType);
-            var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractCertificateAssetIds(layout));
-            // Virtual student-photo asset: image fields pointing at the
-            // sentinel id get the student's uploaded Student Card Picture.
-            if (template.CertificateLayoutJson?.Contains(SystemLetterAssetIds.StudentPhoto.ToString()) == true)
-            {
-                var photoPath = await db.StudentDocuments
-                    .Where(d => d.StudentId == enrollment.StudentId
-                        && d.DocumentTypeId == SystemDocumentTypeIds.StudentCardPicture
-                        && d.DeletedAt == null)
-                    .OrderByDescending(d => d.UploadedAt)
-                    .Select(d => d.StoragePath)
-                    .FirstOrDefaultAsync(ct);
-                if (photoPath is not null)
-                {
-                    try
-                    {
-                        await using var ps = await storage.OpenReadAsync(photoPath, ct);
-                        using var pms = new MemoryStream();
-                        await ps.CopyToAsync(pms, ct);
-                        if (pms.Length > 0) assets[SystemLetterAssetIds.StudentPhoto] = pms.ToArray();
-                    }
-                    catch { /* no photo → the artwork placeholder stays visible */ }
-                }
-            }
-            // Only fetch transcript rows if a layout actually contains a
-            // transcriptTable field — saves a round-trip on offer/admission
-            // letters that don't need the grade data.
-            IReadOnlyList<TranscriptGradeRow>? rows = null;
-            var hasTranscriptTable = layout.GetPages()
-                .Any(p => p.Fields?.Any(f =>
-                    string.Equals(f.Kind, "transcriptTable", StringComparison.OrdinalIgnoreCase)) ?? false);
-            if (hasTranscriptTable)
-                rows = await tagResolver.ResolveTranscriptRowsAsync(enrollmentId, ct);
-            pdfBytes = renderer.RenderCertificate(layout, assets, tags, rows);
-        }
-        else if (!string.IsNullOrWhiteSpace(template.BodyHtml))
-        {
-            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference, letterType);
-            var pages = TryParseHtmlPages(template.BodyHtml);
-            var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractAssetIds(pages));
-            pdfBytes = renderer.RenderHtml(pages, tags, assets);
-        }
-        else
-        {
-            logger.LogWarning("[Letters] Template {LetterTemplateId} has neither layout nor body", template.LetterTemplateId);
-            return null;
-        }
+        var pdfBytes = await RenderTemplatePdfAsync(template, enrollment.StudentId, enrollmentId, reference, letterType, ct);
+        if (pdfBytes is null) return null;
 
         var fileName = $"{letterType}-{DateTime.UtcNow:yyyyMMddHHmmss}.pdf";
         string storagePath;
@@ -278,6 +204,222 @@ public sealed class LetterReleaseService(
         LetterType.FinalProjectApproval   => "PROJAPP",
         _ => "DOC",
     };
+
+    private async Task<byte[]> ReadAssetAsync(Guid id, CancellationToken ct)
+    {
+        var path = await db.LetterAssets
+            .Where(a => a.LetterAssetId == id && a.DeletedAt == null)
+            .Select(a => a.StoragePath)
+            .FirstOrDefaultAsync(ct);
+        if (path is null) return Array.Empty<byte>();
+        using var s = await storage.OpenReadAsync(path, ct);
+        using var ms = new MemoryStream();
+        await s.CopyToAsync(ms, ct);
+        return ms.ToArray();
+    }
+
+    private async Task<Dictionary<Guid, byte[]>> ReadAssetsAsync(IEnumerable<Guid> ids, CancellationToken ct)
+    {
+        var dict = new Dictionary<Guid, byte[]>();
+        foreach (var id in ids.Distinct())
+        {
+            var b = await ReadAssetAsync(id, ct);
+            if (b.Length > 0) dict[id] = b;
+        }
+        return dict;
+    }
+
+    /// <summary>
+    /// Renders a template to PDF bytes — the shared core of the enum-letter
+    /// and config-created (dynamic) release paths. All letter types author
+    /// via the Konva layout editor: CertificateLayoutJson preferred, BodyHtml
+    /// as the legacy fallback. Returns null when the template has neither.
+    /// </summary>
+    private async Task<byte[]?> RenderTemplatePdfAsync(
+        LetterTemplate template, Guid studentId, Guid enrollmentId,
+        string reference, LetterType? letterType, CancellationToken ct)
+    {
+        var layout = CertificateLayout.TryParse(template.CertificateLayoutJson);
+        if (layout is not null)
+        {
+            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference, letterType);
+            var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractCertificateAssetIds(layout), ct);
+            // Virtual student-photo asset: image fields pointing at the
+            // sentinel id get the student's uploaded Student Card Picture.
+            if (template.CertificateLayoutJson?.Contains(SystemLetterAssetIds.StudentPhoto.ToString()) == true)
+            {
+                var photoPath = await db.StudentDocuments
+                    .Where(d => d.StudentId == studentId
+                        && d.DocumentTypeId == SystemDocumentTypeIds.StudentCardPicture
+                        && d.DeletedAt == null)
+                    .OrderByDescending(d => d.UploadedAt)
+                    .Select(d => d.StoragePath)
+                    .FirstOrDefaultAsync(ct);
+                if (photoPath is not null)
+                {
+                    try
+                    {
+                        await using var ps = await storage.OpenReadAsync(photoPath, ct);
+                        using var pms = new MemoryStream();
+                        await ps.CopyToAsync(pms, ct);
+                        if (pms.Length > 0) assets[SystemLetterAssetIds.StudentPhoto] = pms.ToArray();
+                    }
+                    catch { /* no photo → the artwork placeholder stays visible */ }
+                }
+            }
+            // Only fetch transcript rows if a layout actually contains a
+            // transcriptTable field — saves a round-trip on letters that
+            // don't need the grade data.
+            IReadOnlyList<TranscriptGradeRow>? rows = null;
+            var hasTranscriptTable = layout.GetPages()
+                .Any(p => p.Fields?.Any(f =>
+                    string.Equals(f.Kind, "transcriptTable", StringComparison.OrdinalIgnoreCase)) ?? false);
+            if (hasTranscriptTable)
+                rows = await tagResolver.ResolveTranscriptRowsAsync(enrollmentId, ct);
+            return renderer.RenderCertificate(layout, assets, tags, rows);
+        }
+        if (!string.IsNullOrWhiteSpace(template.BodyHtml))
+        {
+            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference, letterType);
+            var pages = TryParseHtmlPages(template.BodyHtml);
+            var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractAssetIds(pages), ct);
+            return renderer.RenderHtml(pages, tags, assets);
+        }
+        logger.LogWarning("[Letters] Template {LetterTemplateId} has neither layout nor body", template.LetterTemplateId);
+        return null;
+    }
+
+    /// <summary>
+    /// Releases a config-created (dynamic) letter type for an enrolment.
+    /// Template lookup is per (programme, partner, definition, language) with
+    /// fallback to the English default (null language) when the requested
+    /// language has no published version. Every successful render also
+    /// appends a StudentDocumentVersion row — the audit/history trail the
+    /// built-in letters don't have yet.
+    /// </summary>
+    public async Task<Guid?> ReleaseDynamicAsync(
+        Guid enrollmentId, Guid letterTypeDefinitionId, string? language,
+        string trigger, string? generatedByName, string? generatedByUserId,
+        CancellationToken ct)
+    {
+        var definition = await db.LetterTypeDefinitions
+            .FirstOrDefaultAsync(d => d.LetterTypeDefinitionId == letterTypeDefinitionId && d.DeletedAt == null, ct);
+        if (definition is null) return null;
+
+        var enrollment = await db.Enrollments
+            .Where(e => e.StudentEnrollmentId == enrollmentId)
+            .Select(e => new
+            {
+                e.StudentId,
+                e.PartnerId,
+                ProgrammeId = db.Specializations
+                    .Where(s => s.SpecializationId == e.SpecializationId)
+                    .Select(s => s.ProgrammeId)
+                    .FirstOrDefault(),
+            })
+            .FirstOrDefaultAsync(ct);
+        if (enrollment is null) return null;
+
+        var lang = string.IsNullOrWhiteSpace(language) ? null : language.Trim();
+        var template = await db.LetterTemplates.FirstOrDefaultAsync(t =>
+            t.ProgrammeId == enrollment.ProgrammeId &&
+            t.PartnerId == enrollment.PartnerId &&
+            t.LetterTypeDefinitionId == letterTypeDefinitionId &&
+            t.Language == lang &&
+            t.IsPublished &&
+            t.DeletedAt == null, ct);
+        if (template is null && lang is not null)
+        {
+            // English default fallback: a missing translation never blocks.
+            lang = null;
+            template = await db.LetterTemplates.FirstOrDefaultAsync(t =>
+                t.ProgrammeId == enrollment.ProgrammeId &&
+                t.PartnerId == enrollment.PartnerId &&
+                t.LetterTypeDefinitionId == letterTypeDefinitionId &&
+                t.Language == null &&
+                t.IsPublished &&
+                t.DeletedAt == null, ct);
+        }
+        if (template is null)
+        {
+            logger.LogInformation("[Letters] No published template for definition {DefinitionId} programme {ProgrammeId} partner {PartnerId}",
+                letterTypeDefinitionId, enrollment.ProgrammeId, enrollment.PartnerId);
+            return null;
+        }
+
+        var enrollmentEntity = await db.Enrollments
+            .FirstAsync(e => e.StudentEnrollmentId == enrollmentId, ct);
+        if (string.IsNullOrEmpty(enrollmentEntity.LetterReferenceCode))
+            enrollmentEntity.LetterReferenceCode = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var reference = $"MGW-{definition.ReferencePrefix}-{enrollmentEntity.LetterReferenceCode}";
+
+        var pdfBytes = await RenderTemplatePdfAsync(template, enrollment.StudentId, enrollmentId, reference, null, ct);
+        if (pdfBytes is null) return null;
+
+        var safeType = new string(definition.Name.Where(char.IsLetterOrDigit).ToArray());
+        var fileName = $"{(safeType.Length > 0 ? safeType : "Letter")}-{DateTime.UtcNow:yyyyMMddHHmmss}.pdf";
+        string storagePath;
+        using (var ms = new MemoryStream(pdfBytes))
+        {
+            storagePath = await storage.SaveAsync(
+                ms, $"letters/{enrollment.StudentId}/{enrollmentId}/{Guid.NewGuid()}-{fileName}", ct);
+        }
+
+        // Same one-active-document-per-(enrolment, type) contract as the enum
+        // letters: the live row is always the LATEST render (stable id and
+        // download links); the version rows below carry the history.
+        var existing = await db.StudentDocuments
+            .FirstOrDefaultAsync(d => d.EnrollmentId == enrollmentId
+                && d.DocumentTypeId == definition.DocumentTypeId
+                && d.DeletedAt == null, ct);
+        Guid resultId;
+        if (existing is not null)
+        {
+            existing.FileName = fileName;
+            existing.MimeType = "application/pdf";
+            existing.UploadedAt = DateTime.UtcNow;
+            existing.StoragePath = storagePath;
+            existing.CurrentStatusId = DocumentStatusIds.VerifiedByEnrolment;
+            resultId = existing.StudentDocumentId;
+        }
+        else
+        {
+            var document = new StudentDocument
+            {
+                StudentDocumentId = Guid.NewGuid(),
+                StudentId = enrollment.StudentId,
+                EnrollmentId = enrollmentId,
+                DocumentTypeId = definition.DocumentTypeId,
+                FileName = fileName,
+                MimeType = "application/pdf",
+                UploadedAt = DateTime.UtcNow,
+                StoragePath = storagePath,
+                CurrentStatusId = DocumentStatusIds.VerifiedByEnrolment,
+            };
+            db.StudentDocuments.Add(document);
+            resultId = document.StudentDocumentId;
+        }
+
+        var lastVersion = await db.StudentDocumentVersions
+            .Where(v => v.StudentDocumentId == resultId)
+            .MaxAsync(v => (int?)v.VersionNumber, ct) ?? 0;
+        db.StudentDocumentVersions.Add(new StudentDocumentVersion
+        {
+            StudentDocumentId = resultId,
+            VersionNumber = lastVersion + 1,
+            FileName = fileName,
+            StoragePath = storagePath,
+            Trigger = trigger,
+            GeneratedByName = generatedByName,
+            GeneratedByUserId = generatedByUserId,
+            Language = lang,
+        });
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation("[Letters] Released dynamic '{Name}' v{Version} for enrollment {EnrollmentId} → {StudentDocumentId} ({Trigger})",
+            definition.Name, lastVersion + 1, enrollmentId, resultId, trigger);
+        return resultId;
+    }
 
     private static IReadOnlyList<string> TryParseHtmlPages(string body)
     {

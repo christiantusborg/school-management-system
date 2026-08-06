@@ -51,6 +51,7 @@
           title="Employment Industries" singular="Employment Industry"
           endpoint="/v1/school/employment-industries" id-key="employmentIndustryId" />
         <PathwayManager v-else-if="t.key === 'pathways'" v-show="activeTab === t.key" />
+        <LetterTypesConfigTab v-else-if="t.key === 'letterTypes'" v-show="activeTab === t.key" />
         <CrudManager v-else v-show="activeTab === t.key" :config="t.config" />
       </template>
     </div>
@@ -71,6 +72,7 @@ import PartnerDocumentTypesTab from '../components/admin/PartnerDocumentTypesTab
 import FacultyProfileConfigTab from '../components/admin/FacultyProfileConfigTab.vue'
 import ModuleCohortConfigTab from '../components/admin/ModuleCohortConfigTab.vue'
 import RubricConfigTab from '../components/admin/RubricConfigTab.vue'
+import LetterTypesConfigTab from '../components/admin/LetterTypesConfigTab.vue'
 
 const router = useRouter()
 
@@ -79,8 +81,12 @@ function logout() {
   router.push('/login')
 }
 
+// Letter Types is SuperAdministrator-only (backend enforces writes too).
 const entities = [
   { key: 'documentTypes',   label: 'Document Types',   config: { title: 'Document Types',   endpoint: '/v1/school/system-config/document-types' } },
+  ...(auth.adminLevel === 'SuperAdministrator'
+    ? [{ key: 'letterTypes', label: 'Letter Types' }]
+    : []),
   { key: 'educationLevels', label: 'Education Levels', config: { title: 'Education Levels', endpoint: '/v1/school/system-config/education-levels' } },
   { key: 'modesOfStudy',    label: 'Modes of Study',   config: { title: 'Modes of Study',   endpoint: '/v1/school/system-config/modes-of-study' } },
   { key: 'pathways',        label: 'Pathways',         config: { title: 'Pathways',         endpoint: '/v1/school/system-config/pathways' } },

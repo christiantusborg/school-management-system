@@ -45,6 +45,7 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId,
         [FromQuery] string? letterType,
+        [FromQuery] string? language,
         HttpContext httpContext,
         [FromServices] UserManager<ApplicationUser> userManager,
         LetterReleaseService letterRelease,
@@ -55,6 +56,29 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled)
             return Results.Unauthorized();
+
+        // Config-created (dynamic) letter type: {letterType} carries the
+        // definition GUID. Routine admission work like the approval letters,
+        // so any non-read-only admin level may generate; every render appends
+        // a Manual version row with the caller's name.
+        if (Guid.TryParse(letterType, out var definitionId))
+        {
+            var isReadOnlyCaller = await userManager.IsInRoleAsync(caller, AdminLevels.Viewer)
+                || await userManager.IsInRoleAsync(caller, AdminLevels.Sales);
+            if (isReadOnlyCaller)
+                return Results.Json(new { error = "Read-only access cannot generate letters." }, statusCode: StatusCodes.Status403Forbidden);
+            var ownsEnrolment = await db.Enrollments.AnyAsync(e => e.StudentEnrollmentId == enrollmentId
+                && e.StudentId == studentId && e.DeletedAt == null, ct);
+            if (!ownsEnrolment) return Results.NotFound();
+            var defName = await db.LetterTypeDefinitions
+                .Where(d => d.LetterTypeDefinitionId == definitionId && d.DeletedAt == null)
+                .Select(d => d.Name).FirstOrDefaultAsync(ct);
+            if (defName is null) return Results.BadRequest(new { error = "Unknown letter type." });
+            var docId = await letterRelease.ReleaseDynamicAsync(
+                enrollmentId, definitionId, language, "Manual", caller.UserName, callerId, ct);
+            return Results.Ok(new { regenerated = docId is null ? Array.Empty<string>() : new[] { defName } });
+        }
+
         // Optional single-letter filter (the per-row "Regenerate" button).
         LetterType? onlyType = null;
         if (!string.IsNullOrWhiteSpace(letterType))

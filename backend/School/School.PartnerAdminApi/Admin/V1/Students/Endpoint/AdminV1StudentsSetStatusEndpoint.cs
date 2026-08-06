@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Odin.Api.Base.Letters;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 
@@ -37,7 +38,10 @@ public sealed class AdminV1StudentsSetStatusEndpoint : IEndpointMarker
 
     private static async Task<IResult> SetAsync(
         Guid studentId, Guid enrollmentId, [FromBody] SetStatusBody body,
-        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        HttpContext httpContext, OdinDbContext db,
+        LetterReleaseService letterRelease,
+        [FromServices] ILogger<AdminV1StudentsSetStatusEndpoint> logger,
+        CancellationToken ct)
     {
         var enrolment = await db.Enrollments
             .FirstOrDefaultAsync(e => e.StudentEnrollmentId == enrollmentId
@@ -67,6 +71,10 @@ public sealed class AdminV1StudentsSetStatusEndpoint : IEndpointMarker
             CreatedAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync(ct);
+
+        // Config-created letter types whose trigger is this status release
+        // now (fire-once, best-effort).
+        await LetterStatusTriggers.FireAsync(db, letterRelease, logger, enrollmentId, status.EnrollmentStatusId, ct);
 
         return Results.Ok(new { statusCode = status.Code, statusName = status.Name });
     }

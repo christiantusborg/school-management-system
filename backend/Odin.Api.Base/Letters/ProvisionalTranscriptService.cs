@@ -57,6 +57,8 @@ public sealed class ProvisionalTranscriptService(
             t.ProgrammeId == enrollment.ProgrammeId &&
             t.PartnerId == enrollment.PartnerId &&
             t.LetterType == LetterType.Transcript &&
+            t.LetterTypeDefinitionId == null &&
+            t.Language == null &&
             t.DeletedAt == null, ct);
         if (template is null || !template.IsPublished)
         {

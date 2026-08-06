@@ -5,6 +5,22 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'dynamic-letter-types',
+    date: '2026-08-06',
+    title: 'Config-created letter types with versions, status triggers and languages',
+    summary: 'SuperAdmins create new letter types in System Config — no code change. 4 types seeded: Verification, Graduation Confirmation, Deferred, Drop-out.',
+    details: [
+      'WHERE (create types): System Config → Letter Types (SuperAdministrator only). Each type has a name, reference prefix, an auto-generate status, student/partner visibility, and an old-letter upload switch. Four types are pre-seeded: Verification Letter (Active Student, on Accept Admission), Graduation Confirmation (on Grades Approved), Deferred Letter (on Deferred), Drop-out Letter (on Dropped Out).',
+      'WHERE (design): the partner programme Letters row shows a chip per type — click to design and Save (publish), exactly like the built-in letters. Small language buttons next to each chip edit that language\'s version.',
+      'WHERE (generate): student drawer → Letters tab lists the new types with Generate/Regenerate (all non-read-only admin levels), a language picker (English default, missing translations fall back to English), and a 🕘 History button.',
+      'AUTO-GENERATE: the letter releases by itself, once, the first time the enrolment reaches the type\'s trigger status (via ✎ Change status, document reviews, or grade approval). Re-entering the status later does nothing — regenerate manually.',
+      'VERSIONS: every generation stores a version (who, when, how, language). History is visible to admission, partner and student; the normal Download always serves the latest.',
+      'LANGUAGES: System Config → Letter Types → Letter Languages list. English is built-in; each added language lets every template carry a translated version.',
+      'The built-in letters (Offer, Admission, Transcript, Certificates, ID card, approval letters) are completely untouched.',
+      'Note: "Email letter on release" is saved but not sent yet for config-created types — the email editor for these arrives in a later phase.',
+    ],
+  },
+  {
     id: 'final-project-plagiarism',
     date: '2026-08-06',
     title: 'Plagiarism field on final-project uploads',

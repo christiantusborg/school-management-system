@@ -107,6 +107,11 @@ public sealed class AdminV1StudentsApproveGradesEndpoint : IEndpointMarker
             logger.LogError(ex, "[Letters] Provisional certificate release failed for enrollment {EnrollmentId}", enrollmentId);
         }
 
+        // Config-created letter types triggered by GradesApproved (e.g. the
+        // Graduation Confirmation Letter) release now — fire-once, best-effort.
+        await LetterStatusTriggers.FireAsync(db, letterRelease, logger,
+            enrollmentId, EnrollmentStatusIds.GradesApproved, ct);
+
         return Results.Ok(new
         {
             enrollmentId,

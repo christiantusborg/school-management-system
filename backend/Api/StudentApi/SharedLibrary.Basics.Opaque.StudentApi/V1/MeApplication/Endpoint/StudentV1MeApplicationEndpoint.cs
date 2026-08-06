@@ -170,6 +170,16 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
         // enrolments today (canonical 4 slots), but it lives under each
         // enrolment so the frontend can render multiple cards if a student
         // has more than one application.
+        // Config-created (dynamic) letter types. The student only SEES the
+        // VisibleToStudent ones, but every definition's document type must be
+        // excluded from "additional documents" so a hidden letter never leaks
+        // through that list.
+        var allDynamicDefs = await db.LetterTypeDefinitions
+            .Where(d => d.DeletedAt == null)
+            .OrderBy(d => d.SortOrder).ThenBy(d => d.Name)
+            .Select(d => new { d.LetterTypeDefinitionId, d.Name, d.DocumentTypeId, d.VisibleToStudent })
+            .ToListAsync(ct);
+
         var enrollmentsOut = new List<(int rank, int level, object payload)>();
         foreach (var e in enrollments)
         {
@@ -225,6 +235,16 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
                 certificate            = PickLetter(SystemDocumentTypeIds.Certificate),
                 provisionalCertificate = PickLetter(SystemDocumentTypeIds.ProvisionalCertificate),
             };
+            var dynamicLetters = allDynamicDefs
+                .Where(d => d.VisibleToStudent)
+                .Select(d => new
+                {
+                    letterTypeDefinitionId = d.LetterTypeDefinitionId,
+                    name = d.Name,
+                    letter = PickLetter(d.DocumentTypeId),
+                })
+                .Where(x => x.letter is not null)
+                .ToList();
 
             var requiredDocuments = new List<object>();
             foreach (var req in requirements)
@@ -275,6 +295,7 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
                 SystemDocumentTypeIds.Certificate,
                 SystemDocumentTypeIds.ProvisionalCertificate,
             };
+            foreach (var d in allDynamicDefs) letterTypeIds.Add(d.DocumentTypeId);
             var additionalDocuments = (docsByEnrolmentAll.TryGetValue(e.enrollmentId, out var allDocsForEnr)
                     ? allDocsForEnr
                     : new())
@@ -316,6 +337,7 @@ public sealed class StudentV1MeApplicationEndpoint : IEndpointMarker
                 requiredDocuments,
                 additionalDocuments,
                 letters,
+                dynamicLetters,
                 canResubmit,
                 canAcceptOffer,
             }));
