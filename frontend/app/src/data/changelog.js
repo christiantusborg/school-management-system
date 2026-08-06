@@ -5,6 +5,16 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'dynamic-letter-template-index-fix',
+    date: '2026-08-06',
+    title: 'Fix: saving a second config-created letter template failed',
+    summary: 'Saving templates for more than one config-created letter type per programme + partner returned "An unexpected error occurred" — fixed.',
+    details: [
+      'A database uniqueness rule treated every config-created letter template as the same type, so only the first one saved (e.g. Drop-out Letter) and the next (e.g. Verification Letter) failed with a 500.',
+      'The rule now keys config-created templates by their letter type and language. Re-save the template that failed — no other action needed.',
+    ],
+  },
+  {
     id: 'dynamic-letter-emails',
     date: '2026-08-06',
     title: 'Emails for config-created letters: template, auto-send, Send-now dialog',

@@ -25,8 +25,14 @@ public class LetterEmailTemplateConfiguration : IEntityTypeConfiguration<LetterE
         builder.Property(e => e.CcRecipientsJson).HasColumnType("jsonb");
         builder.Property(e => e.BccRecipientsJson).HasColumnType("jsonb");
 
+        // Enum-letter uniqueness only — definition rows share the enum
+        // default value and are keyed by their own index below.
         builder.HasIndex(e => new { e.ProgrammeId, e.PartnerId, e.LetterType })
-            .HasFilter("\"DeletedAt\" IS NULL")
+            .HasFilter("\"DeletedAt\" IS NULL AND \"LetterTypeDefinitionId\" IS NULL")
+            .IsUnique();
+
+        builder.HasIndex(e => new { e.ProgrammeId, e.PartnerId, e.LetterTypeDefinitionId })
+            .HasFilter("\"DeletedAt\" IS NULL AND \"LetterTypeDefinitionId\" IS NOT NULL")
             .IsUnique();
 
         builder.HasOne(e => e.Programme)

@@ -24,8 +24,20 @@ public class LetterTemplateConfiguration : IEntityTypeConfiguration<LetterTempla
             .IsRequired()
             .HasDefaultValue(false);
 
+        // Uniqueness on the enum column applies to the BUILT-IN letters only:
+        // config-created (definition) rows all keep the enum default value,
+        // so without the extra filter a second dynamic template per
+        // programme+partner violates this index (500 on save).
         builder.HasIndex(e => new { e.ProgrammeId, e.PartnerId, e.LetterType })
-            .HasFilter("\"DeletedAt\" IS NULL")
+            .HasFilter("\"DeletedAt\" IS NULL AND \"LetterTypeDefinitionId\" IS NULL")
+            .IsUnique();
+
+        // One template per (programme, partner, definition, language). Nulls
+        // are NOT distinct so two English (null-language) rows collide as
+        // intended (PostgreSQL 15+).
+        builder.HasIndex(e => new { e.ProgrammeId, e.PartnerId, e.LetterTypeDefinitionId, e.Language })
+            .HasFilter("\"DeletedAt\" IS NULL AND \"LetterTypeDefinitionId\" IS NOT NULL")
+            .AreNullsDistinct(false)
             .IsUnique();
 
         builder.HasOne(e => e.Programme)
