@@ -5,6 +5,16 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'approval-letters-any-admin',
+    date: '2026-08-06',
+    title: 'Approval letters: Generate open to all Admission staff',
+    summary: 'Every non-read-only admin level can now generate the Proposal/Project Approval letters.',
+    details: [
+      'The Generate button for the "Proposal Approval Letter" and "Project Approval Letter" is now visible and usable for Manager and Editor levels too, not only Administrator and SuperAdministrator.',
+      'Viewer and Sales stay read-only. All other letters keep the Administrator+ restriction.',
+    ],
+  },
+  {
     id: 'drawer-header-partner',
     date: '2026-08-06',
     title: 'Drawer header no longer shows the signup partner',

@@ -835,7 +835,7 @@
                         {{ uploadingLetterKey === t.key ? 'Uploading…' : '⇧ Upload old' }}</button>
                       <button class="btn-mini" :disabled="!activeEnrollment.letters?.[t.key]"
                               @click="downloadLetter(activeEnrollment.letters?.[t.key])">Download</button>
-                      <button v-if="canRegenerateLetters" class="btn-mini btn-mini-ghost"
+                      <button v-if="canGenerateLetter(t.key)" class="btn-mini btn-mini-ghost"
                               :disabled="regeneratingLetterKey === t.key"
                               @click="regenerateLetter(t)">
                         {{ regeneratingLetterKey === t.key
@@ -2298,6 +2298,16 @@ async function deleteStudent(s) {
 // Regenerating a released letter re-renders its PDF with current data, so it
 // is gated to the same top two admin levels as the duration override.
 const canRegenerateLetters = canEditDuration
+
+// The proposal/project approval letters are routine Admission Office work:
+// every non-read-only admin level can generate them (backend enforces too).
+const APPROVAL_LETTER_KEYS = ['finalProposalApproval', 'finalProjectApproval']
+const canGenerateApprovalLetters = computed(() =>
+  ['SuperAdministrator', 'Administrator', 'Manager', 'Editor'].includes(auth.adminLevel))
+function canGenerateLetter(key) {
+  return canRegenerateLetters.value
+    || (APPROVAL_LETTER_KEYS.includes(key) && canGenerateApprovalLetters.value)
+}
 
 // Admins may save outside the programme range; warn but don't block.
 const durationRangeWarning = computed(() => {
