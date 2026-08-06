@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Odin.Api.Base.Data;
 using SharedLibrary.Basics.Opaque.Domains;
+using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
 namespace Odin.Api.Base.Letters;
 
@@ -58,7 +59,8 @@ public sealed class LetterTagResolver(OdinDbContext db)
     /// so a partially-complete student still produces a renderable letter.
     /// </summary>
     public async Task<IReadOnlyDictionary<string, string>> ResolveAsync(
-        Guid enrollmentId, CancellationToken ct, string? reference = null)
+        Guid enrollmentId, CancellationToken ct, string? reference = null,
+        LetterType? letterType = null)
     {
         var enrollment = await db.Enrollments
             .Where(e => e.StudentEnrollmentId == enrollmentId)
@@ -157,7 +159,65 @@ public sealed class LetterTagResolver(OdinDbContext db)
             : enrollment.Student?.StudentNumber) ?? string.Empty;
         result["[student address]"]   = address;
         result["[passport id]"]       = enrollment.Student?.PassportId ?? string.Empty;
-        result["[project title]"]     = enrollment.ProjectTitle ?? string.Empty;
+
+        // ── Dissertation cohort fields ───────────────────────────────────
+        // The "Final Project / Dissertation" cohort type carries Supervisor /
+        // Word count / Final project name as builder data fields on the
+        // cohort Record tab. The letter being rendered picks which of the
+        // enrolment's cohorts to read first: the proposal approval letter
+        // prefers a "Dissertation Proposal" cohort, everything else the
+        // final-project cohort. The other dissertation cohort fills gaps —
+        // the proposal type has no such fields today, so a proposal letter
+        // still prints what was entered on the final-project cohort. Values
+        // are cohort-level: dissertation cohorts are expected to hold one
+        // student each.
+        var dissertationCohorts = await db.ModuleCohortStudents
+            .Where(cs => cs.StudentEnrollmentId == enrollmentId && cs.DeletedAt == null)
+            .Join(db.ModuleCohorts.Where(c => c.DeletedAt == null),
+                cs => cs.ModuleCohortId, c => c.ModuleCohortId, (cs, c) => c)
+            .Select(c => new
+            {
+                c.CreatedAt,
+                TypeName = db.CohortTypes
+                    .Where(t => t.CohortTypeId == c.CohortTypeId)
+                    .Select(t => t.Name)
+                    .FirstOrDefault() ?? string.Empty,
+                Fields = db.CohortFieldValues
+                    .Where(v => v.ModuleCohortId == c.ModuleCohortId)
+                    .Join(db.CohortTypeFields.Where(f => f.DeletedAt == null),
+                        v => v.CohortTypeFieldId, f => f.CohortTypeFieldId,
+                        (v, f) => new { f.Label, v.Value })
+                    .ToList(),
+            })
+            .ToListAsync(ct);
+
+        // "Dissertation Proposal" also contains "dissertation", so proposal
+        // is checked first — same heuristic as the grade-save auto-release.
+        static bool IsProposalType(string n) => n.Contains("proposal", StringComparison.OrdinalIgnoreCase);
+        static bool IsFinalType(string n) =>
+            n.Contains("final project", StringComparison.OrdinalIgnoreCase)
+            || n.Contains("dissertation", StringComparison.OrdinalIgnoreCase);
+        var preferProposal = letterType == LetterType.FinalProposalApproval;
+        var orderedCohorts = dissertationCohorts
+            .Where(c => IsProposalType(c.TypeName) || IsFinalType(c.TypeName))
+            .OrderByDescending(c => IsProposalType(c.TypeName) == preferProposal)
+            .ThenByDescending(c => c.CreatedAt)
+            .ToList();
+        string CohortField(string label) => orderedCohorts
+            .SelectMany(c => c.Fields)
+            .Where(f => string.Equals(f.Label, label, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(f.Value))
+            .Select(f => f.Value)
+            .FirstOrDefault() ?? string.Empty;
+
+        result["[supervisor]"] = CohortField("Supervisor");
+        result["[word count]"] = CohortField("Word count");
+        // The cohort's "Final project name" wins over the enrolment's Project
+        // Title from the grade-submit modal when both are filled.
+        var cohortProjectName = CohortField("Final project name");
+        result["[project title]"]     = !string.IsNullOrWhiteSpace(cohortProjectName)
+            ? cohortProjectName
+            : enrollment.ProjectTitle ?? string.Empty;
         // [date] is the letter's issuance date. Offer/admission letters honour
         // an Admission-Office override (reference prefix tells which letter this
         // is: IBSS-OL-… = offer, IBSS-AL-… = admission); everything else uses

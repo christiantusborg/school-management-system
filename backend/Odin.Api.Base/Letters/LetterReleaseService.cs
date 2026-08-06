@@ -119,7 +119,7 @@ public sealed class LetterReleaseService(
         byte[] pdfBytes;
         if (layout is not null)
         {
-            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference);
+            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference, letterType);
             var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractCertificateAssetIds(layout));
             // Virtual student-photo asset: image fields pointing at the
             // sentinel id get the student's uploaded Student Card Picture.
@@ -157,7 +157,7 @@ public sealed class LetterReleaseService(
         }
         else if (!string.IsNullOrWhiteSpace(template.BodyHtml))
         {
-            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference);
+            var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference, letterType);
             var pages = TryParseHtmlPages(template.BodyHtml);
             var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractAssetIds(pages));
             pdfBytes = renderer.RenderHtml(pages, tags, assets);
