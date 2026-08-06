@@ -334,7 +334,6 @@
               </h3>
               <p class="manage-sub">
                 {{ detailModal.email || '—' }}
-                <span v-if="detailModal.partnerName"> · {{ detailModal.partnerName }}</span>
                 <template v-if="detailModal.data && !detailModal.data.account?.emailVerified">
                   <span class="s-badge unverified">unverified</span>
                   <button class="btn-row-details btn-row-details-sm"

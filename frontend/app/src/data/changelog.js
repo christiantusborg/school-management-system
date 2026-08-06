@@ -5,6 +5,16 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'drawer-header-partner',
+    date: '2026-08-06',
+    title: 'Drawer header no longer shows the signup partner',
+    summary: 'The student drawer header shows only the email; partners are on the programme cards.',
+    details: [
+      'The admin student drawer header used to append the partner the student ORIGINALLY signed up with, which is misleading for multi-partner students.',
+      'It now shows only the email; the correct partner for each application stays on the 🤝 chip of every programme card.',
+    ],
+  },
+  {
     id: 'approval-letters',
     date: '2026-08-06',
     title: 'Final project approval letters',
