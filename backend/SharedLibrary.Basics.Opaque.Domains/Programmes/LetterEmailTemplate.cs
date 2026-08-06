@@ -22,6 +22,10 @@ public class LetterEmailTemplate : IDeletedAtEntity
 
     public LetterType LetterType { get; set; }
 
+    /// <summary>Config-created letter type this email belongs to; null =
+    /// one of the built-in enum letters.</summary>
+    public Guid? LetterTypeDefinitionId { get; set; }
+
     /// <summary>
     /// Master on/off for emailing this (programme, letter type). When false,
     /// release sends nothing and the manual Send action reports it as disabled.

@@ -30,8 +30,8 @@
           <td>{{ d.triggerStatusName || 'Manual only' }}</td>
           <td>{{ d.visibleToStudent ? '✓' : '—' }}</td>
           <td>{{ d.visibleToPartner ? '✓' : '—' }}</td>
-          <td :title="d.emailOnRelease ? 'Email sending for config-created letters ships with the email-template phase' : ''">
-            {{ d.emailOnRelease ? '✓*' : '—' }}</td>
+          <td :title="d.emailOnRelease ? 'A ✉ chip on the programme Letters row edits the email; it auto-sends on release once that template is enabled' : ''">
+            {{ d.emailOnRelease ? '✓' : '—' }}</td>
           <td>{{ d.allowLegacyUpload ? '✓' : '—' }}</td>
           <td>{{ d.sortOrder }}</td>
           <td class="lt-actions">
@@ -43,8 +43,9 @@
     </table>
     <p v-else class="lt-sub">No letter types yet. Add the first one.</p>
     <p v-if="items.some(d => d.emailOnRelease)" class="lt-sub" style="margin-top:.4rem;">
-      * Email on release is saved but not sent yet for config-created letters — the email editor for
-      these types arrives with the letter-email phase.
+      Email-enabled types get a ✉ chip on the programme Letters row (write the mail there, per
+      programme + partner, with an optional [additional text] spot) and a ✉ Send button on the
+      student drawer. The letter auto-emails on release once the mail template's enable switch is on.
     </p>
 
     <div v-if="showForm" class="lt-overlay" @click.self="showForm = false">

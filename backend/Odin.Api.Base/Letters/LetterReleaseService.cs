@@ -418,6 +418,29 @@ public sealed class LetterReleaseService(
 
         logger.LogInformation("[Letters] Released dynamic '{Name}' v{Version} for enrollment {EnrollmentId} → {StudentDocumentId} ({Trigger})",
             definition.Name, lastVersion + 1, enrollmentId, resultId, trigger);
+
+        // Auto-email on release: needs BOTH the type's "Email letter on
+        // release" switch AND the programme email template's enable switch.
+        // Best-effort — a send failure never rolls back the release.
+        if (definition.EmailOnRelease)
+        {
+            try
+            {
+                var emailResult = await letterEmail.SendForDynamicLetterAsync(
+                    enrollmentId, definition.LetterTypeDefinitionId,
+                    adHocCc: null, adHocBcc: null, additionalText: null, requireEnabled: true, ct);
+                if (emailResult.Outcome == LetterEmailOutcome.Sent)
+                    logger.LogInformation("[Letters] Auto-emailed dynamic '{Name}' for enrolment {EnrollmentId} to {To}",
+                        definition.Name, enrollmentId, emailResult.To);
+                else if (emailResult.Outcome != LetterEmailOutcome.Disabled)
+                    logger.LogInformation("[Letters] Auto-email not sent for dynamic '{Name}' enrolment {EnrollmentId}: {Outcome}",
+                        definition.Name, enrollmentId, emailResult.Outcome);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[Letters] Auto-email failed for dynamic '{Name}' enrolment {EnrollmentId}", definition.Name, enrollmentId);
+            }
+        }
         return resultId;
     }
 

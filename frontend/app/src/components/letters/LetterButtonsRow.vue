@@ -25,6 +25,8 @@
               :class="dynPublished(d.letterTypeDefinitionId, l.name) ? 'lbtn-pub' : 'lbtn-draft'"
               :title="`${d.name} — ${l.name} version (falls back to English until saved)`"
               @click="openDynamic(d, l.name)">{{ langCode(l.name) }}</button>
+      <button v-if="d.emailOnRelease" class="lbtn lbtn-email"
+              @click="openDynamicEmail(d)" title="Edit the email sent with this letter">✉</button>
     </span>
     <CertificateEditorModal
       :open="modalOpen"
@@ -43,6 +45,7 @@
       :programme-name="programmeName"
       :partner-id="partnerId"
       :letter-type="activeType"
+      :letter-name="activeName"
       @close="emailModalOpen = false"
       @saved="emit('saved')"
     />
@@ -115,6 +118,13 @@ function openDynamic(d, lang) {
 
 function openEmail(type) {
   activeType.value = type
+  activeName.value = ''
+  emailModalOpen.value = true
+}
+
+function openDynamicEmail(d) {
+  activeType.value = d.letterTypeDefinitionId
+  activeName.value = d.name
   emailModalOpen.value = true
 }
 

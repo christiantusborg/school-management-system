@@ -49,7 +49,10 @@ public sealed class AdminProgrammesV1LetterEmailTemplatesEndpoint : IEndpointMar
                 letterEmailTemplateId = t.LetterEmailTemplateId,
                 programmeId = t.ProgrammeId,
                 partnerId = t.PartnerId,
-                letterType = t.LetterType.ToString(),
+                // Definition rows report no enum type (their enum column sits
+                // at its default) — the definition id is their identity.
+                letterType = t.LetterTypeDefinitionId == null ? t.LetterType.ToString() : null,
+                letterTypeDefinitionId = t.LetterTypeDefinitionId,
                 isEmailEnabled = t.IsEmailEnabled,
                 subject = t.Subject,
                 bodyHtml = t.BodyHtml,
@@ -70,10 +73,27 @@ public sealed class AdminProgrammesV1LetterEmailTemplatesEndpoint : IEndpointMar
         CancellationToken ct,
         [FromQuery] Guid? partnerId = null)
     {
-        if (!Enum.TryParse<LetterType>(type, ignoreCase: true, out var letterType))
-            return Results.BadRequest(new { message = "unknown letter type" });
-        if (!Emailable.Contains(letterType))
-            return Results.BadRequest(new { message = "only Offer and Admission letters support email" });
+        // {type} is a built-in enum name (Offer/Admission only) or the GUID of
+        // a config-created letter type whose "Email letter on release" is on.
+        LetterType letterType = default;
+        Guid? definitionId = null;
+        if (Guid.TryParse(type, out var parsedDefId))
+        {
+            var emailable = await db.LetterTypeDefinitions
+                .Where(d => d.LetterTypeDefinitionId == parsedDefId && d.DeletedAt == null)
+                .Select(d => (bool?)d.EmailOnRelease)
+                .FirstOrDefaultAsync(ct);
+            if (emailable is null) return Results.BadRequest(new { message = "unknown letter type" });
+            if (emailable is false) return Results.BadRequest(new { message = "this letter type has 'Email letter on release' switched off" });
+            definitionId = parsedDefId;
+        }
+        else
+        {
+            if (!Enum.TryParse(type, ignoreCase: true, out letterType))
+                return Results.BadRequest(new { message = "unknown letter type" });
+            if (!Emailable.Contains(letterType))
+                return Results.BadRequest(new { message = "only Offer and Admission letters support email" });
+        }
         if (partnerId is null) return Results.BadRequest(new { message = "partnerId is required" });
 
         var programmeExists = await db.Programmes.AnyAsync(p => p.ProgrammeId == programmeId, ct);
@@ -82,7 +102,9 @@ public sealed class AdminProgrammesV1LetterEmailTemplatesEndpoint : IEndpointMar
         var entity = await db.LetterEmailTemplates.FirstOrDefaultAsync(t =>
             t.ProgrammeId == programmeId &&
             t.PartnerId == partnerId &&
-            t.LetterType == letterType &&
+            (definitionId == null
+                ? t.LetterTypeDefinitionId == null && t.LetterType == letterType
+                : t.LetterTypeDefinitionId == definitionId) &&
             t.DeletedAt == null, ct);
 
         if (entity is null)
@@ -93,6 +115,7 @@ public sealed class AdminProgrammesV1LetterEmailTemplatesEndpoint : IEndpointMar
                 ProgrammeId = programmeId,
                 PartnerId = partnerId.Value,
                 LetterType = letterType,
+                LetterTypeDefinitionId = definitionId,
             };
             db.LetterEmailTemplates.Add(entity);
         }

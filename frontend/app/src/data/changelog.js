@@ -5,6 +5,19 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'dynamic-letter-emails',
+    date: '2026-08-06',
+    title: 'Emails for config-created letters: template, auto-send, Send-now dialog',
+    summary: 'Email-enabled letter types get a ✉ template editor on the Letters row and a ✉ Send dialog with live preview + additional text.',
+    details: [
+      'WHERE (write the mail): partner programme → Letters row → the ✉ chip next to a config-created letter chip (shown when the type\'s "Email letter on release" is checked in System Config → Letter Types). Same editor as Offer/Admission: subject, body with tags, cc/bcc, enable switch — per programme + partner.',
+      'EXTRA TEXT SPOT: put the new [additional text] tag anywhere in the email body; whatever staff type in the Send dialog lands exactly there (or is appended as a closing paragraph if the tag is absent).',
+      'WHERE (send): student drawer → Letters tab → ✉ Send on the letter\'s row (enabled once the letter is released; all non-read-only admin levels). The dialog shows the real mail — subject and body with all tags filled for that student — plus a free-text box and extra cc/bcc, then sends with the PDF attached.',
+      'AUTO-SEND: when the type\'s email checkbox AND the mail template\'s enable switch are both on, the email also goes out automatically when the letter releases (status trigger or Generate).',
+      'The Offer and Admission letter email flows are completely unchanged.',
+    ],
+  },
+  {
     id: 'dynamic-letter-types',
     date: '2026-08-06',
     title: 'Config-created letter types with versions, status triggers and languages',

@@ -238,6 +238,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 d.VisibleToStudent,
                 d.VisibleToPartner,
                 d.AllowLegacyUpload,
+                d.EmailOnRelease,
             })
             .ToListAsync(ct);
 
@@ -290,6 +291,7 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 visibleToStudent = d.VisibleToStudent,
                 visibleToPartner = d.VisibleToPartner,
                 allowLegacyUpload = d.AllowLegacyUpload,
+                emailOnRelease = d.EmailOnRelease,
                 letter = PickLetter(e.studentEnrollmentId, d.DocumentTypeId),
             }).ToList(),
             issueDigitalStudentCard = db.Programmes

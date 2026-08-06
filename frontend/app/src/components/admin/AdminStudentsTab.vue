@@ -906,6 +906,48 @@
                           : (dl.letter ? 'Regenerate' : 'Generate') }}
                     </button>
                     <button v-if="dl.letter" class="btn-mini btn-mini-ghost" @click="toggleLetterVersions(dl)">🕘 History</button>
+                    <button v-if="dl.emailOnRelease && canGenerateApprovalLetters" class="btn-mini btn-mini-email"
+                            :disabled="!dl.letter" title="Send the letter email (template + optional extra text)"
+                            @click="openDynEmailSend(dl)">✉ Send</button>
+                  </div>
+                </div>
+
+                <!-- Send dialog for config-created letters: previews the
+                     templated mail (tags resolved) and lets staff add extra
+                     text into the [additional text] spot before sending. -->
+                <div v-if="dynEmailSend.open" class="email-send-pop">
+                  <div class="email-send-card" style="max-width:640px;">
+                    <div class="esp-head">
+                      <strong>Send {{ dynEmailSend.dl?.name }} email</strong>
+                      <button class="esp-close" @click="dynEmailSend.open = false">✕</button>
+                    </div>
+                    <div v-if="dynEmailSend.loading" class="muted" style="padding:.6rem 0;">Building preview…</div>
+                    <template v-else-if="dynEmailSend.preview">
+                      <p class="muted" style="font-size:.76rem;margin:.2rem 0 .5rem;">
+                        To: <strong>{{ dynEmailSend.preview.to }}</strong>
+                        <template v-if="dynEmailSend.preview.cc?.length"> · cc {{ dynEmailSend.preview.cc.join(', ') }}</template>
+                        <template v-if="dynEmailSend.preview.bcc?.length"> · bcc {{ dynEmailSend.preview.bcc.join(', ') }}</template>
+                      </p>
+                      <div class="dyn-mail-subject">{{ dynEmailSend.preview.subject }}</div>
+                      <div class="dyn-mail-preview" v-html="dynEmailSend.preview.bodyHtml"></div>
+                    </template>
+                    <div style="margin-top:.6rem;">
+                      <label class="muted" style="font-size:.74rem;font-weight:700;">Additional text (optional — lands at the [additional text] spot, or at the end)</label>
+                      <textarea v-model="dynEmailSend.additionalText" rows="3" class="dyn-mail-extra"
+                                placeholder="Anything extra for this student…" @input="debouncedDynPreview"></textarea>
+                    </div>
+                    <div style="display:flex;gap:.5rem;margin-top:.4rem;">
+                      <input v-model="dynEmailSend.cc" class="dur-input" style="flex:1;" placeholder="Extra CC (comma-separated)" />
+                      <input v-model="dynEmailSend.bcc" class="dur-input" style="flex:1;" placeholder="Extra BCC (comma-separated)" />
+                    </div>
+                    <div v-if="dynEmailSend.error" class="err-banner" style="margin-top:.5rem;">{{ dynEmailSend.error }}</div>
+                    <div v-if="dynEmailSend.ok" class="muted" style="margin-top:.5rem;color:#1c7a4a;font-weight:700;">{{ dynEmailSend.ok }}</div>
+                    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.8rem;">
+                      <button class="btn-mini" @click="dynEmailSend.open = false">Close</button>
+                      <button class="btn-mini btn-mini-email" :disabled="dynEmailSend.sending || !dynEmailSend.preview"
+                              @click="sendDynEmail">
+                        {{ dynEmailSend.sending ? 'Sending…' : '✉ Send now' }}</button>
+                    </div>
                   </div>
                 </div>
                 <p v-if="letterRegenResult" class="muted" style="margin-top:.4rem;">{{ letterRegenResult }}</p>
@@ -2603,6 +2645,54 @@ async function downloadLetterVersion(dl, v) {
   }
 }
 
+// ── Send dialog for config-created letters (preview + additional text) ──────
+const dynEmailSend = ref({ open: false, dl: null, loading: false, preview: null, additionalText: '', cc: '', bcc: '', sending: false, error: '', ok: '' })
+let dynPreviewTimer = null
+
+async function loadDynEmailPreview() {
+  const s = dynEmailSend.value
+  if (!s.open || !s.dl || !detailModal.value?.studentId || !activeEnrollment.value) return
+  s.loading = !s.preview
+  s.error = ''
+  try {
+    const res = await api.get(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/dynamic-letters/${s.dl.letterTypeDefinitionId}/email-preview`,
+      { params: s.additionalText.trim() ? { additionalText: s.additionalText.trim() } : {} })
+    s.preview = res.data
+  } catch (e) {
+    s.preview = null
+    s.error = e.response?.data?.error ?? e.message ?? 'Preview failed'
+  } finally {
+    s.loading = false
+  }
+}
+
+function debouncedDynPreview() {
+  clearTimeout(dynPreviewTimer)
+  dynPreviewTimer = setTimeout(loadDynEmailPreview, 500)
+}
+
+function openDynEmailSend(dl) {
+  dynEmailSend.value = { open: true, dl, loading: true, preview: null, additionalText: '', cc: '', bcc: '', sending: false, error: '', ok: '' }
+  loadDynEmailPreview()
+}
+
+async function sendDynEmail() {
+  const s = dynEmailSend.value
+  if (s.sending || !s.dl) return
+  s.sending = true; s.error = ''; s.ok = ''
+  try {
+    const res = await api.post(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/dynamic-letters/${s.dl.letterTypeDefinitionId}/email`,
+      { cc: splitEmails(s.cc), bcc: splitEmails(s.bcc), additionalText: s.additionalText.trim() || null })
+    s.ok = `Sent to ${res.data?.to ?? 'the student'}.`
+  } catch (e) {
+    s.error = e.response?.data?.error ?? e.message ?? 'Send failed'
+  } finally {
+    s.sending = false
+  }
+}
+
 function openSendEmail(t) {
   emailSend.value = { open: true, key: t.key, label: t.label, cc: '', bcc: '', sending: false, error: '', ok: '' }
 }
@@ -4246,6 +4336,9 @@ async function runExport() {
 .letter-name { font-weight: 600; font-size: .88rem; color: #1a2d4f; }
 .letter-sub { font-size: .76rem; color: #6b7888; }
 .letter-versions { margin-top: .35rem; border-top: 1px dashed #dbe4ee; padding-top: .35rem; display: flex; flex-direction: column; gap: .2rem; }
+.dyn-mail-subject { font-weight: 700; font-size: .9rem; color: #1a2d4f; border: 1px solid #e3e9f1; border-bottom: none; border-radius: 7px 7px 0 0; padding: .45rem .6rem; background: #f7f9fc; }
+.dyn-mail-preview { border: 1px solid #e3e9f1; border-radius: 0 0 7px 7px; padding: .6rem .7rem; max-height: 260px; overflow: auto; font-size: .84rem; background: #fff; }
+.dyn-mail-extra { width: 100%; box-sizing: border-box; padding: .45rem .55rem; border: 1px solid #ccd5e0; border-radius: 6px; font-size: .85rem; font-family: inherit; margin-top: .2rem; }
 .letter-version-row { display: flex; align-items: center; gap: .5rem; font-size: .74rem; color: #4b5a6d; }
 .btn-mini { padding: .3rem .75rem; border: 1px solid #1a4d8c; background: #1a4d8c; color: #fff; border-radius: 5px; font-size: .78rem; font-weight: 600; cursor: pointer; }
 .btn-mini:disabled { opacity: .5; cursor: not-allowed; background: #cbd5e1; border-color: #cbd5e1; }

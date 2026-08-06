@@ -65,6 +65,9 @@ const props = defineProps({
   programmeName: { type: String, default: '' },
   partnerId: { type: String, default: '' },
   letterType: { type: String, default: '' },
+  // Config-created (dynamic) letter types: letterType carries the definition
+  // GUID and letterName the display title.
+  letterName: { type: String, default: '' },
 })
 const emit = defineEmits(['close', 'saved'])
 
@@ -108,6 +111,7 @@ const bcc = reactive([])
 const form = reactive({ isEmailEnabled: false, subject: '', bodyHtml: '' })
 
 function titleFor(t) {
+  if (props.letterName) return props.letterName
   return t === 'OfferLetter' ? 'Offer Letter' : t === 'AdmissionLetter' ? 'Admission Letter' : t
 }
 
@@ -149,7 +153,13 @@ async function load() {
       apiClient.get('/v1/admin/letter-tags'),
     ])
     tags.value = tagRes.data.items ?? []
-    const existing = (tplRes.data.items ?? []).find(t => t.letterType === props.letterType)
+    // Dynamic letter emails also support the [additional text] placeholder:
+    // filled in per send from the ✉ Send dialog's free-text box.
+    if (props.letterName)
+      tags.value = [...tags.value, { token: '[additional text]', key: 'email.additionalText' }]
+    const existing = (tplRes.data.items ?? []).find(t => props.letterName
+      ? t.letterTypeDefinitionId === props.letterType
+      : t.letterType === props.letterType)
     form.isEmailEnabled = !!existing?.isEmailEnabled
     form.subject = existing?.subject ?? ''
     form.bodyHtml = existing?.bodyHtml ?? ''
