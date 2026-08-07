@@ -167,6 +167,15 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             kvp => kvp.Key,
             kvp => canonicalByName.TryGetValue(kvp.Value, out var items) ? items : new());
 
+        // Keep bulk-agreement assignments fresh for this student's partners.
+        foreach (var pid in await db.Enrollments
+            .Where(e => e.StudentId == studentId && e.DeletedAt == null && e.BulkAgreementId == null)
+            .Select(e => e.PartnerId).Distinct().ToListAsync(ct))
+        {
+            try { await School.PartnerAdminApi.Admin.V1.Partners.BulkAgreements.AdminV1BulkAgreementsEndpoint.EnsureAssignmentsAsync(db, pid, ct); }
+            catch { /* assignment refresh is best-effort */ }
+        }
+
         var enrollmentsRaw = await db.Enrollments
             .Where(e => e.StudentId == studentId && e.DeletedAt == null)
             .Select(e => new
@@ -178,6 +187,10 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
                 enrolmentPartnerId = e.PartnerId,
                 enrolmentPartnerName = db.Partners.Where(pa => pa.PartnerId == e.PartnerId).Select(pa => pa.Name).FirstOrDefault(),
                 projectApprovalPassMark = e.Specialization.Programmes.ProjectApprovalPassMark,
+                bulkAgreementId = e.BulkAgreementId,
+                bulkAgreementNumber = e.BulkAgreementId != null
+                    ? db.BulkAgreements.Where(b => b.BulkAgreementId == e.BulkAgreementId).Select(b => b.AgreementNumber).FirstOrDefault()
+                    : null,
                 programmeMinDurationMonths = e.Specialization.Programmes.MinDurationMonths,
                 programmeMaxDurationMonths = e.Specialization.Programmes.MaxDurationMonths,
                 specializationId = e.SpecializationId,
@@ -251,6 +264,8 @@ public sealed class AdminV1StudentsDetailEndpoint : IEndpointMarker
             e.enrolmentPartnerId,
             e.enrolmentPartnerName,
             e.projectApprovalPassMark,
+            e.bulkAgreementId,
+            e.bulkAgreementNumber,
             e.programmeMinDurationMonths,
             e.programmeMaxDurationMonths,
             e.specializationId,

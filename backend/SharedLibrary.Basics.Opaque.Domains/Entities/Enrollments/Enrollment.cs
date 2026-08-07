@@ -30,6 +30,13 @@ public class Enrollment : IDeletedAtEntity
     /// See <see cref="DurationDays"/>.</summary>
     public int? ApprovedDurationValue { get; set; }
 
+    /// <summary>Bulk agreement this enrolment is counted under (null = not
+    /// covered). Auto-assigned to the OLDEST matching agreement of the
+    /// enrolment's partner when its commencement/graduation date lands in an
+    /// agreement's period + specialization list; admission may move it to
+    /// another agreement of the same partner manually.</summary>
+    public Guid? BulkAgreementId { get; set; }
+
     /// <summary>Unit for <see cref="ApprovedDurationValue"/>:
     /// <see cref="DurationDays.UnitMonth"/> or <see cref="DurationDays.UnitDay"/>.
     /// Null when no override is set.</summary>

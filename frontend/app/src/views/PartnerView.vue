@@ -29,6 +29,7 @@
       <button :class="['main-tab-btn', { active: mainTab === 'certs' }]" @click="mainTab = 'certs'">Partnership Documents</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'contacts' }]" @click="mainTab = 'contacts'">Contacts</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'mail' }]" @click="mainTab = 'mail'">Mail</button>
+      <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'agreements' }]" @click="mainTab = 'agreements'">Agreements</button>
       <button :class="['main-tab-btn', { active: mainTab === 'faculties' }]" @click="mainTab = 'faculties'">Faculties</button>
       <button :class="['main-tab-btn', { active: mainTab === 'cohorts' }]" @click="mainTab = 'cohorts'">Module Cohorts</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'invoices' }]" @click="mainTab = 'invoices'">Invoices</button>
@@ -622,6 +623,34 @@
       <div class="page-head"><h1>Mail</h1></div>
       <p class="cert-tab-sub">Email conversations between your institution and MGW, synced from MGW's mailboxes. Read-only.</p>
       <PartnerMailView v-if="mainTab === 'mail'" endpoint="/v1/partner/mail" />
+    </div>
+
+    <!-- Bulk agreements — read-only list with covered students -->
+    <div v-show="mainTab === 'agreements'" class="container">
+      <div class="page-head"><h1>Bulk Agreements</h1></div>
+      <p class="cert-tab-sub">Agreements MGW has registered for your institution, with the students they currently cover. Read-only.</p>
+      <template v-if="mainTab === 'agreements'">
+        <p v-if="baError" class="err-banner">{{ baError }}</p>
+        <div v-for="a in baItems" :key="a.bulkAgreementId" class="pa-card">
+          <div class="pa-head" @click="baOpen = baOpen === a.bulkAgreementId ? '' : a.bulkAgreementId">
+            <strong style="font-family:monospace">{{ a.agreementNumber }}</strong>
+            <span class="pa-kind">{{ a.kind === 0 ? 'By commencement' : 'By graduation' }}</span>
+            <span>{{ (a.periodFrom || '').slice(0, 10) }} – {{ (a.periodTo || '').slice(0, 10) }}</span>
+            <span class="pa-count">{{ a.coveredCount }} / {{ a.targetStudents }} students</span>
+          </div>
+          <div class="pa-specs">{{ (a.specializationNames || []).join(' · ') }}</div>
+          <table v-if="baOpen === a.bulkAgreementId" class="partner-tbl" style="margin-top:.4rem">
+            <thead><tr><th>Student #</th><th>Name</th><th>Programme</th><th>Specialization</th><th>Date</th></tr></thead>
+            <tbody>
+              <tr v-for="(s, i) in (baStudents[a.bulkAgreementId] || [])" :key="i">
+                <td>{{ s.studentNumber }}</td><td>{{ s.name }}</td><td>{{ s.programmeCode }}</td>
+                <td>{{ s.specializationName }}</td><td>{{ (s.date || '').slice(0, 10) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-if="!baItems.length" class="cert-tab-sub">No agreements registered yet.</p>
+      </template>
     </div>
 
     <!-- Contacts — how MGW reaches this partner; Owner contacts admission-only -->
@@ -1867,6 +1896,20 @@ watch(mainTab, t => {
     if (!coreAccessLoading.value) loadCoreAccess()
   }
 })
+// ── Bulk agreements (read-only) ─────────────────────────────────────────────
+const baItems = ref([])
+const baStudents = ref({})
+const baOpen = ref('')
+const baError = ref('')
+watch(mainTab, async t => {
+  if (t !== 'agreements' || baItems.value.length) return
+  try {
+    const res = await apiClient.get('/v1/partner/bulk-agreements')
+    baItems.value = res.data.items ?? []
+    baStudents.value = res.data.students ?? {}
+  } catch (e) { baError.value = e.response?.data?.error ?? e.message }
+})
+
 onMounted(() => { if (mainTab.value === 'programs') { loadMyPrograms(); if (coreAccessItems.value.length === 0) loadCoreAccess() } })
 
 function progStatusLabel(status) {
@@ -3015,4 +3058,9 @@ function logout() { auth.logout(); router.push('/login') }
 .btn-spec-submit { padding: .15rem .5rem; font-size: .72rem; }
 .prog-dur-range { display: flex; align-items: center; gap: .45rem; }
 .prog-dur-inp { width: 90px; }
+.pa-card { background: #fff; border: 1px solid #e0e6ee; border-radius: 8px; padding: .55rem .8rem; margin-bottom: .5rem; }
+.pa-head { display: flex; align-items: center; gap: .7rem; cursor: pointer; font-size: .86rem; flex-wrap: wrap; }
+.pa-kind { font-size: .68rem; font-weight: 800; background: #eef3fb; color: #1a4d8c; border-radius: 9px; padding: 1px 8px; text-transform: uppercase; }
+.pa-count { margin-left: auto; font-weight: 700; font-size: .8rem; background: #fff1cc; color: #8a6b16; border-radius: 9px; padding: 1px 9px; }
+.pa-specs { font-size: .74rem; color: #667; margin-top: .25rem; }
 </style>

@@ -719,6 +719,16 @@
                     </dd>
                     <dt>Expected completion</dt>
                     <dd>{{ expectedCompletion || '—' }}</dd>
+                    <dt>Bulk agreement</dt>
+                    <dd>
+                      <select :value="activeEnrollment.bulkAgreementId ?? ''" class="inp" @change="moveAgreement($event.target.value || null)">
+                        <option value="">— none —</option>
+                        <option v-for="a in partnerAgreements" :key="a.bulkAgreementId" :value="a.bulkAgreementId">
+                          {{ a.agreementNumber }} ({{ a.kind === 0 ? 'commencement' : 'graduation' }})
+                        </option>
+                      </select>
+                      <span v-if="agreementMsg" class="muted"> {{ agreementMsg }}</span>
+                    </dd>
                     <dt>Status</dt>
                     <dd>
                       <template v-if="!statusEdit">
@@ -2562,6 +2572,32 @@ async function savePassMark() {
     setTimeout(() => { passMarkMsg.value = '' }, 2000)
   } catch (e) { passMarkMsg.value = e.response?.data?.error ?? e.message }
   finally { passMarkBusy.value = false }
+}
+
+// ── Bulk agreement move (admission places the student on an agreement) ──────
+const partnerAgreements = ref([])
+const agreementMsg = ref('')
+watch(activeEnrollment, async e => {
+  partnerAgreements.value = []
+  const pid = e?.enrolmentPartnerId
+  if (!pid) return
+  try {
+    const res = await api.get(`/v1/admin/partners/${pid}/bulk-agreements`)
+    partnerAgreements.value = res.data.items ?? []
+  } catch { partnerAgreements.value = [] }
+})
+async function moveAgreement(agreementId) {
+  if (!detailModal.value?.studentId || !activeEnrollment.value) return
+  agreementMsg.value = ''
+  try {
+    await api.patch(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${activeEnrollment.value.studentEnrollmentId}/bulk-agreement`,
+      { bulkAgreementId: agreementId })
+    activeEnrollment.value.bulkAgreementId = agreementId
+    activeEnrollment.value.bulkAgreementNumber = partnerAgreements.value.find(a => a.bulkAgreementId === agreementId)?.agreementNumber ?? null
+    agreementMsg.value = '✓ Saved'
+    setTimeout(() => { agreementMsg.value = '' }, 2000)
+  } catch (e) { agreementMsg.value = e.response?.data?.error ?? 'Failed' }
 }
 
 async function regenerateLetter(t) {

@@ -517,6 +517,10 @@
         <div v-show="manageTab === 'mail'" class="manage-section">
           <AdminEntityMailPanel v-if="manageTab === 'mail' && managingPartner" kind="partner" :entity-id="managingPartner.partnerId" />
         </div>
+        <div v-show="manageTab === 'agreements'" class="manage-section">
+          <AdminBulkAgreementsTab v-if="manageTab === 'agreements' && managingPartner"
+            :partner-id="managingPartner.partnerId" @open-student="openStudentFromMail" />
+        </div>
         <div v-show="manageTab === 'students'" class="manage-section">
           <AdminStudentsTab v-if="manageTab === 'students' && managingPartner" :partner-id="managingPartner.partnerId" @add-student="openAddStudentForManagedPartner" />
         </div>
@@ -709,6 +713,7 @@
 </template>
 
 <script setup>
+import AdminBulkAgreementsTab from '../components/admin/AdminBulkAgreementsTab.vue'
 import AdminEntityMailPanel from '../components/admin/AdminEntityMailPanel.vue'
 import ChangelogTab from '../components/admin/ChangelogTab.vue'
 import MailTab from '../components/admin/MailTab.vue'
@@ -921,6 +926,7 @@ const MANAGE_TABS = [
   { k: 'invoices', label: 'Invoices' },
   { k: 'import',   label: 'Import' },
   { k: 'mail',     label: 'Mail' },
+  { k: 'agreements', label: 'Bulk Agreements' },
 ]
 const GEAR_TABS = [
   { k: 'profile',    label: 'Profile' },

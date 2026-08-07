@@ -5,6 +5,19 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'bulk-agreements',
+    date: '2026-08-06',
+    title: 'Bulk agreements per partner',
+    summary: 'Auto-numbered agreements by commencement or graduation period with live covered-student counts.',
+    details: [
+      'New Bulk Agreements tab on the partner view: create agreements of two kinds — by Commencement date or by Graduation date — each with a period, an agreed number of students, an optional note and a specialization selection (checkboxes with select-all).',
+      'The agreement number is auto-generated (BA-{PARTNER}-{seq}). The covered-student count runs LIVE against the partner\'s enrolments; within a kind the earliest agreement claims each student, so overlapping agreements never double-count.',
+      'Each agreement folds out to the covered students with links straight to the student drawer, and exports the overview as CSV or PDF.',
+      'Partners see their agreements read-only in a new Agreements tab, including the covered students.',
+      'Membership is now stored on the enrolment: set automatically when the commencement/graduation date lands in a matching agreement (oldest agreement first, null when none), shown on the enrolment, and Admission can move a student to another agreement of the same partner from the student drawer.',
+    ],
+  },
+  {
     id: 'dynamic-letter-email-editable',
     date: '2026-08-06',
     title: 'Letter Send dialog: full text always ready, rewrite freely',

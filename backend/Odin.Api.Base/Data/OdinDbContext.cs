@@ -93,6 +93,8 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Mail.MailAttachment> MailAttachments => Set<SharedLibrary.Basics.Opaque.Domains.Mail.MailAttachment>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Mail.MailMessageLink> MailMessageLinks => Set<SharedLibrary.Basics.Opaque.Domains.Mail.MailMessageLink>();
     public DbSet<StudentIdentifier> StudentIdentifiers => Set<StudentIdentifier>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Partners.BulkAgreement> BulkAgreements => Set<SharedLibrary.Basics.Opaque.Domains.Partners.BulkAgreement>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Partners.BulkAgreementSpecialization> BulkAgreementSpecializations => Set<SharedLibrary.Basics.Opaque.Domains.Partners.BulkAgreementSpecialization>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Payments.Currency> Currencies => Set<SharedLibrary.Basics.Opaque.Domains.Payments.Currency>();
     public DbSet<Specialization> Specializations => Set<Specialization>();
     public DbSet<Subject> Subjects => Set<Subject>();
