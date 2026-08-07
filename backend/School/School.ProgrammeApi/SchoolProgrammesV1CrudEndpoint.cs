@@ -34,6 +34,7 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
         /// </summary>
         public int? MinDurationMonths { get; init; }
         public int? MaxDurationMonths { get; init; }
+        public string? DurationRangeUnit { get; init; }
         /// <summary>
         /// ECTS credits required to complete the programme (grade-submission
         /// threshold). Admission can set/edit this at any time. Omit to leave
@@ -104,7 +105,7 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
     {
         var prog = await db.Programmes
             .Where(p => p.ProgrammeId == id)
-            .Select(p => new { p.ProgrammeId, p.Code, p.Name, p.Description, p.OwnerId, p.AwardEducationLevelId, p.MinDurationMonths, p.MaxDurationMonths, p.RequiredEcts, p.SchoolId, SchoolName = p.School != null ? p.School.Name : null, p.IssueDigitalStudentCard, p.DeletedAt })
+            .Select(p => new { p.ProgrammeId, p.Code, p.Name, p.Description, p.OwnerId, p.AwardEducationLevelId, p.MinDurationMonths, p.MaxDurationMonths, p.DurationRangeUnit, p.RequiredEcts, p.SchoolId, SchoolName = p.School != null ? p.School.Name : null, p.IssueDigitalStudentCard, p.DeletedAt })
             .FirstOrDefaultAsync(ct);
         if (prog is null) return Results.NotFound();
 
@@ -123,6 +124,7 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
             awardEducationLevelId = prog.AwardEducationLevelId,
             minDurationMonths = prog.MinDurationMonths,
             maxDurationMonths = prog.MaxDurationMonths,
+            durationRangeUnit = prog.DurationRangeUnit,
             requiredEcts = prog.RequiredEcts,
             schoolId = prog.SchoolId,
             schoolName = prog.SchoolName,
@@ -154,6 +156,8 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
         if (ValidateDurationRange(newMin, newMax) is { } durErr) return durErr;
         prog.MinDurationMonths = newMin;
         prog.MaxDurationMonths = newMax;
+        if (body.DurationRangeUnit is not null)
+            prog.DurationRangeUnit = string.Equals(body.DurationRangeUnit, "Day", StringComparison.OrdinalIgnoreCase) ? "Day" : "Month";
 
         // Completion threshold: omit to leave unchanged; a supplied value must
         // be non-negative. Admission can edit this at any time.

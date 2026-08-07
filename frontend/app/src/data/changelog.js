@@ -5,6 +5,17 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'prog-duration-days',
+    date: '2026-08-07',
+    title: 'Programme duration range in days + duration backfill',
+    summary: 'A programme range can be expressed in days; admission can backfill student durations from their dates.',
+    details: [
+      'A programme\'s Duration of study range now carries a Month/Day unit, so a short course can read e.g. "1–30 days". Existing programmes stay in months, untouched.',
+      'Admission can edit the range and unit on the programme (including a locked one) from the custom-programmes panel, and student duration validation compares against the range in its unit.',
+      'A "Backfill student durations" tool sets each enrolled student\'s approved duration to the number of days between their commencement and graduation dates. It shows a preview list (current → new, with skips for missing dates) and only applies after you confirm.',
+    ],
+  },
+  {
     id: 'bulk-agreements',
     date: '2026-08-06',
     title: 'Bulk agreements per partner',

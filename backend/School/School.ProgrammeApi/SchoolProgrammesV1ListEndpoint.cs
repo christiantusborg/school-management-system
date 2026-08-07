@@ -49,6 +49,9 @@ public sealed class SchoolProgrammesV1ListEndpoint : IEndpointMarker
                 p.SchoolId,
                 SchoolName = p.School != null ? p.School.Name : null,
                 p.IssueDigitalStudentCard,
+                p.MinDurationMonths,
+                p.MaxDurationMonths,
+                p.DurationRangeUnit,
                 p.DeletedAt,
                 // Partner-programme status (null for core programmes — they
                 // never have a PartnerProgrammeStatus row). The admin's
@@ -84,6 +87,9 @@ public sealed class SchoolProgrammesV1ListEndpoint : IEndpointMarker
             schoolId = r.SchoolId,
             schoolName = r.SchoolName,
             issueDigitalStudentCard = r.IssueDigitalStudentCard,
+            minDurationMonths = r.MinDurationMonths,
+            maxDurationMonths = r.MaxDurationMonths,
+            durationRangeUnit = r.DurationRangeUnit,
             deletedAt = r.DeletedAt,
             pathwayIds = pathwayMap.TryGetValue(r.ProgrammeId, out var ids) ? ids : new List<Guid>(),
             status = r.Status is null ? "Draft" : (r.Status.Status switch

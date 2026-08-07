@@ -75,15 +75,15 @@ public sealed class AdminV1StudentsEnrolmentDurationEndpoint : IEndpointMarker
         string? warning = null;
         var range = await db.Specializations
             .Where(s => s.SpecializationId == enrolment.SpecializationId)
-            .Select(s => new { s.Programmes.MinDurationMonths, s.Programmes.MaxDurationMonths })
+            .Select(s => new { s.Programmes.MinDurationMonths, s.Programmes.MaxDurationMonths, s.Programmes.DurationRangeUnit })
             .FirstOrDefaultAsync(ct);
         if (range is not null && range.MaxDurationMonths > 0)
         {
             var days = SharedLibrary.Basics.Opaque.Domains.DurationDays.ToDays(enrolment.CommencementDate, value, unit)!.Value;
-            var minDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.MonthsToDays(enrolment.CommencementDate, range.MinDurationMonths);
-            var maxDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.MonthsToDays(enrolment.CommencementDate, range.MaxDurationMonths);
+            var minDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.RangeBoundToDays(enrolment.CommencementDate, range.MinDurationMonths, range.DurationRangeUnit);
+            var maxDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.RangeBoundToDays(enrolment.CommencementDate, range.MaxDurationMonths, range.DurationRangeUnit);
             if (days < minDays || days > maxDays)
-                warning = $"Duration {SharedLibrary.Basics.Opaque.Domains.DurationDays.Display(value, unit)} is outside the programme range ({range.MinDurationMonths}–{range.MaxDurationMonths} months).";
+                warning = $"Duration {SharedLibrary.Basics.Opaque.Domains.DurationDays.Display(value, unit)} is outside the programme range ({range.MinDurationMonths}–{range.MaxDurationMonths} {(range.DurationRangeUnit == "Day" ? "days" : "months")}).";
         }
 
         enrolment.ApprovedDurationValue = value;

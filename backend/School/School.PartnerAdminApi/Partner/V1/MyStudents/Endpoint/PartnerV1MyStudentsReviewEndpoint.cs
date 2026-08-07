@@ -193,18 +193,18 @@ public sealed class PartnerV1MyStudentsReviewEndpoint : IEndpointMarker
             if (dv < 1) return Results.BadRequest(new { error = "Duration must be at least 1." });
             var range = await db.Specializations
                 .Where(s => s.SpecializationId == enrollment.SpecializationId)
-                .Select(s => new { s.Programmes.MinDurationMonths, s.Programmes.MaxDurationMonths })
+                .Select(s => new { s.Programmes.MinDurationMonths, s.Programmes.MaxDurationMonths, s.Programmes.DurationRangeUnit })
                 .FirstOrDefaultAsync(ct);
             if (range is not null && range.MaxDurationMonths > 0)
             {
                 var days = SharedLibrary.Basics.Opaque.Domains.DurationDays.ToDays(enrollment.CommencementDate, dv, durUnit)!.Value;
-                var minDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.MonthsToDays(enrollment.CommencementDate, range.MinDurationMonths);
-                var maxDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.MonthsToDays(enrollment.CommencementDate, range.MaxDurationMonths);
+                var minDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.RangeBoundToDays(enrollment.CommencementDate, range.MinDurationMonths, range.DurationRangeUnit);
+                var maxDays = SharedLibrary.Basics.Opaque.Domains.DurationDays.RangeBoundToDays(enrollment.CommencementDate, range.MaxDurationMonths, range.DurationRangeUnit);
                 if (days < minDays || days > maxDays)
                 {
                     return Results.BadRequest(new
                     {
-                        error = $"Duration {SharedLibrary.Basics.Opaque.Domains.DurationDays.Display(dv, durUnit)} is outside the programme range ({range.MinDurationMonths}–{range.MaxDurationMonths} months).",
+                        error = $"Duration {SharedLibrary.Basics.Opaque.Domains.DurationDays.Display(dv, durUnit)} is outside the programme range ({range.MinDurationMonths}–{range.MaxDurationMonths} {(range.DurationRangeUnit == "Day" ? "days" : "months")}).",
                     });
                 }
             }

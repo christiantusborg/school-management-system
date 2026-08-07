@@ -77,6 +77,24 @@
             </span>
           </div>
           <div class="detail-row">
+            <span class="detail-label">Duration of study</span>
+            <span class="detail-value dur-range-row">
+              <input type="number" min="1" v-model.number="durDraft(c).min" class="inp-dur" />
+              <span>–</span>
+              <input type="number" min="1" v-model.number="durDraft(c).max" class="inp-dur" />
+              <span class="dur-toggle">
+                <button type="button" :class="['dur-unit', { on: durDraft(c).unit === 'Month' }]" @click="durDraft(c).unit = 'Month'">Months</button>
+                <button type="button" :class="['dur-unit', { on: durDraft(c).unit === 'Day' }]" @click="durDraft(c).unit = 'Day'">Days</button>
+              </span>
+              <button class="btn-sm btn-ok" :disabled="durBusy.has(c.programmeId)" @click="saveDuration(c)">
+                {{ durBusy.has(c.programmeId) ? 'Saving…' : 'Save range' }}
+              </button>
+              <button class="btn-sm" @click="openBackfill(c)">Backfill student durations…</button>
+              <span v-if="durSaved.has(c.programmeId)" class="muted" style="color:#1c7a4a"> ✓ saved</span>
+              <span v-else-if="durErr[c.programmeId]" class="reject-reason">{{ durErr[c.programmeId] }}</span>
+            </span>
+          </div>
+          <div class="detail-row">
             <span class="detail-label">Pathways</span>
             <span class="detail-value">{{ pathwayNames(c.pathwayIds) || '—' }}</span>
           </div>
@@ -179,6 +197,45 @@
           :show-student-card="!!c.issueDigitalStudentCard" />
       </div>
     </div>
+
+    <div v-if="backfill" class="bf-overlay" @click.self="backfill = null">
+      <div class="bf-modal">
+        <div class="bf-head">
+          <h3>Backfill approved durations — {{ backfill.name }}</h3>
+          <button class="bf-x" @click="backfill = null">✕</button>
+        </div>
+        <p class="muted">Sets each student's approved duration to the number of days between their commencement and graduation dates (inclusive). Only students with BOTH dates change; review before applying.</p>
+        <p v-if="backfill.error" class="reject-reason">{{ backfill.error }}</p>
+        <p v-if="backfill.loading" class="muted">Loading preview…</p>
+        <template v-else>
+          <p class="bf-summary"><strong>{{ backfill.willChange }}</strong> will change · <strong>{{ backfill.skipped }}</strong> skipped</p>
+          <div class="bf-table-wrap">
+            <table class="bf-table">
+              <thead><tr><th>Student #</th><th>Name</th><th>Commencement</th><th>Graduation</th><th>Current</th><th>New</th></tr></thead>
+              <tbody>
+                <tr v-for="r in backfill.items" :key="r.studentEnrollmentId" :class="{ skip: r.skipped }">
+                  <td>{{ r.studentNumber }}</td>
+                  <td>{{ r.name }}</td>
+                  <td>{{ (r.commencement || '').slice(0, 10) || '—' }}</td>
+                  <td>{{ (r.graduation || '').slice(0, 10) || '—' }}</td>
+                  <td>{{ r.currentLabel || '—' }}</td>
+                  <td>
+                    <span v-if="r.skipped" class="bf-skip-reason">skip: {{ r.skipReason }}</span>
+                    <strong v-else>{{ r.newDays }} days</strong>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="bf-actions">
+            <button class="btn-sm btn-ok" :disabled="backfill.applying || !backfill.willChange" @click="applyBackfill">
+              {{ backfill.applying ? 'Applying…' : `Apply to ${backfill.willChange} student(s)` }}
+            </button>
+            <button class="btn-sm" @click="backfill = null">Cancel</button>
+          </div>
+        </template>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -203,6 +260,50 @@ const schoolBusy = reactive(new Set())
 const schoolSaved = reactive(new Set())
 const schoolErr = reactive({})
 // Editable name/code drafts, seeded from the programme on first access.
+// Duration range editing (admin) + backfill.
+const durDrafts = reactive({})
+const durBusy = reactive(new Set())
+const durSaved = reactive(new Set())
+const durErr = reactive({})
+const backfill = ref(null)
+function durDraft(c) {
+  if (!durDrafts[c.programmeId])
+    durDrafts[c.programmeId] = { min: c.minDurationMonths ?? 1, max: c.maxDurationMonths ?? 1, unit: c.durationRangeUnit || 'Month' }
+  return durDrafts[c.programmeId]
+}
+async function saveDuration(c) {
+  if (durBusy.has(c.programmeId)) return
+  const d = durDrafts[c.programmeId]
+  if (!d || d.min < 1 || d.max < d.min) { durErr[c.programmeId] = 'Need 1 ≤ min ≤ max.'; return }
+  durBusy.add(c.programmeId); durSaved.delete(c.programmeId); durErr[c.programmeId] = ''
+  try {
+    await apiClient.patch(`/v1/school/programmes/${c.programmeId}/duration-range`,
+      { minDurationMonths: d.min, maxDurationMonths: d.max, durationRangeUnit: d.unit })
+    c.minDurationMonths = d.min; c.maxDurationMonths = d.max; c.durationRangeUnit = d.unit
+    durSaved.add(c.programmeId)
+    setTimeout(() => durSaved.delete(c.programmeId), 2500)
+  } catch (e) { durErr[c.programmeId] = e.response?.data?.error ?? e.message ?? 'Save failed' }
+  finally { durBusy.delete(c.programmeId) }
+}
+async function openBackfill(c) {
+  backfill.value = { programmeId: c.programmeId, name: c.name, loading: true, applying: false, error: '', items: [], willChange: 0, skipped: 0 }
+  try {
+    const res = await apiClient.get(`/v1/school/programmes/${c.programmeId}/duration-backfill`)
+    Object.assign(backfill.value, { loading: false, items: res.data.items ?? [], willChange: res.data.willChange ?? 0, skipped: res.data.skipped ?? 0 })
+  } catch (e) {
+    if (backfill.value) { backfill.value.loading = false; backfill.value.error = e.response?.data?.error ?? e.message ?? 'Failed to load' }
+  }
+}
+async function applyBackfill() {
+  if (!backfill.value || backfill.value.applying) return
+  backfill.value.applying = true; backfill.value.error = ''
+  try {
+    const res = await apiClient.post(`/v1/school/programmes/${backfill.value.programmeId}/duration-backfill`)
+    backfill.value = null
+    alert(`Applied to ${res.data.applied} student(s), ${res.data.skipped} skipped.`)
+  } catch (e) { backfill.value.applying = false; backfill.value.error = e.response?.data?.error ?? e.message ?? 'Apply failed' }
+}
+
 const renameDrafts = reactive({})
 const renameBusy = reactive(new Set())
 const renameSaved = reactive(new Set())
@@ -575,4 +676,22 @@ async function toggleStudentCard(prog, checked) {
 .card-toggle { display: flex; align-items: center; gap: .4rem; font-size: .8rem; font-weight: 600; color: #1a4d8c; cursor: pointer; }
 .card-toggle-ok { color: #1c7a4a; font-size: .76rem; font-weight: 600; }
 .card-toggle-err { color: #b42318; font-size: .76rem; }
+.dur-range-row { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.inp-dur { width: 70px; padding: .3rem .45rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .82rem; }
+.dur-toggle { display: inline-flex; border: 1px solid #cfd7e3; border-radius: 6px; overflow: hidden; }
+.dur-unit { border: none; background: #fff; padding: .3rem .6rem; font-size: .78rem; cursor: pointer; }
+.dur-unit.on { background: #0b2e59; color: #fff; }
+.bf-overlay { position: fixed; inset: 0; background: rgba(10,25,47,.45); z-index: 1100; display: flex; align-items: center; justify-content: center; }
+.bf-modal { width: 820px; max-width: 96vw; max-height: 90vh; overflow-y: auto; background: #fff; border-radius: 10px; padding: 1rem 1.2rem; }
+.bf-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; }
+.bf-head h3 { margin: 0; font-size: 1rem; color: #0b2e59; }
+.bf-x { background: none; border: none; cursor: pointer; font-size: 1rem; }
+.bf-summary { font-size: .86rem; }
+.bf-table-wrap { max-height: 50vh; overflow-y: auto; border: 1px solid #e8edf3; border-radius: 6px; }
+.bf-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.bf-table th { position: sticky; top: 0; background: #f6f9fd; text-align: left; padding: .35rem .5rem; font-size: .66rem; text-transform: uppercase; color: #6b7888; }
+.bf-table td { padding: .3rem .5rem; border-bottom: 1px solid #f0f3f7; }
+.bf-table tr.skip { color: #8a93a4; }
+.bf-skip-reason { font-size: .72rem; color: #8a6b16; }
+.bf-actions { display: flex; gap: .5rem; margin-top: .6rem; }
 </style>

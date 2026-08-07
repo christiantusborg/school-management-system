@@ -19,6 +19,11 @@ public class Programme : IDeletedAtEntity
     /// </summary>
     public int MinDurationMonths { get; set; }
     public int MaxDurationMonths { get; set; }
+    /// <summary>Unit the Min/Max range is EXPRESSED in: "Month" (default) or
+    /// "Day". Stored numbers stay whole; a Day-unit programme like a short
+    /// course reads e.g. "1–30 days". Used when validating per-student
+    /// approved durations (converted to days for the comparison).</summary>
+    public string DurationRangeUnit { get; set; } = "Month";
 
     /// <summary>
     /// ECTS credits a student must complete before the enrolment can be

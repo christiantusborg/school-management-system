@@ -27,6 +27,13 @@ public static class DurationDays
         : string.Equals(unit, UnitDay, StringComparison.OrdinalIgnoreCase) ? v
         : MonthsToDays(commencement, v);
 
+    /// <summary>Convert a programme range bound (in the range's unit, Month or
+    /// Day) to days for comparison against a per-student duration in days.</summary>
+    public static int RangeBoundToDays(DateTime? commencement, int bound, string? rangeUnit) =>
+        string.Equals(rangeUnit, UnitDay, StringComparison.OrdinalIgnoreCase)
+            ? bound
+            : MonthsToDays(commencement, bound);
+
     public static string Display(int? value, string? unit) =>
         value is not { } v ? string.Empty
         : string.Equals(unit, UnitDay, StringComparison.OrdinalIgnoreCase)
