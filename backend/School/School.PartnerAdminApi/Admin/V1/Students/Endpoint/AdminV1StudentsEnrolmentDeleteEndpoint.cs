@@ -33,10 +33,10 @@ public sealed class AdminV1StudentsEnrolmentDeleteEndpoint : IEndpointMarker
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled) return Results.Unauthorized();
-        var isAdministrator = await userManager.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
-        if (!isAdministrator)
-            return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
+        // SuperAdministrator ONLY — removing a programme is irreversible from
+        // the portal, so it sits above the normal admin levels.
+        if (!await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator))
+            return Results.Json(new { error = "Requires SuperAdministrator." }, statusCode: StatusCodes.Status403Forbidden);
 
         var enrolment = await db.Enrollments
             .Where(e => e.StudentEnrollmentId == enrollmentId && e.StudentId == studentId && e.DeletedAt == null)

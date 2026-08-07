@@ -1202,7 +1202,7 @@
               </template>
             </div>
 
-            <div v-if="programSubTab === 'advanced'" class="tab-pane">
+            <div v-if="programSubTab === 'advanced' && auth.adminLevel === 'SuperAdministrator'" class="tab-pane">
               <div class="adv-danger">
                 <div class="adv-warn">
                   ⚠️ DANGER — REMOVE THIS PROGRAMME FROM THE STUDENT ⚠️<br />
@@ -1640,13 +1640,16 @@ const ALL_LETTER_TYPES = [
 ]
 const LETTER_TYPES = computed(() => ALL_LETTER_TYPES.filter(t =>
   !t.requiresCardToggle || activeEnrollment.value?.issueDigitalStudentCard))
-const PROGRAM_SUBTABS = [
+const ALL_PROGRAM_SUBTABS = [
   { id: 'enrolment', label: 'Enrolment' },
   { id: 'grades',    label: 'Grades' },
   { id: 'letters',   label: 'Letters' },
   { id: 'payment',   label: 'Payment' },
-  { id: 'advanced',  label: 'Advanced' },
+  { id: 'advanced',  label: 'Advanced', superAdminOnly: true },
 ]
+// Advanced (permanent programme removal) is SuperAdministrator only.
+const PROGRAM_SUBTABS = computed(() =>
+  ALL_PROGRAM_SUBTABS.filter(t => !t.superAdminOnly || auth.adminLevel === 'SuperAdministrator'))
 const programSubTab = ref('enrolment')
 
 // ── Add another programme to this student (Programs left menu) ──────────────
