@@ -5,6 +5,16 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'faculty-reorder',
+    date: '2026-08-07',
+    title: 'Reorder faculty profile fields and sections',
+    summary: 'Drag-and-drop or up/down buttons to reorder fields and sections in the Faculty Profile builder.',
+    details: [
+      'Each field and each section in System Config → Faculty Profile Information now has a drag handle and up/down buttons.',
+      'Drag a field to a new position within its section, drag a section to reorder sections, or use the arrows; Save structure persists the new order.',
+    ],
+  },
+  {
     id: 'remove-programme',
     date: '2026-08-07',
     title: 'Remove a programme from a student (Advanced)',

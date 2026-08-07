@@ -17,8 +17,14 @@
     <div v-if="loading" class="loading-row">Loading…</div>
 
     <template v-else-if="structureLoaded">
-      <div v-for="(s, si) in sections" :key="si" class="fpc-section">
+      <div v-for="(s, si) in sections" :key="si" class="fpc-section"
+           :class="{ 'fpc-drop': dragSection !== null && dragSection !== si }"
+           @dragover.prevent @drop="dropSection(si)">
         <div class="fpc-section-head">
+          <span class="fpc-grip fpc-grip-sec" draggable="true" title="Drag to reorder section"
+                @dragstart="dragSection = si" @dragend="dragSection = null">⠿</span>
+          <button type="button" class="fpc-move" :disabled="si === 0" title="Move section up" @click="moveSection(si, -1)">▲</button>
+          <button type="button" class="fpc-move" :disabled="si === sections.length - 1" title="Move section down" @click="moveSection(si, 1)">▼</button>
           <input v-model="s.title" class="fpc-inp" placeholder="Section title" style="flex:1.5" />
           <select v-model="s.kind" class="fpc-inp" style="flex:.8">
             <option value="fields">Fields</option>
@@ -26,7 +32,13 @@
           </select>
           <button type="button" class="btn-sm btn-danger" @click="sections.splice(si, 1)">✕ Section</button>
         </div>
-        <div v-for="(f, fi) in s.fields" :key="fi" class="fpc-field-row">
+        <div v-for="(f, fi) in s.fields" :key="fi" class="fpc-field-row"
+             :class="{ 'fpc-drop': drag.si === si && drag.fi !== null && drag.fi !== fi }"
+             @dragover.prevent @drop="dropField(si, fi)">
+          <span class="fpc-grip" draggable="true" title="Drag to reorder field"
+                @dragstart="startFieldDrag(si, fi)" @dragend="endFieldDrag">⠿</span>
+          <button type="button" class="fpc-move" :disabled="fi === 0" title="Move up" @click="moveField(s, fi, -1)">▲</button>
+          <button type="button" class="fpc-move" :disabled="fi === s.fields.length - 1" title="Move down" @click="moveField(s, fi, 1)">▼</button>
           <input v-model="f.label" class="fpc-inp" :placeholder="s.kind === 'grid' ? 'Column label' : 'Field label'" style="flex:1.4" />
           <select v-model="f.type" class="fpc-inp" style="flex:1">
             <option value="text">Free text</option>
@@ -62,11 +74,33 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import api from '../../api/client.js'
 
 const structureLoaded = ref(false)
 const sections = ref([])
+
+// ── Reordering: drag-and-drop + up/down for sections and fields ─────────────
+const dragSection = ref(null)
+const drag = reactive({ si: null, fi: null })
+function move(arr, from, to) {
+  if (to < 0 || to >= arr.length) return
+  arr.splice(to, 0, arr.splice(from, 1)[0])
+}
+function moveSection(si, dir) { move(sections.value, si, si + dir) }
+function dropSection(si) {
+  if (dragSection.value === null || dragSection.value === si) return
+  move(sections.value, dragSection.value, si)
+  dragSection.value = null
+}
+function moveField(section, fi, dir) { move(section.fields, fi, fi + dir) }
+function startFieldDrag(si, fi) { drag.si = si; drag.fi = fi }
+function endFieldDrag() { drag.si = null; drag.fi = null }
+function dropField(si, fi) {
+  if (drag.si !== si || drag.fi === null || drag.fi === fi) { endFieldDrag(); return }
+  move(sections.value[si].fields, drag.fi, fi)
+  endFieldDrag()
+}
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
@@ -152,4 +186,10 @@ onMounted(load)
 .fpc-off { opacity: .45; }
 .fpc-opts { flex-basis: 100%; margin-left: .1rem; }
 .fpc-add-section { margin-top: .8rem; }
+.fpc-grip { cursor: grab; color: #9aa6b6; font-size: 1rem; padding: 0 .1rem; user-select: none; align-self: center; }
+.fpc-grip:active { cursor: grabbing; }
+.fpc-grip-sec { color: #6b7888; }
+.fpc-move { border: 1px solid #dfe6ee; background: #fff; color: #5f6e85; border-radius: 4px; font-size: .6rem; line-height: 1; padding: 2px 4px; cursor: pointer; }
+.fpc-move:disabled { opacity: .35; cursor: default; }
+.fpc-drop { outline: 2px dashed #1a4d8c; outline-offset: -2px; }
 </style>
