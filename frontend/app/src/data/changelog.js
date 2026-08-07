@@ -5,6 +5,17 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'remove-programme',
+    date: '2026-08-07',
+    title: 'Remove a programme from a student (Advanced)',
+    summary: 'A guarded Advanced sub-tab lets admission permanently remove one programme from a student.',
+    details: [
+      'The student drawer\'s programme sub-tabs (Enrolment / Grades / Letters / Payment) gain an "Advanced" tab with a big red warning and remove button.',
+      'Removing a programme soft-deletes that enrolment and its grades, documents, letters and payment plan; the student\'s OTHER programmes are untouched.',
+      'Requires Administrator level or above, a typed confirmation of the exact programme code, and a final confirm dialog — logged with the actor.',
+    ],
+  },
+  {
     id: 'prog-duration-days',
     date: '2026-08-07',
     title: 'Programme duration range in days + duration backfill',

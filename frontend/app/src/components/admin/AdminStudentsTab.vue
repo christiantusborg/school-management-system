@@ -1202,6 +1202,29 @@
               </template>
             </div>
 
+            <div v-if="programSubTab === 'advanced'" class="tab-pane">
+              <div class="adv-danger">
+                <div class="adv-warn">
+                  ⚠️ DANGER — REMOVE THIS PROGRAMME FROM THE STUDENT ⚠️<br />
+                  <span class="adv-warn-sub">
+                    DO NOT click below unless you are 100% SURE. This permanently removes
+                    <strong>{{ activeEnrollment?.programmeName }} · {{ activeEnrollment?.specializationName }}</strong>
+                    from this student, along with its grades, documents, letters and payment plan.
+                    The student's OTHER programmes are not affected. This cannot be undone from the portal.
+                  </span>
+                </div>
+                <p class="adv-confirm-label">To confirm, type the programme code
+                  <code>{{ activeEnrollment?.programmeCode }}</code> exactly:</p>
+                <input v-model="removeEnrolCode" class="adv-code-input" :placeholder="activeEnrollment?.programmeCode" />
+                <button class="adv-remove-btn"
+                        :disabled="removeEnrolBusy || removeEnrolCode.trim() !== activeEnrollment?.programmeCode"
+                        @click="removeEnrolment">
+                  {{ removeEnrolBusy ? 'Removing…' : '🗑 PERMANENTLY REMOVE THIS PROGRAMME' }}
+                </button>
+                <p v-if="removeEnrolError" class="card-toggle-err" style="margin-top:.5rem;">{{ removeEnrolError }}</p>
+              </div>
+            </div>
+
                 </div>
               </div>
             </div>
@@ -1622,6 +1645,7 @@ const PROGRAM_SUBTABS = [
   { id: 'grades',    label: 'Grades' },
   { id: 'letters',   label: 'Letters' },
   { id: 'payment',   label: 'Payment' },
+  { id: 'advanced',  label: 'Advanced' },
 ]
 const programSubTab = ref('enrolment')
 
@@ -2598,6 +2622,36 @@ async function moveAgreement(agreementId) {
     agreementMsg.value = '✓ Saved'
     setTimeout(() => { agreementMsg.value = '' }, 2000)
   } catch (e) { agreementMsg.value = e.response?.data?.error ?? 'Failed' }
+}
+
+// ── Advanced: permanently remove a programme (enrolment) from the student ───
+const removeEnrolCode = ref('')
+const removeEnrolBusy = ref(false)
+const removeEnrolError = ref('')
+watch(activeEnrollment, () => { removeEnrolCode.value = ''; removeEnrolError.value = '' })
+async function removeEnrolment() {
+  const e = activeEnrollment.value
+  if (!detailModal.value?.studentId || !e || removeEnrolBusy.value) return
+  if (removeEnrolCode.value.trim() !== e.programmeCode) return
+  if (!confirm(`FINAL CONFIRMATION: permanently remove ${e.programmeCode} · ${e.specializationName} from this student?`)) return
+  removeEnrolBusy.value = true; removeEnrolError.value = ''
+  try {
+    await api.post(
+      `/v1/admin/students/${detailModal.value.studentId}/enrollments/${e.studentEnrollmentId}/remove`,
+      { confirmProgrammeCode: removeEnrolCode.value.trim() })
+    removeEnrolCode.value = ''
+    // Drop it locally and jump to another enrolment (or close).
+    const remaining = (detailModal.value.data.enrollments || []).filter(x => x.studentEnrollmentId !== e.studentEnrollmentId)
+    detailModal.value.data.enrollments = remaining
+    detailModal.value.activeEnrollmentId = remaining[0]?.studentEnrollmentId ?? null
+    programSubTab.value = 'enrolment'
+    await refreshDetailModal()
+    load()
+  } catch (err) {
+    removeEnrolError.value = err.response?.data?.error ?? err.message ?? 'Removal failed'
+  } finally {
+    removeEnrolBusy.value = false
+  }
 }
 
 async function regenerateLetter(t) {
@@ -4535,4 +4589,12 @@ async function runExport() {
 .sid-inp { padding: .28rem .5rem; border: 1px solid #cfd7e3; border-radius: 5px; font-size: .78rem; }
 .passmark-row { display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: #445; background: #f6f9fd; border: 1px solid #e0e6ee; border-radius: 7px; padding: .4rem .65rem; margin-bottom: .5rem; }
 .passmark-inp { width: 70px; padding: .28rem .45rem; border: 1px solid #cfd7e3; border-radius: 5px; }
+.adv-danger { border: 2px solid #b42318; border-radius: 10px; padding: 1rem 1.2rem; background: #fff6f5; max-width: 720px; }
+.adv-warn { background: #b42318; color: #fff; border-radius: 8px; padding: .8rem 1rem; text-align: center; font-weight: 800; font-size: 1rem; letter-spacing: .02em; margin-bottom: .8rem; }
+.adv-warn-sub { display: block; font-weight: 500; font-size: .82rem; margin-top: .5rem; line-height: 1.5; text-align: left; }
+.adv-confirm-label { font-size: .84rem; color: #445; }
+.adv-confirm-label code { background: #fff; border: 1px solid #e0c4c0; border-radius: 5px; padding: 1px 6px; font-weight: 700; color: #b42318; }
+.adv-code-input { display: block; width: 100%; max-width: 360px; padding: .5rem .6rem; border: 1.5px solid #b42318; border-radius: 6px; font-size: .9rem; margin: .3rem 0 .7rem; }
+.adv-remove-btn { background: #b42318; color: #fff; border: none; border-radius: 8px; padding: .7rem 1.1rem; font-size: .95rem; font-weight: 800; cursor: pointer; }
+.adv-remove-btn:disabled { background: #d9a49e; cursor: not-allowed; }
 </style>
