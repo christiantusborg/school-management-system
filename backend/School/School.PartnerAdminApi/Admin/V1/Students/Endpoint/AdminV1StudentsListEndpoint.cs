@@ -26,7 +26,11 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
         CancellationToken cancellationToken,
         [FromQuery] Guid? partnerId = null,
         [FromQuery] Guid? programmeId = null,
-        [FromQuery] Guid? specializationId = null)
+        [FromQuery] Guid? specializationId = null,
+        [FromQuery] DateTime? commencementFrom = null,
+        [FromQuery] DateTime? commencementTo = null,
+        [FromQuery] DateTime? graduationFrom = null,
+        [FromQuery] DateTime? graduationTo = null)
     {
         // Pull every (non-deleted) enrollment + projected status.
         var enrollmentsQuery = db.Enrollments
@@ -37,6 +41,16 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
             enrollmentsQuery = enrollmentsQuery.Where(e => e.Specialization.ProgrammeId == programmeId);
         if (specializationId is not null)
             enrollmentsQuery = enrollmentsQuery.Where(e => e.SpecializationId == specializationId);
+        // Date-range filters (From = on-or-after, To = on-or-before; either
+        // side optional). Compared on the date only.
+        if (commencementFrom is { } cf)
+            enrollmentsQuery = enrollmentsQuery.Where(e => e.CommencementDate != null && e.CommencementDate >= cf.Date);
+        if (commencementTo is { } cto)
+            enrollmentsQuery = enrollmentsQuery.Where(e => e.CommencementDate != null && e.CommencementDate <= cto.Date);
+        if (graduationFrom is { } gf)
+            enrollmentsQuery = enrollmentsQuery.Where(e => e.GraduationDate != null && e.GraduationDate >= gf.Date);
+        if (graduationTo is { } gt)
+            enrollmentsQuery = enrollmentsQuery.Where(e => e.GraduationDate != null && e.GraduationDate <= gt.Date);
 
         var enrollments = await enrollmentsQuery
             .Select(e => new
@@ -115,7 +129,11 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
                 || s.HandledByUserId == salesUserId
                 || assignedPartnerIds.Contains(s.PartnerId));
         }
-        if (programmeId is not null || specializationId is not null)
+        var dateFilterActive = commencementFrom is not null || commencementTo is not null
+            || graduationFrom is not null || graduationTo is not null;
+        if (programmeId is not null || specializationId is not null || dateFilterActive)
+            // Date/programme/spec filters are enrolment-level: keep only
+            // students who have a MATCHING enrolment.
             studentsQuery = studentsQuery.Where(s => studentIds.Contains(s.StudentId));
         else if (partnerId is not null)
             studentsQuery = studentsQuery.Where(s => studentIds.Contains(s.StudentId) || s.PartnerId == partnerId);

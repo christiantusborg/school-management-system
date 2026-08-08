@@ -32,6 +32,19 @@
         <option value="">All partners</option>
         <option v-for="p in partnersAvailable" :key="p" :value="p">{{ p }}</option>
       </select>
+      <div class="date-filter" title="Filter by commencement date">
+        <span class="date-filter-label">Commencement</span>
+        <input type="date" v-model="filterCommencementFrom" class="date-inp" title="From" />
+        <span>–</span>
+        <input type="date" v-model="filterCommencementTo" class="date-inp" title="To" />
+      </div>
+      <div class="date-filter" title="Filter by graduation date">
+        <span class="date-filter-label">Graduation</span>
+        <input type="date" v-model="filterGraduationFrom" class="date-inp" title="From" />
+        <span>–</span>
+        <input type="date" v-model="filterGraduationTo" class="date-inp" title="To" />
+      </div>
+      <button v-if="anyDateFilter" class="btn-refresh" title="Clear date filters" @click="clearDateFilters">✕ dates</button>
       <select v-model="activeViewId" class="view-sel" title="Column view">
         <option value="">Default view</option>
         <option v-for="v in listViews" :key="v.id" :value="v.id">{{ v.name }}</option>
@@ -3715,6 +3728,16 @@ const partnersAvailable = computed(() =>
   [...new Set(list.value.map(s => s.partnerName).filter(Boolean))].sort((a, b) => a.localeCompare(b)))
 
 const payFilter = ref('')
+const filterCommencementFrom = ref('')
+const filterCommencementTo = ref('')
+const filterGraduationFrom = ref('')
+const filterGraduationTo = ref('')
+const anyDateFilter = computed(() =>
+  !!(filterCommencementFrom.value || filterCommencementTo.value || filterGraduationFrom.value || filterGraduationTo.value))
+function clearDateFilters() {
+  filterCommencementFrom.value = ''; filterCommencementTo.value = ''
+  filterGraduationFrom.value = ''; filterGraduationTo.value = ''
+}
 // Payment stage across all of a student's plans: unpaid (nothing paid yet),
 // partial (some paid, some open), full (nothing open), none (no plan).
 function payStage(s) {
@@ -3759,7 +3782,8 @@ const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / p
 const pagedRows = computed(() =>
   filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 // Any filter/search change goes back to page 1; clamp when rows shrink.
-watch([search, filterProgrammeId, filterSpecializationId, filterPartnerName, filterStatusId, payFilter, pageSize],
+watch([search, filterProgrammeId, filterSpecializationId, filterPartnerName, filterStatusId, payFilter, pageSize,
+  filterCommencementFrom, filterCommencementTo, filterGraduationFrom, filterGraduationTo],
   () => { page.value = 1 })
 watch(pageCount, n => { if (page.value > n) page.value = n })
 
@@ -3770,6 +3794,10 @@ async function load() {
     if (props.partnerId) params.partnerId = props.partnerId
     if (filterProgrammeId.value) params.programmeId = filterProgrammeId.value
     if (filterSpecializationId.value) params.specializationId = filterSpecializationId.value
+    if (filterCommencementFrom.value) params.commencementFrom = filterCommencementFrom.value
+    if (filterCommencementTo.value) params.commencementTo = filterCommencementTo.value
+    if (filterGraduationFrom.value) params.graduationFrom = filterGraduationFrom.value
+    if (filterGraduationTo.value) params.graduationTo = filterGraduationTo.value
     const res = await api.get('/v1/admin/students', { params })
     list.value = res.data.items ?? []
   } catch (e) {
@@ -3920,7 +3948,8 @@ async function onReviewSubmitted(s) {
 }
 
 // filterStatusId is a client-side filter — no refetch needed.
-watch([filterProgrammeId, filterSpecializationId, () => props.partnerId], load)
+watch([filterProgrammeId, filterSpecializationId, () => props.partnerId,
+  filterCommencementFrom, filterCommencementTo, filterGraduationFrom, filterGraduationTo], load)
 onMounted(load)
 
 // --- Export students wizard ---
@@ -4600,4 +4629,7 @@ async function runExport() {
 .adv-code-input { display: block; width: 100%; max-width: 360px; padding: .5rem .6rem; border: 1.5px solid #b42318; border-radius: 6px; font-size: .9rem; margin: .3rem 0 .7rem; }
 .adv-remove-btn { background: #b42318; color: #fff; border: none; border-radius: 8px; padding: .7rem 1.1rem; font-size: .95rem; font-weight: 800; cursor: pointer; }
 .adv-remove-btn:disabled { background: #d9a49e; cursor: not-allowed; }
+.date-filter { display: inline-flex; align-items: center; gap: .25rem; border: 1px solid #cfd7e3; border-radius: 6px; padding: .1rem .4rem; background: #fff; }
+.date-filter-label { font-size: .7rem; color: #5f6e85; font-weight: 700; text-transform: uppercase; }
+.date-inp { border: none; font-size: .78rem; padding: .2rem; }
 </style>

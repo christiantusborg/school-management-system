@@ -5,6 +5,17 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'students-date-filters',
+    date: '2026-08-08',
+    title: 'Commencement & graduation date filters on the students overview',
+    summary: 'From/To date-range filters for commencement and graduation dates, applied across all students.',
+    details: [
+      'The students overview toolbar gains From/To date boxes for Commencement date and Graduation date.',
+      'Leave a box blank for an open-ended range: From only = on-or-after, To only = on-or-before, both = between (the Excel >= / <= equivalent).',
+      'Filters run server-side across all students and combine with the existing programme / specialization / partner / payment / status filters and search.',
+    ],
+  },
+  {
     id: 'faculty-reorder',
     date: '2026-08-07',
     title: 'Reorder faculty profile fields and sections',
