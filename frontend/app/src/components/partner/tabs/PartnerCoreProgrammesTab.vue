@@ -21,7 +21,7 @@
         <div v-if="openProgs.has(p.programmeId)" class="specialization-list">
           <div v-for="m in specializationsByProg(p.programmeId)" :key="m.specializationId" class="specialization-row">
             <label>
-              <input type="checkbox" :checked="isGranted(m.specializationId)" :disabled="busy.has(m.specializationId)" @change="onToggle(m, $event.target.checked)" />
+              <input type="checkbox" :checked="isGranted(m.specializationId)" :disabled="busy.has(m.specializationId) || auth.access('partner.programmes.core_grant') < 3" @change="onToggle(m, $event.target.checked)" />
               <span>{{ m.name }}</span>
               <span v-if="m.code" class="spec-code-chip">{{ m.code }}</span>
             </label>
@@ -30,7 +30,7 @@
           <p v-if="specializationsByProg(p.programmeId).length === 0" class="empty-note">No specializations defined.</p>
           <div class="card-toggle-row">
             <label class="card-toggle">
-              <input type="checkbox" :checked="p.issueDigitalStudentCard" @change="toggleStudentCard(p, $event.target.checked)" />
+              <input type="checkbox" :checked="p.issueDigitalStudentCard" :disabled="auth.access('partner.programmes.student_card') < 3" @change="toggleStudentCard(p, $event.target.checked)" />
               Digital student card
             </label>
             <span v-if="cardErr[p.programmeId]" class="card-toggle-err">{{ cardErr[p.programmeId] }}</span>
@@ -48,6 +48,7 @@
 import { ref, reactive, onMounted, watch } from 'vue'
 import apiClient from '../../../api/client.js'
 import LetterButtonsRow from '../../letters/LetterButtonsRow.vue'
+import { auth } from '../../../store/auth.js'
 
 const props = defineProps({ partnerId: { type: String, required: true } })
 

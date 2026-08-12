@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Letters;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
@@ -86,8 +87,11 @@ public sealed class AdminV1PartnerDocumentsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> CreateAsync(
-        Guid partnerId, [FromBody] WriteBody body, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, [FromBody] WriteBody body, OdinDbContext db,
+        HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.documents.add", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var partnerExists = await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct);
         if (!partnerExists) return Results.NotFound();
         var typeExists = await db.PartnerDocumentTypes.AnyAsync(t =>
@@ -106,8 +110,11 @@ public sealed class AdminV1PartnerDocumentsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UpdateAsync(
-        Guid documentId, [FromBody] WriteBody body, OdinDbContext db, CancellationToken ct)
+        Guid documentId, [FromBody] WriteBody body, OdinDbContext db,
+        HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.documents.edit", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var doc = await db.PartnerDocuments
             .FirstOrDefaultAsync(d => d.PartnerDocumentId == documentId && d.DeletedAt == null, ct);
         if (doc is null) return Results.NotFound();
@@ -117,8 +124,11 @@ public sealed class AdminV1PartnerDocumentsEndpoint : IEndpointMarker
         return Results.Ok(new { partnerDocumentId = documentId });
     }
 
-    private static async Task<IResult> DeleteAsync(Guid documentId, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync(
+        Guid documentId, OdinDbContext db, HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.documents.delete", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var doc = await db.PartnerDocuments
             .FirstOrDefaultAsync(d => d.PartnerDocumentId == documentId && d.DeletedAt == null, ct);
         if (doc is null) return Results.NotFound();

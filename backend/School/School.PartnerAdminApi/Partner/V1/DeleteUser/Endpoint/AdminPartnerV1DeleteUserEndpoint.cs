@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Odin.Api.Base.Authorization;
 
 namespace School.PartnerAdminApi.Partner.V1.DeleteUser.Endpoint;
 
@@ -16,8 +17,12 @@ public sealed class AdminPartnerV1DeleteUserEndpoint : IEndpointMarker
         Guid pid, string uid,
         [FromServices] OdinDbContext db,
         [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] IPermissionService perms,
+        HttpContext http,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.users.delete", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == uid && u.PartnerId == pid && u.DeletedAt == null, ct);
         if (user is null) return Results.NotFound();
 

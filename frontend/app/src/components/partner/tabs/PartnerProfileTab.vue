@@ -4,25 +4,25 @@
     <div v-else-if="error" class="err-banner">{{ error }}</div>
     <template v-else-if="profile">
       <div v-if="!editing" class="view-grid">
-        <div class="grid-row"><span>Name</span><strong>{{ profile.name }}</strong></div>
-        <div class="grid-row">
+        <div v-if="auth.access('partner.profile.name') > 0" class="grid-row"><span>Name</span><strong>{{ profile.name }}</strong></div>
+        <div v-if="auth.access('partner.profile.slug') > 0" class="grid-row">
           <span>Slug</span>
           <strong>
             <code class="slug-code">{{ profile.slug }}</code>
             <span class="slug-url">student signup URL: <code>{{ signupUrl }}</code></span>
           </strong>
         </div>
-        <div class="grid-row" style="display:block;">
+        <div v-if="auth.access('partner.profile.contacts') > 0" class="grid-row" style="display:block;">
           <PartnerContactsEditor mode="admin" :partner-id="partnerId" />
         </div>
-        <div class="grid-row"><span>Address</span><strong>{{ addressSummary || '—' }}</strong></div>
-        <div class="grid-row"><span>Website</span><strong>{{ profile.website || '—' }}</strong></div>
-        <div class="grid-row"><span>Registration no.</span><strong>{{ profile.registrationNumber || '—' }}</strong></div>
-        <div class="grid-row"><span>Tax ID</span><strong>{{ profile.taxId || '—' }}</strong></div>
-        <div class="grid-row"><span>Short code</span><strong>{{ profile.shortCode || '—' }}</strong></div>
-        <div class="grid-row"><span>Tier</span><strong>{{ profile.tier || '—' }}</strong></div>
-        <div class="grid-row"><span>Contract</span><strong>{{ contractSummary || '—' }}</strong></div>
-        <div v-if="profile.internalNotes" class="grid-row"><span>Internal notes</span><strong class="multiline">{{ profile.internalNotes }}</strong></div>
+        <div v-if="auth.access('partner.profile.address') > 0" class="grid-row"><span>Address</span><strong>{{ addressSummary || '—' }}</strong></div>
+        <div v-if="auth.access('partner.profile.website') > 0" class="grid-row"><span>Website</span><strong>{{ profile.website || '—' }}</strong></div>
+        <div v-if="auth.access('partner.profile.registration_no') > 0" class="grid-row"><span>Registration no.</span><strong>{{ profile.registrationNumber || '—' }}</strong></div>
+        <div v-if="auth.access('partner.profile.tax_id') > 0" class="grid-row"><span>Tax ID</span><strong>{{ profile.taxId || '—' }}</strong></div>
+        <div v-if="auth.access('partner.profile.short_code') > 0" class="grid-row"><span>Short code</span><strong>{{ profile.shortCode || '—' }}</strong></div>
+        <div v-if="auth.access('partner.profile.tier') > 0" class="grid-row"><span>Tier</span><strong>{{ profile.tier || '—' }}</strong></div>
+        <div v-if="auth.access('partner.profile.contract') > 0" class="grid-row"><span>Contract</span><strong>{{ contractSummary || '—' }}</strong></div>
+        <div v-if="profile.internalNotes && auth.access('partner.profile.internal_notes') > 0" class="grid-row"><span>Internal notes</span><strong class="multiline">{{ profile.internalNotes }}</strong></div>
 
         <div class="sales-box">
           <div class="sales-box-title">Sales staff assigned to this partner</div>
@@ -44,53 +44,55 @@
 
       <div v-else class="edit-form">
         <div class="row-2">
-          <div class="field"><label>Name</label><input v-model="form.name" /></div>
-          <div class="field">
+          <div v-if="auth.access('partner.profile.name') > 0" class="field"><label>Name</label><input v-model="form.name" :disabled="auth.access('partner.profile.name') < 3" /></div>
+          <div v-if="auth.access('partner.profile.slug') > 0" class="field">
             <label>Slug (student signup URL)</label>
-            <input v-model="form.slug" placeholder="e.g. bloom-business-school" />
+            <input v-model="form.slug" placeholder="e.g. bloom-business-school" :disabled="auth.access('partner.profile.slug') < 3" />
             <p v-if="slugError" class="field-error">{{ slugError }}</p>
             <p v-else class="field-hint">2–40 chars · lowercase letters, digits, hyphens · must be unique</p>
           </div>
         </div>
+        <div v-if="auth.access('partner.profile.contacts') > 0" class="row-2">
+          <div class="field"><label>Contact person name</label><input v-model="form.contactPersonName" :disabled="auth.access('partner.profile.contacts') < 3" /></div>
+          <div class="field"><label>Title</label><input v-model="form.contactPersonTitle" :disabled="auth.access('partner.profile.contacts') < 3" /></div>
+        </div>
+        <div v-if="auth.access('partner.profile.contacts') > 0" class="row-2">
+          <div class="field"><label>Contact email</label><input v-model="form.contactPersonEmail" :disabled="auth.access('partner.profile.contacts') < 3" /></div>
+          <div class="field"><label>Contact phone</label><input v-model="form.contactPersonPhone" :disabled="auth.access('partner.profile.contacts') < 3" /></div>
+        </div>
+        <template v-if="auth.access('partner.profile.address') > 0">
+          <div class="field"><label>Address line 1</label><input v-model="form.addressLine1" :disabled="auth.access('partner.profile.address') < 3" /></div>
+          <div class="field"><label>Address line 2</label><input v-model="form.addressLine2" :disabled="auth.access('partner.profile.address') < 3" /></div>
+          <div class="row-3">
+            <div class="field"><label>City</label><input v-model="form.city" :disabled="auth.access('partner.profile.address') < 3" /></div>
+            <div class="field"><label>State / Region</label><input v-model="form.stateRegion" :disabled="auth.access('partner.profile.address') < 3" /></div>
+            <div class="field"><label>Postal code</label><input v-model="form.postalCode" :disabled="auth.access('partner.profile.address') < 3" /></div>
+          </div>
+          <div class="field"><label>Country</label><input v-model="form.country" :disabled="auth.access('partner.profile.address') < 3" /></div>
+        </template>
         <div class="row-2">
-          <div class="field"><label>Contact person name</label><input v-model="form.contactPersonName" /></div>
-          <div class="field"><label>Title</label><input v-model="form.contactPersonTitle" /></div>
+          <div v-if="auth.access('partner.profile.website') > 0" class="field"><label>Website</label><input v-model="form.website" :disabled="auth.access('partner.profile.website') < 3" /></div>
+          <div v-if="auth.access('partner.profile.registration_no') > 0" class="field"><label>Registration number</label><input v-model="form.registrationNumber" :disabled="auth.access('partner.profile.registration_no') < 3" /></div>
         </div>
         <div class="row-2">
-          <div class="field"><label>Contact email</label><input v-model="form.contactPersonEmail" /></div>
-          <div class="field"><label>Contact phone</label><input v-model="form.contactPersonPhone" /></div>
-        </div>
-        <div class="field"><label>Address line 1</label><input v-model="form.addressLine1" /></div>
-        <div class="field"><label>Address line 2</label><input v-model="form.addressLine2" /></div>
-        <div class="row-3">
-          <div class="field"><label>City</label><input v-model="form.city" /></div>
-          <div class="field"><label>State / Region</label><input v-model="form.stateRegion" /></div>
-          <div class="field"><label>Postal code</label><input v-model="form.postalCode" /></div>
-        </div>
-        <div class="field"><label>Country</label><input v-model="form.country" /></div>
-        <div class="row-2">
-          <div class="field"><label>Website</label><input v-model="form.website" /></div>
-          <div class="field"><label>Registration number</label><input v-model="form.registrationNumber" /></div>
-        </div>
-        <div class="row-2">
-          <div class="field"><label>Tax ID</label><input v-model="form.taxId" /></div>
-          <div class="field"><label>Tier</label>
-            <select v-model="form.tier">
+          <div v-if="auth.access('partner.profile.tax_id') > 0" class="field"><label>Tax ID</label><input v-model="form.taxId" :disabled="auth.access('partner.profile.tax_id') < 3" /></div>
+          <div v-if="auth.access('partner.profile.tier') > 0" class="field"><label>Tier</label>
+            <select v-model="form.tier" :disabled="auth.access('partner.profile.tier') < 3">
               <option value="">—</option>
               <option>Gold</option><option>Silver</option><option>Bronze</option><option>Standard</option>
             </select>
           </div>
         </div>
-        <div class="field">
+        <div v-if="auth.access('partner.profile.short_code') > 0" class="field">
           <label>Short code (for Faculty &amp; datasheet IDs)</label>
-          <input v-model="form.shortCode" placeholder="e.g. IBAS" />
+          <input v-model="form.shortCode" placeholder="e.g. IBAS" :disabled="auth.access('partner.profile.short_code') < 3" />
           <p class="field-hint">Used in generated Faculty / datasheet IDs in place of the full name, e.g. <code>IBAS-…-001</code>. Applies to IDs generated from now on.</p>
         </div>
-        <div class="row-2">
-          <div class="field"><label>Contract start</label><input v-model="form.contractStart" type="date" /></div>
-          <div class="field"><label>Contract end</label><input v-model="form.contractEnd" type="date" /></div>
+        <div v-if="auth.access('partner.profile.contract') > 0" class="row-2">
+          <div class="field"><label>Contract start</label><input v-model="form.contractStart" type="date" :disabled="auth.access('partner.profile.contract') < 3" /></div>
+          <div class="field"><label>Contract end</label><input v-model="form.contractEnd" type="date" :disabled="auth.access('partner.profile.contract') < 3" /></div>
         </div>
-        <div class="field"><label>Internal notes</label><textarea v-model="form.internalNotes" rows="2" /></div>
+        <div v-if="auth.access('partner.profile.internal_notes') > 0" class="field"><label>Internal notes</label><textarea v-model="form.internalNotes" rows="2" :disabled="auth.access('partner.profile.internal_notes') < 3" /></div>
 
         <div v-if="saveError" class="err-banner">{{ saveError }}</div>
         <div class="actions">

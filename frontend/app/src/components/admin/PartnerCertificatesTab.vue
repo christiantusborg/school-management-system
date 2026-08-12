@@ -7,7 +7,7 @@
           Document types and their designs are managed in System Config → Partnership Documents;
           here you add a document and fill out its fields. Download always renders the latest design.</p>
       </div>
-      <button class="btn-primary-sm" @click="openDialog(null)">+ Add document</button>
+      <button v-if="auth.can('partner.documents.add')" class="btn-primary-sm" @click="openDialog(null)">+ Add document</button>
     </div>
 
     <div v-if="error" class="err-banner">{{ error }}</div>
@@ -24,11 +24,11 @@
           </td>
           <td>{{ fmtDate(d.updatedAt) }}</td>
           <td class="actions-cell">
-            <button class="btn-sm" @click="openDialog(d)">✎ Edit</button>
+            <button v-if="auth.can('partner.documents.edit')" class="btn-sm" @click="openDialog(d)">✎ Edit</button>
             <button class="btn-sm" :disabled="d.downloading" @click="downloadDoc(d)">
               {{ d.downloading ? '…' : '⤓ Download' }}
             </button>
-            <button class="btn-sm btn-danger" @click="removeDoc(d)">✕</button>
+            <button v-if="auth.can('partner.documents.delete')" class="btn-sm btn-danger" @click="removeDoc(d)">✕</button>
           </td>
         </tr>
       </tbody>
@@ -85,6 +85,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import api from '../../api/client.js'
+import { auth } from '../../store/auth.js'
 
 const props = defineProps({
   partnerId: { type: String, required: true },

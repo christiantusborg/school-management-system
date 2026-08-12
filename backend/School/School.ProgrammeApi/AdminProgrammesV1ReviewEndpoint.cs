@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
 namespace School.ProgrammeApi;
@@ -38,8 +39,11 @@ public sealed class AdminProgrammesV1ReviewEndpoint : IEndpointMarker
         public bool Disabled { get; init; }
     }
 
-    private static async Task<IResult> ApproveAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> ApproveAsync(
+        OdinDbContext db, Guid id, HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.programmes.approve", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var status = await EnsureStatusAsync(db, id, ct);
         if (status is null) return Results.NotFound(new { error = "Programme not found or not partner-owned." });
 
@@ -52,8 +56,11 @@ public sealed class AdminProgrammesV1ReviewEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> RejectAsync(
-        OdinDbContext db, Guid id, [FromBody] RejectRequest body, CancellationToken ct)
+        OdinDbContext db, Guid id, [FromBody] RejectRequest body,
+        HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.programmes.reject", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var reason = body?.Reason?.Trim();
         if (string.IsNullOrEmpty(reason))
             return Results.BadRequest(new { error = "Rejection reason is required." });
@@ -69,8 +76,11 @@ public sealed class AdminProgrammesV1ReviewEndpoint : IEndpointMarker
         return Results.Ok(new { programmeId = id, status = "Rejected" });
     }
 
-    private static async Task<IResult> ReopenAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> ReopenAsync(
+        OdinDbContext db, Guid id, HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.programmes.reopen", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var status = await EnsureStatusAsync(db, id, ct);
         if (status is null) return Results.NotFound(new { error = "Programme not found or not partner-owned." });
 

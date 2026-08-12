@@ -1,3 +1,5 @@
+using Odin.Api.Base.Authorization;
+
 namespace School.PartnerAdminApi.Partner.V1.EnableUser.Endpoint;
 
 [Route("/v1/admin/school/partners/{pid:guid}/users/{uid}/enable")]
@@ -15,8 +17,12 @@ public sealed class AdminPartnerV1EnableUserEndpoint : IEndpointMarker
         Guid pid, string uid,
         [FromServices] OdinDbContext db,
         [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] IPermissionService perms,
+        HttpContext http,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.users.disable", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == uid && u.PartnerId == pid, ct);
         if (user is null) return Results.NotFound();
         user.IsEnabled = true;

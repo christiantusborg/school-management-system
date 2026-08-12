@@ -119,9 +119,9 @@
               <span :class="['status-pill', `s-${specStatus(s).toLowerCase()}`]">{{ specStatus(s) }}</span>
               <span class="spec-actions" @click.stop>
                 <template v-if="specStatus(s) === 'Pending' || specStatus(s) === 'Draft'">
-                  <button class="btn-sm btn-ok" :disabled="specBusy.has(s.specializationId)" @click="approveSpec(s)">Approve</button>
+                  <button v-if="auth.can('partner.programmes.approve')" class="btn-sm btn-ok" :disabled="specBusy.has(s.specializationId)" @click="approveSpec(s)">Approve</button>
                   <template v-if="specStatus(s) === 'Pending'">
-                    <button v-if="rejectingSpecId !== s.specializationId" class="btn-sm btn-warn" @click="openRejectSpec(s)">Reject</button>
+                    <button v-if="auth.can('partner.programmes.reject') && rejectingSpecId !== s.specializationId" class="btn-sm btn-warn" @click="openRejectSpec(s)">Reject</button>
                     <template v-else>
                       <input v-model="specRejectReason" class="inp-add" placeholder="Reason for rejection…" />
                       <button class="btn-sm btn-warn" :disabled="!specRejectReason.trim() || specBusy.has(s.specializationId)" @click="confirmRejectSpec(s)">Confirm</button>
@@ -131,8 +131,8 @@
                 </template>
                 <template v-else-if="specStatus(s) === 'Rejected'">
                   <span class="reject-reason">{{ s.approvalRejectionReason || '' }}</span>
-                  <button class="btn-sm btn-ok" :disabled="specBusy.has(s.specializationId)" @click="approveSpec(s)">Approve</button>
-                  <button class="btn-sm" :disabled="specBusy.has(s.specializationId)" @click="reopenSpec(s)">Move to Pending</button>
+                  <button v-if="auth.can('partner.programmes.approve')" class="btn-sm btn-ok" :disabled="specBusy.has(s.specializationId)" @click="approveSpec(s)">Approve</button>
+                  <button v-if="auth.can('partner.programmes.reopen')" class="btn-sm" :disabled="specBusy.has(s.specializationId)" @click="reopenSpec(s)">Move to Pending</button>
                 </template>
               </span>
             </div>
@@ -244,6 +244,7 @@ import { reactive, ref, computed, watch, onMounted } from 'vue'
 import apiClient from '../../../api/client.js'
 import LetterButtonsRow from '../../letters/LetterButtonsRow.vue'
 import SubjectRubricButton from '../../admin/SubjectRubricButton.vue'
+import { auth } from '../../../store/auth.js'
 
 const props = defineProps({
   partnerId: { type: String, default: '' },

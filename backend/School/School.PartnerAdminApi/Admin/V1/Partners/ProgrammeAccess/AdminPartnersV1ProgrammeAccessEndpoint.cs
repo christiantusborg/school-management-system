@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
 namespace School.PartnerAdminApi.Admin.V1.Partners.ProgrammeAccess;
@@ -53,8 +54,11 @@ public sealed class AdminPartnersV1ProgrammeAccessEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> GrantAsync(
-        Guid partnerId, [FromBody] GrantRequest body, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, [FromBody] GrantRequest body, OdinDbContext db,
+        HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.programmes.core_grant", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (!await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct))
             return Results.NotFound();
         var ids = body.SpecializationIds ?? Array.Empty<Guid>();
@@ -107,8 +111,11 @@ public sealed class AdminPartnersV1ProgrammeAccessEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> RevokeAsync(
-        Guid partnerId, Guid specializationId, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, Guid specializationId, OdinDbContext db,
+        HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.programmes.core_grant", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var programmeId = await db.Specializations
             .Where(s => s.SpecializationId == specializationId)
             .Select(s => (Guid?)s.ProgrammeId)

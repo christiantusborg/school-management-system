@@ -1,3 +1,5 @@
+using Odin.Api.Base.Authorization;
+
 namespace School.ProgrammeApi;
 
 /// <summary>
@@ -135,7 +137,8 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UpdateAsync(
-        OdinDbContext db, Guid id, [FromBody] WriteRequest body, CancellationToken ct)
+        OdinDbContext db, Guid id, [FromBody] WriteRequest body,
+        HttpContext http, IPermissionService perms, CancellationToken ct)
     {
         var prog = await db.Programmes.FirstOrDefaultAsync(p => p.ProgrammeId == id, ct);
         if (prog is null) return Results.NotFound();
@@ -167,7 +170,9 @@ public sealed class SchoolProgrammesV1CrudEndpoint : IEndpointMarker
             prog.RequiredEcts = reqEcts;
         }
         if (body.SchoolId is { } schoolId) prog.SchoolId = schoolId;
-        if (body.IssueDigitalStudentCard is { } issueCard) prog.IssueDigitalStudentCard = issueCard;
+        if (body.IssueDigitalStudentCard is { } issueCard
+            && await perms.AccessAsync(http.User, "partner.programmes.student_card", ct) == AccessLevel.Edit)
+            prog.IssueDigitalStudentCard = issueCard;
 
         if (body.PathwayIds is not null)
         {

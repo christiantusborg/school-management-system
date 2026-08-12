@@ -1,3 +1,5 @@
+using Odin.Api.Base.Authorization;
+
 namespace School.PartnerAdminApi.Partner.V1.AddUser.Endpoint;
 
 [Route("/v1/admin/school/partners/{id:guid}/users")]
@@ -16,8 +18,12 @@ public sealed class AdminPartnerV1AddUserEndpoint : IEndpointMarker
         [FromBody] AdminPartnerV1AddUserEndpointRequest request,
         [FromServices] OdinDbContext db,
         [FromServices] OpaqueUserCreationService creator,
+        [FromServices] IPermissionService perms,
+        HttpContext http,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.users.add", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var partner = await db.Partners.FirstOrDefaultAsync(p => p.PartnerId == id, ct);
         if (partner is null) return Results.NotFound("Partner not found.");
 

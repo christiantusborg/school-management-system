@@ -396,7 +396,7 @@
               ⚙<span v-if="isGearTab" class="gear-current">{{ GEAR_TABS.find(t => t.k === manageTab)?.label }}</span>
             </button>
             <div v-if="gearOpen" class="manage-gear-menu">
-              <button v-for="t in GEAR_TABS" :key="t.k" :class="['gear-item', { active: manageTab === t.k }]"
+              <button v-for="t in visibleGearTabs" :key="t.k" :class="['gear-item', { active: manageTab === t.k }]"
                       @click="manageTab = t.k; gearOpen = false">{{ t.label }}</button>
             </div>
           </div>
@@ -420,13 +420,13 @@
                   <td>{{ u.email || '—' }}</td>
                   <td><span :class="u.isEnabled ? 'badge-enabled' : 'badge-disabled'">{{ u.isEnabled ? 'Active' : 'Disabled' }}</span></td>
                   <td class="actions-cell">
-                    <button class="btn-sm" @click="startEditUser(u)">Edit</button>
-                    <button class="btn-sm" @click="resetUserPassword(u)" :disabled="resettingUserId === u.userId">
+                    <button v-if="auth.can('partner.users.edit')" class="btn-sm" @click="startEditUser(u)">Edit</button>
+                    <button v-if="auth.can('partner.users.reset_password')" class="btn-sm" @click="resetUserPassword(u)" :disabled="resettingUserId === u.userId">
                       {{ resettingUserId === u.userId ? 'Resetting…' : 'Reset Password' }}
                     </button>
-                    <button v-if="u.isEnabled" class="btn-sm btn-warn" @click="disableUser(u)">Disable</button>
-                    <button v-else class="btn-sm btn-ok" @click="enableUser(u)">Enable</button>
-                    <button class="btn-sm btn-danger" @click="deleteUser(u)">Delete</button>
+                    <button v-if="u.isEnabled && auth.can('partner.users.disable')" class="btn-sm btn-warn" @click="disableUser(u)">Disable</button>
+                    <button v-else-if="!u.isEnabled && auth.can('partner.users.disable')" class="btn-sm btn-ok" @click="enableUser(u)">Enable</button>
+                    <button v-if="auth.can('partner.users.delete')" class="btn-sm btn-danger" @click="deleteUser(u)">Delete</button>
                   </td>
                 </tr>
                 <tr v-if="editingUserId === u.userId" class="edit-row">
@@ -458,7 +458,7 @@
             </tbody>
           </table>
 
-          <div class="add-user-row">
+          <div v-if="auth.can('partner.users.add')" class="add-user-row">
             <input v-model="newUserUsername" class="inp-add" placeholder="New username" @keyup.enter="addUserToPartner" />
             <input v-model="newUserEmail" class="inp-add" placeholder="Email (optional)" />
             <div class="pw-row pw-row-add">
@@ -941,8 +941,25 @@ const isGearTab = computed(() => GEAR_TABS.some(t => t.k === manageTab.value))
 // Sales logins get a trimmed portal: no Import tab, no gear config tabs.
 const isSales = computed(() => auth.adminLevel === 'Sales')
 const isSuperAdmin = computed(() => auth.adminLevel === 'SuperAdministrator')
+// Access-gate keys per tab (certs/faculties use documents/faculty item keys).
+const TAB_ACCESS_KEY = {
+  students: 'partner.tab.students',
+  cohorts: 'partner.tab.cohorts',
+  invoices: 'partner.tab.invoices',
+  import: 'partner.tab.import',
+  mail: 'partner.tab.mail',
+  agreements: 'partner.tab.agreements',
+  profile: 'partner.tab.profile',
+  users: 'partner.tab.users',
+  programmes: 'partner.tab.programmes',
+  certs: 'partner.tab.documents',
+  faculties: 'partner.tab.faculty',
+}
 const visibleManageTabs = computed(() =>
-  isSales.value ? MANAGE_TABS.filter(t => t.k !== 'import') : MANAGE_TABS)
+  (isSales.value ? MANAGE_TABS.filter(t => t.k !== 'import') : MANAGE_TABS)
+    .filter(t => auth.access(TAB_ACCESS_KEY[t.k]) > 0))
+const visibleGearTabs = computed(() =>
+  GEAR_TABS.filter(t => auth.access(TAB_ACCESS_KEY[t.k]) > 0))
 // Programmes tab sub-menu: Core ⇄ Custom.
 const progSubTab = ref('core')
 

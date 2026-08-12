@@ -1,3 +1,5 @@
+using Odin.Api.Base.Authorization;
+
 namespace School.PartnerAdminApi.Partner.V1.UpdateUser.Endpoint;
 
 [Route("/v1/admin/school/partners/{pid:guid}/users/{uid}")]
@@ -16,8 +18,12 @@ public sealed class AdminPartnerV1UpdateUserEndpoint : IEndpointMarker
         [FromBody] AdminPartnerV1UpdateUserEndpointRequest request,
         [FromServices] OdinDbContext db,
         [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] IPermissionService perms,
+        HttpContext http,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.users.edit", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == uid && u.PartnerId == pid, ct);
         if (user is null) return Results.NotFound();
 

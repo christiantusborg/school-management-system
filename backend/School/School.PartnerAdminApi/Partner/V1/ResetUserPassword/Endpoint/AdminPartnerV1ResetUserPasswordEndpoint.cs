@@ -1,3 +1,5 @@
+using Odin.Api.Base.Authorization;
+
 namespace School.PartnerAdminApi.Partner.V1.ResetUserPassword.Endpoint;
 
 [Route("/v1/admin/school/partners/{pid:guid}/users/{uid}/reset-password")]
@@ -22,8 +24,12 @@ public sealed class AdminPartnerV1ResetUserPasswordEndpoint : IEndpointMarker
         [FromBody] ResetRequest? body,
         [FromServices] OdinDbContext db,
         [FromServices] OpaqueUserCreationService creator,
+        [FromServices] IPermissionService perms,
+        HttpContext http,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.users.reset_password", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == uid && u.PartnerId == pid, ct);
         if (user is null) return Results.NotFound();
 

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains.Partners;
 
 namespace School.PartnerAdminApi.Admin.V1.Partners.Profile;
@@ -108,14 +109,16 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> PatchAsync(
-        Guid partnerId, [FromBody] PatchRequest body, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, [FromBody] PatchRequest body, OdinDbContext db,
+        HttpContext http, IPermissionService perms, CancellationToken ct)
     {
         var partner = await db.Partners
             .FirstOrDefaultAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct);
         if (partner is null) return Results.NotFound();
 
         // Slug check (uniqueness + format).
-        if (!string.IsNullOrWhiteSpace(body.Slug) && !string.Equals(body.Slug, partner.Slug, StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(body.Slug) && !string.Equals(body.Slug, partner.Slug, StringComparison.OrdinalIgnoreCase)
+            && await perms.AccessAsync(http.User, "partner.profile.slug", ct) == AccessLevel.Edit)
         {
             var slug = body.Slug.Trim().ToLowerInvariant();
             if (slug.Length is < 2 or > 40 || !SlugPattern.IsMatch(slug))
@@ -126,21 +129,21 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
             partner.Slug = slug;
         }
 
-        if (body.Name is not null) partner.Name = body.Name.Trim();
-        if (body.Website is not null) partner.Website = string.IsNullOrWhiteSpace(body.Website) ? null : body.Website.Trim();
-        if (body.RegistrationNumber is not null) partner.RegistrationNumber = string.IsNullOrWhiteSpace(body.RegistrationNumber) ? null : body.RegistrationNumber.Trim();
-        if (body.TaxId is not null) partner.TaxId = string.IsNullOrWhiteSpace(body.TaxId) ? null : body.TaxId.Trim();
-        if (body.ShortCode is not null) partner.ShortCode = string.IsNullOrWhiteSpace(body.ShortCode) ? null : body.ShortCode.Trim();
-        if (body.ContactPersonName is not null) partner.ContactPersonName = string.IsNullOrWhiteSpace(body.ContactPersonName) ? null : body.ContactPersonName.Trim();
-        if (body.ContactPersonTitle is not null) partner.ContactPersonTitle = string.IsNullOrWhiteSpace(body.ContactPersonTitle) ? null : body.ContactPersonTitle.Trim();
-        if (body.Tier is not null) partner.Tier = string.IsNullOrWhiteSpace(body.Tier) ? null : body.Tier.Trim();
-        if (body.InternalNotes is not null) partner.InternalNotes = string.IsNullOrWhiteSpace(body.InternalNotes) ? null : body.InternalNotes;
+        if (body.Name is not null && await perms.AccessAsync(http.User, "partner.profile.name", ct) == AccessLevel.Edit) partner.Name = body.Name.Trim();
+        if (body.Website is not null && await perms.AccessAsync(http.User, "partner.profile.website", ct) == AccessLevel.Edit) partner.Website = string.IsNullOrWhiteSpace(body.Website) ? null : body.Website.Trim();
+        if (body.RegistrationNumber is not null && await perms.AccessAsync(http.User, "partner.profile.registration_no", ct) == AccessLevel.Edit) partner.RegistrationNumber = string.IsNullOrWhiteSpace(body.RegistrationNumber) ? null : body.RegistrationNumber.Trim();
+        if (body.TaxId is not null && await perms.AccessAsync(http.User, "partner.profile.tax_id", ct) == AccessLevel.Edit) partner.TaxId = string.IsNullOrWhiteSpace(body.TaxId) ? null : body.TaxId.Trim();
+        if (body.ShortCode is not null && await perms.AccessAsync(http.User, "partner.profile.short_code", ct) == AccessLevel.Edit) partner.ShortCode = string.IsNullOrWhiteSpace(body.ShortCode) ? null : body.ShortCode.Trim();
+        if (body.ContactPersonName is not null && await perms.AccessAsync(http.User, "partner.profile.contacts", ct) == AccessLevel.Edit) partner.ContactPersonName = string.IsNullOrWhiteSpace(body.ContactPersonName) ? null : body.ContactPersonName.Trim();
+        if (body.ContactPersonTitle is not null && await perms.AccessAsync(http.User, "partner.profile.contacts", ct) == AccessLevel.Edit) partner.ContactPersonTitle = string.IsNullOrWhiteSpace(body.ContactPersonTitle) ? null : body.ContactPersonTitle.Trim();
+        if (body.Tier is not null && await perms.AccessAsync(http.User, "partner.profile.tier", ct) == AccessLevel.Edit) partner.Tier = string.IsNullOrWhiteSpace(body.Tier) ? null : body.Tier.Trim();
+        if (body.InternalNotes is not null && await perms.AccessAsync(http.User, "partner.profile.internal_notes", ct) == AccessLevel.Edit) partner.InternalNotes = string.IsNullOrWhiteSpace(body.InternalNotes) ? null : body.InternalNotes;
 
         // Address upsert (single primary address).
         var addressFieldsTouched = body.AddressLine1 is not null || body.AddressLine2 is not null
             || body.City is not null || body.StateRegion is not null || body.PostalCode is not null
             || body.Country is not null;
-        if (addressFieldsTouched)
+        if (addressFieldsTouched && await perms.AccessAsync(http.User, "partner.profile.address", ct) == AccessLevel.Edit)
         {
             var address = await db.PartnerAddresses
                 .FirstOrDefaultAsync(a => a.PartnerId == partnerId && a.DeletedAt == null, ct);
@@ -179,7 +182,7 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
         }
 
         // Contact email upsert.
-        if (body.ContactPersonEmail is not null)
+        if (body.ContactPersonEmail is not null && await perms.AccessAsync(http.User, "partner.profile.contacts", ct) == AccessLevel.Edit)
         {
             var email = await db.PartnerContactEmails
                 .FirstOrDefaultAsync(e => e.PartnerId == partnerId && e.IsPrimary && e.DeletedAt == null, ct);
@@ -204,7 +207,7 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
         }
 
         // Contact phone upsert.
-        if (body.ContactPersonPhone is not null)
+        if (body.ContactPersonPhone is not null && await perms.AccessAsync(http.User, "partner.profile.contacts", ct) == AccessLevel.Edit)
         {
             var phone = await db.PartnerContactPhones
                 .FirstOrDefaultAsync(p => p.PartnerId == partnerId && p.IsPrimary && p.DeletedAt == null, ct);
@@ -229,7 +232,8 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
         }
 
         // Contract upsert (single most-recent contract).
-        if (body.ContractStart is not null || body.ContractEnd is not null)
+        if ((body.ContractStart is not null || body.ContractEnd is not null)
+            && await perms.AccessAsync(http.User, "partner.profile.contract", ct) == AccessLevel.Edit)
         {
             var contract = await db.PartnerContracts
                 .Where(c => c.PartnerId == partnerId && c.DeletedAt == null)

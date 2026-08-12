@@ -6,7 +6,7 @@
         <p class="ft-sub">This partner's teachers. A teacher is a partner user with the Teacher role; their profile
           is shaped by System Config → Faculty Profile Information (Faculty ID and Name generate on save).</p>
       </div>
-      <button type="button" class="btn-primary-sm" @click="openAdd">+ Add teacher</button>
+      <button v-if="auth.can('partner.faculty.add')" type="button" class="btn-primary-sm" @click="openAdd">+ Add teacher</button>
     </div>
 
     <div v-if="error" class="err-banner">{{ error }}</div>
@@ -21,8 +21,8 @@
           <td>{{ t.email || '—' }}</td>
           <td>{{ fmtDate(t.updatedAt) }}</td>
           <td class="actions-cell">
-            <button type="button" class="btn-sm" @click="openProfile(t)">✎ Profile</button>
-            <button type="button" class="btn-sm btn-danger" @click="removeTeacher(t)">✕</button>
+            <button v-if="auth.can('partner.faculty.edit')" type="button" class="btn-sm" @click="openProfile(t)">✎ Profile</button>
+            <button v-if="auth.can('partner.faculty.delete')" type="button" class="btn-sm btn-danger" @click="removeTeacher(t)">✕</button>
           </td>
         </tr>
       </tbody>
@@ -155,6 +155,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import api from '../../api/client.js'
+import { auth } from '../../store/auth.js'
 
 const props = defineProps({
   partnerId: { type: String, required: true },

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Storage;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
@@ -172,8 +173,11 @@ public sealed class AdminV1FacultiesEndpoint : IEndpointMarker
     /// records.
     /// </summary>
     private static async Task<IResult> CreateTeacherAsync(
-        Guid partnerId, [FromBody] CreateTeacherBody body, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, [FromBody] CreateTeacherBody body, OdinDbContext db,
+        HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.faculty.add", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var partnerExists = await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct);
         if (!partnerExists) return Results.NotFound();
         if (string.IsNullOrWhiteSpace(body.DisplayName))
@@ -211,14 +215,20 @@ public sealed class AdminV1FacultiesEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SaveProfileAsync(
-        Guid teacherId, [FromBody] FacultyProfileLogic.SaveBody body, OdinDbContext db, CancellationToken ct)
+        Guid teacherId, [FromBody] FacultyProfileLogic.SaveBody body, OdinDbContext db,
+        HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.faculty.edit", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var ok = await FacultyProfileLogic.SaveProfileAsync(db, teacherId, body, partnerEditableOnly: false, ct);
         return ok ? Results.Ok(new { saved = true }) : Results.NotFound();
     }
 
-    private static async Task<IResult> DeleteTeacherAsync(Guid teacherId, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteTeacherAsync(
+        Guid teacherId, OdinDbContext db, HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.faculty.delete", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var teacher = await db.Teachers
             .FirstOrDefaultAsync(t => t.TeacherId == teacherId && t.DeletedAt == null, ct);
         if (teacher is null) return Results.NotFound();
@@ -228,8 +238,10 @@ public sealed class AdminV1FacultiesEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UploadFileAsync(
-        IFormFile file, IFileStorage storage, CancellationToken ct)
+        IFormFile file, IFileStorage storage, HttpContext http, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "partner.faculty.edit", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (file is null || file.Length == 0)
             return Results.BadRequest(new { error = "file is required" });
         if (file.Length > 50 * 1024 * 1024)
