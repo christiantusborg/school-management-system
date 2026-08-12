@@ -240,7 +240,13 @@ public sealed class LetterReleaseService(
         string reference, LetterType? letterType, CancellationToken ct)
     {
         var layout = CertificateLayout.TryParse(template.CertificateLayoutJson);
-        if (layout is not null)
+        // A layout with no fields and no background on any page would render a
+        // blank page. Treat that as "not designed for this programme/partner
+        // yet" and fall through (to BodyHtml, else skip) so a blank PDF is
+        // never filed as the student's document.
+        var layoutHasContent = layout is not null && layout.GetPages()
+            .Any(p => (p.Fields?.Count ?? 0) > 0 || p.BackgroundAssetId is not null);
+        if (layout is not null && layoutHasContent)
         {
             var tags = await tagResolver.ResolveAsync(enrollmentId, ct, reference, letterType);
             var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractCertificateAssetIds(layout), ct);
@@ -285,7 +291,9 @@ public sealed class LetterReleaseService(
             var assets = await ReadAssetsAsync(LetterPdfRenderer.ExtractAssetIds(pages), ct);
             return renderer.RenderHtml(pages, tags, assets);
         }
-        logger.LogWarning("[Letters] Template {LetterTemplateId} has neither layout nor body", template.LetterTemplateId);
+        logger.LogWarning(
+            "[Letters] Template {LetterTemplateId} has no drawable content (empty layout and no body) — skipping to avoid a blank PDF.",
+            template.LetterTemplateId);
         return null;
     }
 

@@ -42,7 +42,16 @@ public sealed class AdminProgrammesV1LetterTemplatePreviewEndpoint : IEndpointMa
         [FromBody] PreviewRequest body,
         CancellationToken ct)
     {
-        if (!Enum.TryParse<LetterType>(type, ignoreCase: true, out var letterType))
+        // {type} is either a built-in enum name (OfferLetter…) or the GUID of a
+        // config-created LetterTypeDefinition. Preview only renders the posted
+        // in-flight layout with sample tags, so for a dynamic type the id just
+        // labels the file — no enum is needed.
+        string typeLabel;
+        if (Guid.TryParse(type, out _))
+            typeLabel = "preview";
+        else if (Enum.TryParse<LetterType>(type, ignoreCase: true, out var letterType))
+            typeLabel = letterType.ToString();
+        else
             return Results.BadRequest(new { error = "unknown letter type" });
 
         var layout = CertificateLayout.TryParse(body?.CertificateLayoutJson);
@@ -82,7 +91,7 @@ public sealed class AdminProgrammesV1LetterTemplatePreviewEndpoint : IEndpointMa
 
         var pdfBytes = renderer.RenderCertificate(layout, assets, tags, rows);
 
-        var fileName = $"preview-{letterType}-{DateTime.UtcNow:yyyyMMddHHmmss}.pdf";
+        var fileName = $"preview-{typeLabel}-{DateTime.UtcNow:yyyyMMddHHmmss}.pdf";
         return Results.File(pdfBytes, "application/pdf", fileName);
     }
 

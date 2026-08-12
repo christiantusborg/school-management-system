@@ -5,6 +5,27 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'letters-show-hide-old',
+    date: '2026-08-12',
+    title: 'Show/Hide old letters + (O) marker on the letter chips',
+    summary: 'The old built-in letters are hidden by default and marked (O); one toggle reveals them everywhere.',
+    details: [
+      'On a partner\'s Core/Custom programmes, the "Letters:" row now hides the OLD built-in letters by default so the new config-created letters stand out.',
+      'Click "Show old (9)" to reveal the old letters (dashed frame, marked with an (O) tag); "Hide old" collapses them again. The toggle drives every programme row at once.',
+      'This is an interim aid during the letter migration: the old letters still generate as before until the switch-over is confirmed.',
+    ],
+  },
+  {
+    id: 'letters-no-blank-pdf',
+    date: '2026-08-12',
+    title: 'Letters: no more blank PDFs, and Preview works for new letter types',
+    summary: 'An undesigned letter template is skipped instead of producing a blank PDF; the editor Preview no longer errors on config-created types.',
+    details: [
+      'When a letter template for a programme/partner has an empty design (no fields, no background), generation now SKIPS it instead of filing a blank PDF as the student\'s document. Design the template (or copy from another partner) to enable it.',
+      'The template editor\'s Preview button now works for config-created (custom) letter types too — the "unknown letter type" error is gone.',
+    ],
+  },
+  {
     id: 'import-attach-existing-account',
     date: '2026-08-12',
     title: 'Import: attach a student to an existing (non-student) account',

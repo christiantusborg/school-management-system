@@ -1,16 +1,27 @@
 <template>
   <div class="letters-row">
     <span class="letters-label">Letters:</span>
-    <span v-for="t in TYPES" :key="t.code" class="lbtn-group">
-      <button class="lbtn" :class="badgeClass(t.code)"
-              @click="open(t.code)"
-              :title="published[t.code] ? 'Published — releases are live' : 'Draft — no releases until you save'">
-        <span class="lbtn-dot">{{ published[t.code] ? '🟢' : '🟠' }}</span>
-        {{ t.label }}
-      </button>
-      <button v-if="EMAILABLE.includes(t.code)" class="lbtn lbtn-email"
-              @click="openEmail(t.code)" title="Edit the email sent with this letter">✉</button>
-    </span>
+    <!-- Old/new toggle: the OLD built-in (enum) letters are hidden by default
+         so the new config-created letters stand out. One toggle drives every
+         programme row (shared state). -->
+    <button class="lbtn lbtn-toggle" @click="showOldLetters = !showOldLetters"
+            :title="showOldLetters ? 'Hide the old built-in letters' : 'Show the old built-in letters (marked (O))'">
+      {{ showOldLetters ? `Hide old (${TYPES.length})` : `Show old (${TYPES.length})` }}
+    </button>
+    <!-- OLD built-in (enum) letters — hidden by default, marked (O). -->
+    <template v-if="showOldLetters">
+      <span v-for="t in TYPES" :key="t.code" class="lbtn-group">
+        <button class="lbtn lbtn-old" :class="badgeClass(t.code)"
+                @click="open(t.code)"
+                :title="(published[t.code] ? 'Published — releases are live' : 'Draft — no releases until you save') + ' · OLD built-in letter'">
+          <span class="lbtn-old-tag">(O)</span>
+          <span class="lbtn-dot">{{ published[t.code] ? '🟢' : '🟠' }}</span>
+          {{ t.label }}
+        </button>
+        <button v-if="EMAILABLE.includes(t.code)" class="lbtn lbtn-email"
+                @click="openEmail(t.code)" title="Edit the email sent with this letter">✉</button>
+      </span>
+    </template>
     <!-- Config-created letter types (System Config → Letter Types). One chip
          per type editing the English default; language mini-buttons edit the
          per-language versions. -->
@@ -57,6 +68,7 @@ import { ref, watch, computed } from 'vue'
 import apiClient from '../../api/client.js'
 import CertificateEditorModal from './CertificateEditorModal.vue'
 import LetterEmailEditorModal from './LetterEmailEditorModal.vue'
+import { showOldLetters } from './letterRowState.js'
 
 const props = defineProps({
   programmeId: { type: String, required: true },
@@ -180,4 +192,9 @@ watch(() => [props.programmeId, props.partnerId], loadPublishStatus, { immediate
 .lbtn-email { padding: .25rem .5rem; border-color: #6b4ea3; color: #6b4ea3; }
 .lbtn-email:hover { background: #f1ecf9; }
 .lbtn-lang { padding: .25rem .45rem; font-size: .68rem; }
+.lbtn-toggle { border-color: #6b7888; color: #6b7888; background: #f5f7fa; font-size: .72rem; padding: .2rem .6rem; }
+.lbtn-toggle:hover { background: #e9edf3; }
+/* OLD (enum) letters: greyed frame + an (O) marker so they read as legacy. */
+.lbtn-old { border-style: dashed; opacity: .82; }
+.lbtn-old-tag { font-weight: 800; font-size: .62rem; color: #8a94a3; letter-spacing: .02em; }
 </style>
