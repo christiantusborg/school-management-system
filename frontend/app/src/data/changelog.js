@@ -5,6 +5,18 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'access-matrix-phase2-granular',
+    date: '2026-08-12',
+    title: 'Granular access matrix (phase 2) — field-level & status-based control',
+    summary: 'Roles & Permissions is now fine-grained: every field, section, tab and action across the portal can be set to Edit / View / No-access / Hidden per role, plus a new grid controls which student statuses each role can see and act on. Nothing changed on rollout — it reproduces today\'s access until you edit it.',
+    details: [
+      'System Config → Roles & Permissions now has two grids. "Permissions": ~140 items grouped by surface (Student drawer, Partner tabs, Cohorts, Config, Questionnaires, CRM/Mail) — each row × role is a selector: Edit (full), View (read-only), No-access (locked) or Hidden (not shown). "Statuses": the 15-step student flow × role, so you can say which statuses a role can see and act on.',
+      'Enforcement is server-side and mirrored in the UI: below Edit a field is read-only and its Save is hidden, Hidden items disappear entirely, and the API rejects writes a role isn\'t allowed. Status: a role only sees students in statuses it\'s allowed, and can only change a status it can act on.',
+      'Super Administrator still has full access and bypasses everything; every change is recorded in the tab\'s change history (now showing the before → after level).',
+      'On rollout every item and status seeds to what each role can already do, so nobody\'s access changed. Read-only responses aren\'t field-masked yet (a value set to View shows read-only rather than being stripped from the API) — a planned refinement.',
+    ],
+  },
+  {
     id: 'access-matrix-rbac',
     date: '2026-08-12',
     title: 'Configurable Roles & Permissions (access matrix) — phase 1',
