@@ -109,7 +109,10 @@ public sealed class DraftSignupV1FinishEndpoint : IEndpointMarker
             StudentId = Guid.NewGuid(),
             UserId = user.Id,
             PartnerId = partner.PartnerId,
-            StudentNumber = GenerateStudentNumber(),
+            // No commencement date exists at signup, so start with a temporary
+            // number; it is finalised to ST-<commencement>-<monthly no> once the
+            // first enrolment gets a commencement date.
+            StudentNumber = Odin.Api.Base.Students.StudentNumberService.Temp(),
             WizardStep = 1,
             CreatedByUserId = draftState.ActorUserId,
         };
@@ -172,11 +175,4 @@ public sealed class DraftSignupV1FinishEndpoint : IEndpointMarker
         return Results.Ok(new { wizardToken });
     }
 
-    private static string GenerateStudentNumber()
-    {
-        // ST-YYYYMMDD-RAND6, e.g. ST-20260427-A8K3LP. Unique-enough at signup
-        // volume; admins can rebrand later.
-        var rnd = Guid.NewGuid().ToString("N").ToUpperInvariant().Substring(0, 6);
-        return $"ST-{DateTime.UtcNow:yyyyMMdd}-{rnd}";
-    }
 }

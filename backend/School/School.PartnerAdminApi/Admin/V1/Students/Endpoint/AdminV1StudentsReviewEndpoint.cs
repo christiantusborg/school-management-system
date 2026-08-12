@@ -230,6 +230,11 @@ public sealed class AdminV1StudentsReviewEndpoint : IEndpointMarker
 
         await db.SaveChangesAsync(ct);
 
+        // If review just set the first commencement date, finalise the
+        // student's temporary number into ST-<commencement>-<monthly no>.
+        await Odin.Api.Base.Students.StudentNumberService.FinaliseIfTempAsync(db, studentId, ct);
+        await db.SaveChangesAsync(ct);
+
         if (!anyRejected)
         {
             try

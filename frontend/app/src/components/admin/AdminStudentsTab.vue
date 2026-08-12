@@ -633,10 +633,18 @@
 <div class="detail-section" v-if="activeEnrollment">
                   <h4>Enrolment</h4>
                   <dl>
+                    <dt>School</dt>
+                    <dd v-if="canEditSpecialization">
+                      <select v-model="enrolSchoolFilter" class="dur-input" style="width:min(520px, 90%);" @change="onEnrolSchoolChange">
+                        <option value="">All schools</option>
+                        <option v-for="sc in enrolSchoolOptions" :key="sc.id" :value="sc.id">{{ sc.name }}</option>
+                      </select>
+                    </dd>
+                    <dd v-else>{{ activeEnrollment?.schoolName ?? '—' }}</dd>
                     <dt>Programme</dt>
                     <dd v-if="canEditSpecialization">
                       <select v-model="programmeDraft" class="dur-input" style="width:min(520px, 90%);" @change="onProgrammeDraftChange">
-                        <option v-for="p in enrolmentProgOptions" :key="p.programmeId" :value="p.programmeId">
+                        <option v-for="p in filteredEnrolProgOptions" :key="p.programmeId" :value="p.programmeId">
                           {{ p.name }}{{ p.schoolName ? ` (${p.schoolName})` : '' }}{{ p.showCode && p.code ? ` · ${p.code}` : '' }}
                         </option>
                       </select>
@@ -1550,6 +1558,7 @@ function simpleStatus(code) {
   if (code === 'AwaitingGradesApproval' || code === 'AwaitingGradesSubmit') return 'Active'
   if (code === 'Deferred') return 'Deferred'
   if (code === 'DroppedOut') return 'Dropped Out'
+  if (code === 'TransferredOut') return 'Transferred out'
   return 'Applicant'
 }
 
@@ -1569,6 +1578,7 @@ const STATUS_FILTERS = [
   { id: 'graduated',                 label: 'Graduated',                   codes: ['GradesApproved'] },
   { id: 'deferred',                  label: 'Deferred',                    codes: ['Deferred'] },
   { id: 'dropped-out',               label: 'Dropped Out',                 codes: ['DroppedOut'] },
+  { id: 'transferred-out',           label: 'Transferred out',             codes: ['TransferredOut'] },
   // Not a status: any enrolment with an unpaid installment / additional
   // invoice past its due date (flag computed by the list endpoint).
   { id: 'payment-overdue',           label: 'Payment overdue',             codes: null, overdue: true },
@@ -1827,6 +1837,27 @@ const commencementSaveOk = ref(false)
 const canEditSpecialization = computed(() =>
   ['SuperAdministrator', 'Administrator'].includes(auth.adminLevel))
 const enrolmentProgOptions = ref([])
+// School filter for the programme dropdown: narrows programmes to one school.
+const enrolSchoolFilter = ref('')
+const enrolSchoolOptions = computed(() => {
+  const seen = new Map()
+  for (const p of enrolmentProgOptions.value)
+    if (p.schoolId && !seen.has(p.schoolId)) seen.set(p.schoolId, { id: p.schoolId, name: p.schoolName ?? p.schoolId })
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+})
+const filteredEnrolProgOptions = computed(() =>
+  enrolSchoolFilter.value
+    ? enrolmentProgOptions.value.filter(p => p.schoolId === enrolSchoolFilter.value)
+    : enrolmentProgOptions.value)
+function onEnrolSchoolChange() {
+  // When the school changes, keep the current programme only if it belongs to
+  // that school; otherwise pick the first programme of the school.
+  const list = filteredEnrolProgOptions.value
+  if (!list.some(p => p.programmeId === programmeDraft.value)) {
+    programmeDraft.value = list[0]?.programmeId ?? ''
+    loadSpecsForProgramme(programmeDraft.value)
+  }
+}
 const enrolmentSpecOptions = ref([])
 const programmeDraft = ref('')
 const specializationDraft = ref('')
@@ -1849,6 +1880,7 @@ async function loadEnrolmentProgOptions() {
     for (const p of [...core, ...owned]) byId.set(p.programmeId, {
       programmeId: p.programmeId,
       name: p.name,
+      schoolId: p.schoolId ?? null,
       schoolName: p.schoolName ?? null,
       code: p.code ?? null,
     })
@@ -1861,6 +1893,9 @@ async function loadEnrolmentProgOptions() {
     for (const p of opts) counts[keyOf(p)] = (counts[keyOf(p)] ?? 0) + 1
     for (const p of opts) p.showCode = counts[keyOf(p)] > 1
     enrolmentProgOptions.value = opts
+    // Default the school filter to the active enrolment's school.
+    const cur = opts.find(p => p.programmeId === programmeDraft.value)
+    enrolSchoolFilter.value = cur?.schoolId ?? ''
   } catch { enrolmentProgOptions.value = [] }
 }
 

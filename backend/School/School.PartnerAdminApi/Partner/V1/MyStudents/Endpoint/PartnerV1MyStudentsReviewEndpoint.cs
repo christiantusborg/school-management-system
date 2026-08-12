@@ -220,6 +220,11 @@ public sealed class PartnerV1MyStudentsReviewEndpoint : IEndpointMarker
 
         await db.SaveChangesAsync(ct);
 
+        // If review just set the first commencement date, finalise the
+        // student's temporary number into ST-<commencement>-<monthly no>.
+        await Odin.Api.Base.Students.StudentNumberService.FinaliseIfTempAsync(db, studentId, ct);
+        await db.SaveChangesAsync(ct);
+
         // Best-effort: release the offer letter PDF after persisting state.
         // Failures here log but never roll back the partner's review.
         if (!anyRejected)

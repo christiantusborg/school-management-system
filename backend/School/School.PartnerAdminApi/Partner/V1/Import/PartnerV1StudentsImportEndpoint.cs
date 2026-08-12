@@ -66,22 +66,26 @@ public sealed class PartnerV1StudentsImportEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> StudentValidateAsync(
-        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        HttpContext httpContext, OdinDbContext db,
+        [FromServices] UserManager<ApplicationUser> userManager, CancellationToken ct)
     {
         var (partner, _, fail) = await ResolvePartnerAsync(httpContext, db, ct);
         if (fail is not null) return fail;
-        return await AdminV1StudentsImportEndpoint.ValidateCoreAsync(db, httpContext.Request, partner, ct);
+        return await AdminV1StudentsImportEndpoint.ValidateCoreAsync(db, userManager, httpContext.Request, partner, ct);
     }
 
     private static async Task<IResult> StudentImportAsync(
         HttpContext httpContext, OdinDbContext db,
-        [FromServices] OpaqueUserCreationService creator, CancellationToken ct)
+        [FromServices] OpaqueUserCreationService creator,
+        [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] Odin.Api.Base.Email.StudentEmailVerificationSender verificationSender,
+        CancellationToken ct)
     {
         var (partner, userId, fail) = await ResolvePartnerAsync(httpContext, db, ct);
         if (fail is not null) return fail;
         var actorId = Guid.TryParse(userId, out var g) ? g : Guid.Empty;
         return await AdminV1StudentsImportEndpoint.ImportCoreAsync(
-            db, creator, httpContext.Request, partner, actorId, ct);
+            db, creator, userManager, verificationSender, httpContext.Request, partner, actorId, ct);
     }
 
     private static async Task<IResult> GradeSample(

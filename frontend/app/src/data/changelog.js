@@ -5,6 +5,50 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'import-attach-existing-account',
+    date: '2026-08-12',
+    title: 'Import: attach a student to an existing (non-student) account',
+    summary: 'Rows whose email already has a plain account now create the student on that login instead of erroring.',
+    details: [
+      'Previously an import row failed with "Email already has a NON-student account and cannot be imported." Now, if that account is a plain (non-privileged) login, the import adds the Student role to it and creates the student record, enrolment and student number on the existing login.',
+      'Admin, partner and staff/sales logins are still protected: those rows are rejected with a clear "belongs to a staff/partner account" message rather than being converted.',
+      'Attached students are sent the welcome / login invite email so they can access the portal. The import preview shows "a student will be attached to it" for these rows.',
+    ],
+  },
+  {
+    id: 'student-id-commencement-scheme',
+    date: '2026-08-12',
+    title: 'New student ID format: ST-<commencement date>-<running number>',
+    summary: 'New students are numbered from their commencement date with a per-month running number.',
+    details: [
+      'New student numbers now read ST-YYYYMMDD-NNN, where the date is the student\'s first enrolment commencement date and NNN is a running number within that commencement month (e.g. ST-20240201-001, -002).',
+      'A student created before a commencement date exists (signup / draft) gets a temporary ST-TMP-xxxxxx number, which is finalised automatically the moment their first enrolment gets a commencement date.',
+      'Existing students keep their current numbers — the new scheme applies to new students only.',
+    ],
+  },
+  {
+    id: 'transferred-out-status',
+    date: '2026-08-12',
+    title: 'New enrolment status: "Transferred out"',
+    summary: 'Mark a student who left for another school; they no longer count as active.',
+    details: [
+      'The Change-status picker gains "Transferred out" for students who transferred to another school.',
+      'Transferred-out students are excluded from the "still active" figures in Statistics and are not flagged as stalled.',
+      'The students overview gains a "Transferred out" filter chip alongside Dropped Out and Deferred.',
+    ],
+  },
+  {
+    id: 'enrolment-school-filter',
+    date: '2026-08-12',
+    title: 'School filter on the enrolment programme picker',
+    summary: 'A School dropdown above Programme narrows the programme choices to that school.',
+    details: [
+      'In the student drawer → Programs → Enrolment, changing an enrolment\'s programme now starts with a School dropdown.',
+      'Picking a school limits the Programme list to programmes belonging to that school; "All schools" shows every programme as before.',
+      'The filter defaults to the enrolment\'s current school when the editor opens.',
+    ],
+  },
+  {
     id: 'students-date-filters',
     date: '2026-08-08',
     title: 'Commencement & graduation date filters on the students overview',

@@ -57,6 +57,10 @@ public sealed class AdminV1StudentsEnrolmentCommencementEndpoint : IEndpointMark
             ? DateTime.SpecifyKind(d.Date, DateTimeKind.Unspecified)
             : null;
         await db.SaveChangesAsync(ct);
+        // A student created before any commencement carries a temp number;
+        // finalise it now that this enrolment has a commencement date.
+        await Odin.Api.Base.Students.StudentNumberService.FinaliseIfTempAsync(db, studentId, ct);
+        await db.SaveChangesAsync(ct);
         return Results.Ok(new { commencementDate = enrolment.CommencementDate });
     }
 }

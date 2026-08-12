@@ -25,6 +25,9 @@ public static class EnrollmentStatusIds
     // action, no automatic flow out of them.
     public static readonly Guid Deferred                             = Guid.Parse("22222222-2222-2222-2222-20000000000d");
     public static readonly Guid DroppedOut                           = Guid.Parse("22222222-2222-2222-2222-20000000000e");
+    // Student left for another school. Terminal; explicitly NOT counted as an
+    // active student anymore (see AdminV1StatisticsEndpoint / StatisticsExtra).
+    public static readonly Guid TransferredOut                       = Guid.Parse("22222222-2222-2222-2222-20000000000f");
 
     public const string RoleStudent   = "Student";
     public const string RolePartner   = "Partner";
@@ -55,5 +58,6 @@ public static class EnrollmentStatusIds
         new(GradesApproved,                       "GradesApproved",                       "Grades Approved",                      500, 450, null,          null),
         new(Deferred,                             "Deferred",                             "Deferred",                             550,   0, null,          null),
         new(DroppedOut,                           "DroppedOut",                           "Dropped Out",                          560,   0, null,          null),
+        new(TransferredOut,                       "TransferredOut",                       "Transferred out",                      570,   0, null,          null),
     };
 }

@@ -214,17 +214,19 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
     // ── Endpoints ──────────────────────────────────────────────────────────
 
     private static async Task<IResult> ValidateAsync(
-        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        HttpContext httpContext, OdinDbContext db,
+        [FromServices] UserManager<ApplicationUser> userManager, CancellationToken ct)
     {
         var (forced, fail) = await ResolveForcedPartnerAsync(httpContext, db, ct);
         if (fail is not null) return fail;
-        return await ValidateCoreAsync(db, httpContext.Request, forced, ct);
+        return await ValidateCoreAsync(db, userManager, httpContext.Request, forced, ct);
     }
 
     internal static async Task<IResult> ValidateCoreAsync(
-        OdinDbContext db, HttpRequest request, PartnerEntity? forcedPartner, CancellationToken ct)
+        OdinDbContext db, UserManager<ApplicationUser> userManager,
+        HttpRequest request, PartnerEntity? forcedPartner, CancellationToken ct)
     {
-        var (plans, partners, fileError) = await BuildPlansAsync(db, request, forcedPartner, ct);
+        var (plans, partners, fileError) = await BuildPlansAsync(db, userManager, request, forcedPartner, ct);
         if (fileError is not null) return Results.BadRequest(new { error = fileError });
 
         var rows = plans.Select(p => new
@@ -237,7 +239,9 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             specialization = p.SpecializationName,
             action = p.Errors.Count > 0 ? "error" : p.SkipReason is not null ? "skip"
                 : p.ExistingStudent is not null || p.ReusesEarlierRow ? "enrol existing" : "create + enrol",
-            message = p.Errors.Count > 0 ? string.Join(" ", p.Errors) : p.SkipReason ?? "",
+            message = p.Errors.Count > 0 ? string.Join(" ", p.Errors)
+                : p.SkipReason ?? (p.AttachUser is not null
+                    ? "Existing account found — a student will be attached to it." : ""),
         }).ToList();
 
         return Results.Ok(new
@@ -254,20 +258,25 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
 
     private static async Task<IResult> ImportAsync(
         HttpContext httpContext, OdinDbContext db,
-        [FromServices] OpaqueUserCreationService creator, CancellationToken ct)
+        [FromServices] OpaqueUserCreationService creator,
+        [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] Odin.Api.Base.Email.StudentEmailVerificationSender verificationSender,
+        CancellationToken ct)
     {
         var (forced, fail) = await ResolveForcedPartnerAsync(httpContext, db, ct);
         if (fail is not null) return fail;
         var actorId = Guid.TryParse(
             httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var g) ? g : Guid.Empty;
-        return await ImportCoreAsync(db, creator, httpContext.Request, forced, actorId, ct);
+        return await ImportCoreAsync(db, creator, userManager, verificationSender, httpContext.Request, forced, actorId, ct);
     }
 
     internal static async Task<IResult> ImportCoreAsync(
-        OdinDbContext db, OpaqueUserCreationService creator, HttpRequest request,
-        PartnerEntity? forcedPartner, Guid actorId, CancellationToken ct)
+        OdinDbContext db, OpaqueUserCreationService creator,
+        UserManager<ApplicationUser> userManager,
+        Odin.Api.Base.Email.StudentEmailVerificationSender verificationSender,
+        HttpRequest request, PartnerEntity? forcedPartner, Guid actorId, CancellationToken ct)
     {
-        var (plans, partners, fileError) = await BuildPlansAsync(db, request, forcedPartner, ct);
+        var (plans, partners, fileError) = await BuildPlansAsync(db, userManager, request, forcedPartner, ct);
         if (fileError is not null) return Results.BadRequest(new { error = fileError });
 
         var createdByKey = new Dictionary<string, Student>(StringComparer.OrdinalIgnoreCase);
@@ -320,23 +329,46 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             }
             else
             {
-                // New student: account first (the service saves + throws on
-                // username collision), then profile/contact/student rows.
+                // New student, OR attach a student to an existing plain account.
                 ApplicationUser user;
-                try
+                var attaching = plan.AttachUser is not null;
+                if (attaching)
                 {
-                    (user, _) = await creator.CreateUserAsync(
-                        plan.Email!, plan.Email!, "Student", plan.Partner!.PartnerId, ct);
+                    // Reuse the existing login: just add the Student role and
+                    // stamp the partner if it has none yet.
+                    user = plan.AttachUser!;
+                    if (!await userManager.IsInRoleAsync(user, "Student"))
+                        await userManager.AddToRoleAsync(user, "Student");
+                    if (user.PartnerId is null)
+                    {
+                        user.PartnerId = plan.Partner!.PartnerId;
+                        await userManager.UpdateAsync(user);
+                    }
                 }
-                catch (Exception ex)
+                else
                 {
-                    failed++;
-                    results.Add(RowResult(plan, "error", $"Account creation failed: {ex.Message}", null));
-                    continue;
+                    // New account: the service saves + throws on username collision.
+                    try
+                    {
+                        (user, _) = await creator.CreateUserAsync(
+                            plan.Email!, plan.Email!, "Student", plan.Partner!.PartnerId, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        results.Add(RowResult(plan, "error", $"Account creation failed: {ex.Message}", null));
+                        continue;
+                    }
                 }
 
+                // ST-<commencement>-<monthly no> for the row's commencement; a
+                // temporary number if the row has none (finalised when set).
                 var number = plan.GivenStudentNumber
-                    ?? await GenerateUniqueStudentNumberAsync(db, usedNumbers, ct);
+                    ?? (plan.CommencementDate is { } cd
+                        ? await Odin.Api.Base.Students.StudentNumberService.MintAsync(db, cd, ct)
+                        : Odin.Api.Base.Students.StudentNumberService.Temp());
+                usedNumbers.Add(number);
+                plan.WasAttached = attaching;
                 student = new Student
                 {
                     StudentId = Guid.NewGuid(),
@@ -362,26 +394,32 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                     WantsStudentIdCard = plan.WantsCard,
                 };
                 db.Students.Add(student);
-                db.UserProfiles.Add(new UserProfile
-                {
-                    UserId = user.Id,
-                    FirstName = plan.Cell("FirstName"),
-                    LastName = plan.Cell("LastName"),
-                    DateOfBirth = plan.DateOfBirth,
-                });
-                db.UserContactEmails.Add(new UserContactEmail
-                {
-                    UserId = user.Id,
-                    Email = plan.Email!,
-                    IsPrimary = true,
-                    IsVerified = true,
-                });
+                // When attaching to an existing account, only add profile/contact
+                // rows it doesn't already have (they'd violate the 1:1/primary
+                // constraints otherwise).
+                if (!attaching || !await db.UserProfiles.AnyAsync(p => p.UserId == user.Id, ct))
+                    db.UserProfiles.Add(new UserProfile
+                    {
+                        UserId = user.Id,
+                        FirstName = plan.Cell("FirstName"),
+                        LastName = plan.Cell("LastName"),
+                        DateOfBirth = plan.DateOfBirth,
+                    });
+                if (!attaching || !await db.UserContactEmails.AnyAsync(c => c.UserId == user.Id, ct))
+                    db.UserContactEmails.Add(new UserContactEmail
+                    {
+                        UserId = user.Id,
+                        Email = plan.Email!,
+                        IsPrimary = true,
+                        IsVerified = true,
+                    });
                 var street = plan.Cell("AddressLine1");
                 var line2 = plan.Cell("AddressLine2");
                 if (street is not null && line2 is not null) street = $"{street}, {line2}";
                 street ??= line2;
-                if (street is not null || plan.Cell("City") is not null
+                if ((street is not null || plan.Cell("City") is not null
                     || plan.Cell("PostalCode") is not null || plan.Cell("CountryCode") is not null)
+                    && (!attaching || !await db.UserAddresses.AnyAsync(a => a.UserId == user.Id && a.IsPrimary, ct)))
                 {
                     db.UserAddresses.Add(new UserAddress
                     {
@@ -394,7 +432,8 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                         IsPrimary = true,
                     });
                 }
-                if (plan.Cell("Phone") is { } phone)
+                if (plan.Cell("Phone") is { } phone
+                    && (!attaching || !await db.UserPhones.AnyAsync(ph => ph.UserId == user.Id && ph.IsPrimary, ct)))
                     db.UserPhones.Add(new UserPhone { UserId = user.Id, Number = phone, IsPrimary = true });
 
                 db.StudentIdentifiers.Add(new SharedLibrary.Basics.Opaque.Domains.StudentIdentifier
@@ -456,10 +495,20 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             }
             await db.SaveChangesAsync(ct);
 
+            // Attached students: send the welcome / login invite to the existing
+            // account (best-effort — a mail hiccup never fails the import row).
+            if (plan.WasAttached && plan.AttachUser?.Email is { } attachEmail)
+            {
+                try { await verificationSender.IssueAndSendAsync(plan.AttachUser.Id, attachEmail, ct); }
+                catch { /* import row still succeeds */ }
+            }
+
             if (createdNow) created++; else enrolled++;
+            var enrolledMsg = plan.WasAttached
+                ? $"Attached to existing account · enrolled in {plan.ProgrammeName} / {plan.SpecializationName}."
+                : $"Enrolled in {plan.ProgrammeName} / {plan.SpecializationName}.";
             results.Add(RowResult(plan, createdNow ? "created" : "enrolled",
-                $"Enrolled in {plan.ProgrammeName} / {plan.SpecializationName}.",
-                student.StudentNumber));
+                enrolledMsg, student.StudentNumber));
         }
 
         return Results.Ok(new
@@ -514,6 +563,11 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
         public PartnerEntity? Partner;
         public Student? ExistingStudent;
         public bool ReusesEarlierRow;
+        /// <summary>Set when the row's email already belongs to a NON-student,
+        /// non-privileged account: instead of erroring, a student is attached
+        /// to this existing account (adds the Student role, keeps the login).</summary>
+        public ApplicationUser? AttachUser;
+        public bool WasAttached;
         public string NewKey = "";
         public string? GivenStudentNumber;
         /// <summary>Unknown Student ID on an email-matched student — attached
@@ -560,7 +614,8 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
     }
 
     private static async Task<(List<RowPlan> Plans, List<object> Partners, string? FileError)>
-        BuildPlansAsync(OdinDbContext db, HttpRequest request, PartnerEntity? forcedPartner, CancellationToken ct)
+        BuildPlansAsync(OdinDbContext db, UserManager<ApplicationUser> userManager,
+            HttpRequest request, PartnerEntity? forcedPartner, CancellationToken ct)
     {
         if (!request.HasFormContentType)
             return ([], [], "Upload the CSV as multipart form data (field name \"file\").");
@@ -676,14 +731,29 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             .Select(p => p.Cell("Email")?.ToLowerInvariant())
             .Where(e => e != null && !studentsByEmail.ContainsKey(e!))
             .Distinct().Cast<string>().ToList();
-        var takenIdentifiers = (await db.Users
-                .Where(u => (u.Email != null && newEmails.Contains(u.Email.ToLower()))
-                         || (u.UserName != null && newEmails.Contains(u.UserName.ToLower())))
-                .Select(u => new { u.Email, u.UserName })
-                .ToListAsync(ct))
-            .SelectMany(u => new[] { u.Email?.ToLowerInvariant(), u.UserName?.ToLowerInvariant() })
-            .Where(v => v != null)
-            .ToHashSet();
+        // Emails in the file that already own a non-student account. Split them:
+        // privileged accounts (admin/partner/staff) still can't be imported;
+        // plain accounts get a student attached to the existing login instead
+        // of erroring.
+        var takenUsers = await db.Users
+            .Where(u => (u.Email != null && newEmails.Contains(u.Email.ToLower()))
+                     || (u.UserName != null && newEmails.Contains(u.UserName.ToLower())))
+            .ToListAsync(ct);
+        var privilegedRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Admin", "SuperAdministrator", "Administrator", "Manager",
+            "Editor", "Viewer", "Sales", "Partner",
+        };
+        var attachableUsers = new Dictionary<string, ApplicationUser>(StringComparer.OrdinalIgnoreCase);
+        var privilegedEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var u in takenUsers)
+        {
+            var key = u.Email?.ToLowerInvariant() ?? u.UserName?.ToLowerInvariant();
+            if (key is null) continue;
+            var roles = await userManager.GetRolesAsync(u);
+            if (roles.Any(r => privilegedRoles.Contains(r))) privilegedEmails.Add(key);
+            else attachableUsers[key] = u;
+        }
 
         // Per-file state: identity of new students planned by earlier rows, and
         // (student key, specialization) pairs to catch duplicate lines.
@@ -821,8 +891,12 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
                 {
                     if (plan.Cell("FirstName") is null) plan.Errors.Add("FirstName is required for a new student.");
                     if (plan.Cell("LastName") is null) plan.Errors.Add("LastName is required for a new student.");
-                    if (takenIdentifiers.Contains(plan.Email))
-                        plan.Errors.Add($"Email '{plan.Email}' already has a NON-student account and cannot be imported.");
+                    if (privilegedEmails.Contains(plan.Email))
+                        plan.Errors.Add($"Email '{plan.Email}' belongs to a staff/partner account and cannot be imported as a student.");
+                    else if (attachableUsers.TryGetValue(plan.Email, out var attachUser))
+                        // Reuse the existing plain account: a student will be
+                        // attached to it rather than a new account created.
+                        plan.AttachUser = attachUser;
 
                     ParsePersonalFields(plan, nationalities, currencies, positionFunctions, industries);
 
@@ -931,20 +1005,6 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
             if (v is "true" or "yes" or "1") plan.WantsCard = true;
             else if (v is "false" or "no" or "0") plan.WantsCard = false;
             else plan.Errors.Add($"WantsStudentCard '{card}' isn't true/false.");
-        }
-    }
-
-    private static async Task<string> GenerateUniqueStudentNumberAsync(
-        OdinDbContext db, HashSet<string> usedThisRun, CancellationToken ct)
-    {
-        // Same shape as the signup wizard: ST-YYYYMMDD-RAND6.
-        while (true)
-        {
-            var rnd = Guid.NewGuid().ToString("N").ToUpperInvariant().Substring(0, 6);
-            var candidate = $"ST-{DateTime.UtcNow:yyyyMMdd}-{rnd}";
-            if (!usedThisRun.Add(candidate)) continue;
-            if (!await db.Students.AnyAsync(s => s.StudentNumber == candidate, ct))
-                return candidate;
         }
     }
 

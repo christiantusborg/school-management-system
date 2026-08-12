@@ -379,7 +379,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
         // Stalled students: still-active enrolments, commenced 4+ months ago,
         // not a single grade saved. Always evaluated against today.
         var cutoff = DateTime.SpecifyKind(today.AddMonths(-4), DateTimeKind.Unspecified);
-        var finalCodes = new[] { "GradesApproved", "DroppedOut", "Deferred" };
+        var finalCodes = new[] { "GradesApproved", "DroppedOut", "Deferred", "TransferredOut" };
         var stalled = await (
             from e in db.Enrollments
             where e.DeletedAt == null

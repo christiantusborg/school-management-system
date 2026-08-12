@@ -44,7 +44,11 @@ public sealed class AdminV1StatisticsEndpoint : IEndpointMarker
             var passed = codes.Count(c => c == "GradesApproved");
             var dropped = codes.Count(c => c == "DroppedOut");
             var deferred = codes.Count(c => c == "Deferred");
-            var active = total - passed - dropped - deferred;
+            // Transferred-out students left for another school: not active, and
+            // not one of the tracked outcomes either — just remove them so they
+            // don't inflate the "still active" figure.
+            var transferred = codes.Count(c => c == "TransferredOut");
+            var active = total - passed - dropped - deferred - transferred;
             static double Pct(int n, int t) => t == 0 ? 0 : Math.Round(n * 100.0 / t, 1);
             return new Bucket(label, total,
                 passed, Pct(passed, total),
