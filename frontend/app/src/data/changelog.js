@@ -5,6 +5,98 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'datasheet-multiple-files-field',
+    date: '2026-08-12',
+    title: 'New "Multiple files" field type for datasheets & Faculty Profile',
+    summary: 'A new field type lets one field hold many uploaded documents (e.g. transcripts for every degree), added from a single selector, each with its own download and remove.',
+    details: [
+      'In the datasheet builder and System Config → Faculty Profile Information, the field-type list now includes "Multiple files" (next to the single "File upload").',
+      'On the fill form a "Multiple files" field shows one selector that accepts several files at once; each uploaded file is listed with its own ⤓ download and ✕ remove, and you can keep adding more.',
+      'Works on both the admin and partner sides, for Faculty Profiles and datasheets. Existing single "File upload" fields are unchanged — switch a field to "Multiple files" in the builder to allow many.',
+      'Note: a newly added file becomes downloadable after you Save (it shows "save to download" until then).',
+    ],
+  },
+  {
+    id: 'partner-datasheet-menu-faculty',
+    date: '2026-08-12',
+    title: 'Renamed the "Faculties" section to "Faculty"',
+    summary: 'The partner "Faculties" menu item and section headings now read "Faculty".',
+    details: [
+      'In a partner\'s detail (admin ⚙ menu and the partner portal), the "Faculties" entry and its section heading are now "Faculty".',
+      'Label only — the data and behaviour are unchanged.',
+    ],
+  },
+  {
+    id: 'field-tooltips',
+    date: '2026-08-12',
+    title: 'Tooltips on datasheet & Faculty Profile fields',
+    summary: 'When building a datasheet or the Faculty Profile structure you can now give any field a tooltip; it shows as an ⓘ hint next to the field when the partner fills it in.',
+    details: [
+      'Admin → System Config → Faculty Profile Information, and Admin → (partner) Datasheets → the datasheet builder: each field row now has a "Tooltip / help text" box.',
+      'Whatever you type appears as an ⓘ next to that field\'s label on the fill form (hover to read it). Leave it blank for no tooltip.',
+    ],
+  },
+  {
+    id: 'partner-short-code-faculty-id',
+    date: '2026-08-12',
+    title: 'Partner short code used in Faculty / datasheet IDs',
+    summary: 'A partner can now have a short code (e.g. IBAS); newly generated Faculty and datasheet IDs use it instead of the full partner name.',
+    details: [
+      'Admin → Partners → (open a partner) → Profile → Edit: new "Short code" field (e.g. IBAS for International Business Academy of Switzerland).',
+      'Auto-generated Faculty / datasheet IDs now use the short code in place of the full name, e.g. IBAS-…-001 instead of MGW-FAC-InternationalBusinessAcademy-001. Partners with no short code keep using the name, and existing IDs are never changed (only IDs generated from now on).',
+    ],
+  },
+  {
+    id: 'rename-pathway-to-entry-requirement',
+    date: '2026-08-12',
+    title: 'Renamed "Pathway" to "Entry Requirement" throughout',
+    summary: 'Everywhere the app said "Pathway" / "Pathways" it now reads "Entry Requirement" / "Entry Requirements".',
+    details: [
+      'Admin → System Config: the "Pathways" tab is now "Entry Requirements" (add/edit dialog, hints and messages updated).',
+      'Programme setup (Admin → Academic and the partner programme editor), the /apply wizard section, and the partner student-review step now all say "Entry Requirement".',
+      'The student CSV export column "Pathway" is now "Entry Requirement" (and "Pathway min yrs exp" → "Entry Requirement min yrs exp").',
+      'Only the wording changed — existing data, IDs and behaviour are untouched.',
+    ],
+  },
+  {
+    id: 'questionnaire-owner-reference-fields',
+    date: '2026-08-12',
+    title: 'Owner-set reference fields (School / Partner / Programme / Text) on public forms',
+    summary: 'Four new "Special" questionnaire fields let you tag each public form with a School, Partner, Partner→Programme, or free-text reference. You set the value per public form; the respondent never sees them as inputs; the value is recorded with every submission and charts in Statistics.',
+    details: [
+      'Admin → Questionnaires → Builder → Components → Special has four new fields: School, Partner, Partner → Programme, and Reference text. Drag one into the questionnaire to declare it (its Inspector only has a "Show in Statistics" switch — the value is not set here).',
+      'You set each field\'s value per public form: Admin → Questionnaires → Public forms → New/Edit. When the chosen questionnaire has reference fields, the dialog shows an input for each (School/Partner dropdowns; Partner → Programme cascades — pick the partner first, then one of their programmes; Reference text is free text). They\'re required before you can Publish.',
+      'On the /f/ fill page these show read-only, and the value is stamped into every submission — so different public-form runs of the same questionnaire can carry different values (e.g. one run tagged IBSS, another IBAS).',
+      'In Statistics the reference value aggregates like any question (e.g. a "School" bar showing "IBSS: 20"; combined runs compare "IBSS: 20 / IBAS: 15"). The per-field "Show in Statistics" switch keeps a value in Submissions only when off. Wiring the same owner-fill into other surfaces (intake instances) is planned for later.',
+    ],
+  },
+  {
+    id: 'public-forms-runs-and-statistics',
+    date: '2026-08-12',
+    title: 'Public forms: date-window runs + a full statistics page',
+    summary: 'Each public form is now a dated "run" whose link auto-closes after the end date, with a per-form Statistics page that aggregates answers, lists comments, and can combine multiple runs of the same questionnaire.',
+    details: [
+      'Admin → Questionnaires → Public forms: the New/Edit dialog has "Run start" and "Run end" date fields. The public /f/ link stops accepting responses after the run-end date (visitors then see a "this form is closed" message); leave the dates blank to keep it always open. The list shows each form\'s run window and a red "Closed" chip once it has ended.',
+      'Each row has a new "Statistics" button that opens a full-screen results page: response count, per-question bar charts (with averages for numeric scales), and a "Text answers & comments" section listing every free-text answer as "Respondent #N" (anonymous), plus a per-respondent drill-down.',
+      'At the top of the statistics page a "Run" selector lets you view one run on its own, or pick "All runs combined" to pool every run of the same questionnaire into one aggregate.',
+      'If the combined runs span more than one questionnaire version, a warning banner appears ("data may be inaccurate: mixed questionnaire versions") and the affected questions are tagged "changed between versions" / "removed in current version".',
+    ],
+  },
+  {
+    id: 'signup-personal-background-fields',
+    date: '2026-08-12',
+    title: 'Application wizard: Gender, disability, and work-background fields',
+    summary: 'The /apply wizard now collects Gender and a disability question on the Personal step, plus Position Function, Employment Industry and monthly salary on the Background step. The two new dropdown lists are configurable in System Config.',
+    details: [
+      'Personal step: new Gender select (Female / Male / Another gender identity / Prefer not to say) beside Nationality, and a disability-disclosure question (Yes / No / Prefer not to say) that reveals a support-needs text area only when "Yes" is chosen.',
+      'Background step: new "Current Position by Function" and "Current Employment Industry" dropdowns, plus "Monthly salary at time of starting education" (amount + currency).',
+      'Admin → System Config has two new tabs, "Position Functions" and "Employment Industries", to manage those dropdown option lists (name + display order), the same way Currencies are managed.',
+      'Transcript / grade legend: the "MGW Grade" column and GRADE STANDARD legend now show the issuing school\'s name (IBAS or IBSS) instead of "MGW", falling back to "School Grade".',
+      'Submit-grades modal: entering a score now shows its matching grade letter live next to the field, no save required.',
+      'Security: /v1/school/* config endpoints are now auth-guarded (admins can write, admins and partners can read); they were previously reachable anonymously.',
+    ],
+  },
+  {
     id: 'student-programs-hide-old-letters',
     date: '2026-08-12',
     title: 'Student drawer → Programs: old letter rows hidden',
