@@ -58,7 +58,13 @@ public class PermissionAuditLog
     public string? ChangedByUsername { get; set; }
     public DateTime ChangedAt { get; set; } = DateTime.UtcNow;
     public string RoleName { get; set; } = null!;
+    /// <summary>The item key (permission changes) or a status label (status changes).</summary>
     public string PermissionKey { get; set; } = null!;
+    /// <summary>Set for status-grid changes; null for item changes.</summary>
+    public Guid? StatusId { get; set; }
     public bool OldValue { get; set; }
     public bool NewValue { get; set; }
+    /// <summary>Phase-2 access levels (0 Hidden · 1 NoAccess · 2 View · 3 Edit).</summary>
+    public int OldLevel { get; set; }
+    public int NewLevel { get; set; }
 }

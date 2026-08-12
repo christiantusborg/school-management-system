@@ -6,7 +6,9 @@ export const auth = reactive({
   user: null,
   error: null,
   loading: false,
-  permissions: [],   // effective access-matrix permission keys (admins)
+  permissions: [],       // Phase-1: keys held at Edit (admins)
+  accessMap: {},         // Phase-2: item key -> access level (0 Hidden..3 Edit)
+  statusAccessMap: {},   // Phase-2: enrolment status id -> access level
 
   // MFA pending state
   mfaPendingId: null,
@@ -127,9 +129,11 @@ export const auth = reactive({
         try {
           const p = await api.get('/v1/admin/my-permissions')
           this.permissions = p.data?.permissions ?? []
-        } catch { this.permissions = [] }
+          this.accessMap = p.data?.access ?? {}
+          this.statusAccessMap = p.data?.statusAccess ?? {}
+        } catch { this.permissions = []; this.accessMap = {}; this.statusAccessMap = {} }
       } else {
-        this.permissions = []
+        this.permissions = []; this.accessMap = {}; this.statusAccessMap = {}
       }
     } catch {
       this.logout()
@@ -149,6 +153,8 @@ export const auth = reactive({
     this.user = null
     this.error = null
     this.permissions = []
+    this.accessMap = {}
+    this.statusAccessMap = {}
     this.mfaPendingId = null
     this.mfaAvailableMethods = []
     localStorage.removeItem('adminToken')
@@ -164,11 +170,22 @@ export const auth = reactive({
     return levels.find(l => roles.includes(l)) ?? null
   },
 
-  // Access matrix: does the current admin hold this permission?
-  // SuperAdministrator always does (it bypasses the matrix).
-  can(key) {
-    if (this.isSuperAdmin) return true
-    return (this.permissions ?? []).includes(key)
+  // Access matrix (Phase 2). Levels: 0 Hidden · 1 No-access · 2 View · 3 Edit.
+  // SuperAdministrator always has Edit (it bypasses the matrix).
+  access(key) {
+    if (this.isSuperAdmin) return 3
+    const v = this.accessMap?.[key]
+    return v === undefined || v === null ? 0 : v
+  },
+  // Phase-1 compatible: true only at Edit.
+  can(key)     { return this.access(key) === 3 },
+  canView(key) { return this.access(key) >= 2 },   // View or Edit
+  isHidden(key){ return this.access(key) <= 0 },
+  // Status-based access: missing = Edit (a status only restricts once set).
+  statusAccess(statusId) {
+    if (this.isSuperAdmin) return 3
+    const v = this.statusAccessMap?.[statusId]
+    return v === undefined || v === null ? 3 : v
   },
 })
 

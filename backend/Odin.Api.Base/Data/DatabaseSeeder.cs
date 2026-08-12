@@ -179,6 +179,66 @@ public static class DatabaseSeeder
         await SeedDocumentTypeVerifyRequirementsAsync(context, logger);
         await SeedProgrammeDocumentRequirementsAsync(context, logger);
         await SeedAccessMatrixAsync(context, logger);
+        await SeedAccessMatrixPhase2Async(context, logger);
+    }
+
+    /// <summary>
+    /// Phase-2 access-matrix seed: (1) one-time fix so the Phase-1 grants that
+    /// got AccessLevel = 0 from the additive column migration become Edit;
+    /// (2) seed every new catalogue item (reproduce-today defaults from
+    /// <see cref="Odin.Api.Base.Authorization.AdminResources"/>); (3) seed the
+    /// per-role status grid (Edit for every role × every enrolment status =
+    /// today, where status never restricts an admin). Idempotent and
+    /// edit-preserving: existing rows are never overwritten (except the one-time
+    /// AccessLevel fix, guarded by Allowed = true AND AccessLevel = 0).
+    /// </summary>
+    private static async Task SeedAccessMatrixPhase2Async(OdinDbContext context, ILogger logger)
+    {
+        var levels = Odin.Api.Base.Authorization.AdminLevels.All
+            .Where(l => l != Odin.Api.Base.Authorization.AdminLevels.SuperAdministrator).ToArray();
+
+        // (1) Migrate Phase-1 grants left at AccessLevel 0 by the additive column.
+        var toFix = await context.RolePermissions.Where(rp => rp.Allowed && rp.AccessLevel == 0).ToListAsync();
+        foreach (var rp in toFix) rp.AccessLevel = (int)Odin.Api.Base.Authorization.AccessLevel.Edit;
+        if (toFix.Count > 0) await context.SaveChangesAsync();
+
+        // (2) Seed new catalogue items for roles that don't have them yet.
+        var existing = (await context.RolePermissions
+                .Select(rp => new { rp.RoleName, rp.PermissionKey }).ToListAsync())
+            .Select(x => x.RoleName + "|" + x.PermissionKey).ToHashSet();
+        foreach (var res in Odin.Api.Base.Authorization.AdminResources.Catalog)
+        foreach (var role in levels)
+        {
+            if (existing.Contains(role + "|" + res.Key)) continue;
+            var lvl = Odin.Api.Base.Authorization.AdminResources.DefaultLevel(res, role);
+            context.RolePermissions.Add(new SharedLibrary.Basics.Opaque.Domains.Authorization.RolePermission
+            {
+                RoleName = role,
+                PermissionKey = res.Key,
+                AccessLevel = (int)lvl,
+                Allowed = lvl == Odin.Api.Base.Authorization.AccessLevel.Edit,
+            });
+        }
+        await context.SaveChangesAsync();
+
+        // (3) Seed the per-role status grid (Edit for all, reproduce today).
+        var statusIds = await context.EnrollmentStatuses.Select(s => s.EnrollmentStatusId).ToListAsync();
+        var existingStatus = (await context.RoleStatusAccesses
+                .Select(r => new { r.RoleName, r.StatusId }).ToListAsync())
+            .Select(x => x.RoleName + "|" + x.StatusId).ToHashSet();
+        foreach (var sid in statusIds)
+        foreach (var role in levels)
+        {
+            if (existingStatus.Contains(role + "|" + sid)) continue;
+            context.RoleStatusAccesses.Add(new SharedLibrary.Basics.Opaque.Domains.Authorization.RoleStatusAccess
+            {
+                RoleName = role, StatusId = sid,
+                AccessLevel = (int)Odin.Api.Base.Authorization.AccessLevel.Edit,
+            });
+        }
+        await context.SaveChangesAsync();
+        logger.LogInformation("Access matrix Phase-2 seeded ({Items} items × roles, {Statuses} statuses).",
+            Odin.Api.Base.Authorization.AdminResources.Catalog.Count, statusIds.Count);
     }
 
     /// <summary>
