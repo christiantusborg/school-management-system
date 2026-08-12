@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using CurrencyEntity = SharedLibrary.Basics.Opaque.Domains.Payments.Currency;
 
 namespace School.ProgrammeApi;
@@ -51,8 +52,9 @@ public sealed class CurrenciesV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { items });
     }
 
-    private static async Task<IResult> CreateAsync(OdinDbContext db, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> CreateAsync(OdinDbContext db, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var code = body.Code?.Trim();
         if (string.IsNullOrWhiteSpace(code))
             return Results.BadRequest(new { message = "code is required" });
@@ -69,8 +71,9 @@ public sealed class CurrenciesV1CrudEndpoint : IEndpointMarker
         return Results.Created($"/v1/school/currencies/{entity.CurrencyId}", new { currencyId = entity.CurrencyId });
     }
 
-    private static async Task<IResult> UpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> UpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var cur = await db.Currencies.FirstOrDefaultAsync(c => c.CurrencyId == id, ct);
         if (cur is null) return Results.NotFound();
         if (!string.IsNullOrWhiteSpace(body.Code)) cur.Code = body.Code.Trim();
@@ -80,8 +83,9 @@ public sealed class CurrenciesV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { currencyId = id });
     }
 
-    private static async Task<IResult> SoftDeleteAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> SoftDeleteAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var cur = await db.Currencies.FirstOrDefaultAsync(c => c.CurrencyId == id && c.DeletedAt == null, ct);
         if (cur is null) return Results.NotFound();
         cur.DeletedAt = DateTime.UtcNow;
@@ -89,8 +93,9 @@ public sealed class CurrenciesV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { currencyId = id });
     }
 
-    private static async Task<IResult> RestoreAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> RestoreAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var cur = await db.Currencies.FirstOrDefaultAsync(c => c.CurrencyId == id, ct);
         if (cur is null) return Results.NotFound();
         cur.DeletedAt = null;

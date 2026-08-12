@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using School.PathwayApi.Pathway.V1.SoftDelete.Command;
 
 namespace School.PathwayApi.Pathway.V1.SoftDelete.Endpoint;
@@ -17,8 +18,11 @@ public sealed class PathwayV1SoftDeleteEndpoint : IEndpointMarker
         Guid id,
         [FromServices] IDispatcher sender,
         [FromServices] IMapper<PathwayV1SoftDeleteCommandResult, PathwayV1SoftDeleteEndpointResponse> responseMapper,
+        [FromServices] IPermissionService perms,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", cancellationToken) != AccessLevel.Edit) return Results.Forbid();
         var command = new PathwayV1SoftDeleteCommand { PathwayId = id };
         var commandResult = await sender.SendAsync(command, cancellationToken).ConfigureAwait(false);
         return commandResult.ToResult(responseMapper);

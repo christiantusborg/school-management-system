@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Claims;
 using System.Text;
+using Odin.Api.Base.Authorization;
 using PartnerEntity = SharedLibrary.Basics.Opaque.Domains.Partners.Partner;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
@@ -257,12 +258,14 @@ public sealed class AdminV1StudentsImportEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> ImportAsync(
-        HttpContext httpContext, OdinDbContext db,
+        HttpContext httpContext, IPermissionService perms, OdinDbContext db,
         [FromServices] OpaqueUserCreationService creator,
         [FromServices] UserManager<ApplicationUser> userManager,
         [FromServices] Odin.Api.Base.Email.StudentEmailVerificationSender verificationSender,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "import.students", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var (forced, fail) = await ResolveForcedPartnerAsync(httpContext, db, ct);
         if (fail is not null) return fail;
         var actorId = Guid.TryParse(

@@ -1,3 +1,5 @@
+using Odin.Api.Base.Authorization;
+
 namespace School.ProgrammeApi;
 
 /// <summary>
@@ -49,8 +51,9 @@ public sealed class EmploymentIndustriesV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { items });
     }
 
-    private static async Task<IResult> CreateAsync(OdinDbContext db, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> CreateAsync(OdinDbContext db, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var name = body.Name?.Trim();
         if (string.IsNullOrWhiteSpace(name))
             return Results.BadRequest(new { message = "name is required" });
@@ -66,8 +69,9 @@ public sealed class EmploymentIndustriesV1CrudEndpoint : IEndpointMarker
         return Results.Created($"/v1/school/employment-industries/{entity.EmploymentIndustryId}", new { employmentIndustryId = entity.EmploymentIndustryId });
     }
 
-    private static async Task<IResult> UpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> UpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var cur = await db.EmploymentIndustries.FirstOrDefaultAsync(c => c.EmploymentIndustryId == id, ct);
         if (cur is null) return Results.NotFound();
         if (!string.IsNullOrWhiteSpace(body.Name)) cur.Name = body.Name.Trim();
@@ -76,8 +80,9 @@ public sealed class EmploymentIndustriesV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { employmentIndustryId = id });
     }
 
-    private static async Task<IResult> SoftDeleteAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> SoftDeleteAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var cur = await db.EmploymentIndustries.FirstOrDefaultAsync(c => c.EmploymentIndustryId == id && c.DeletedAt == null, ct);
         if (cur is null) return Results.NotFound();
         cur.DeletedAt = DateTime.UtcNow;
@@ -85,8 +90,9 @@ public sealed class EmploymentIndustriesV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { employmentIndustryId = id });
     }
 
-    private static async Task<IResult> RestoreAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> RestoreAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var cur = await db.EmploymentIndustries.FirstOrDefaultAsync(c => c.EmploymentIndustryId == id, ct);
         if (cur is null) return Results.NotFound();
         cur.DeletedAt = null;

@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using SchoolEntity = SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes.School;
 
 namespace School.ProgrammeApi;
@@ -57,8 +58,9 @@ public sealed class SchoolsV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { items });
     }
 
-    private static async Task<IResult> CreateAsync(OdinDbContext db, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> CreateAsync(OdinDbContext db, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var name = body.Name?.Trim();
         if (string.IsNullOrWhiteSpace(name))
             return Results.BadRequest(new { message = "name is required" });
@@ -74,8 +76,9 @@ public sealed class SchoolsV1CrudEndpoint : IEndpointMarker
         return Results.Created($"/v1/school/schools/{entity.SchoolId}", new { schoolId = entity.SchoolId });
     }
 
-    private static async Task<IResult> UpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> UpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var school = await db.Schools.FirstOrDefaultAsync(s => s.SchoolId == id, ct);
         if (school is null) return Results.NotFound();
 
@@ -85,8 +88,9 @@ public sealed class SchoolsV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { schoolId = id });
     }
 
-    private static async Task<IResult> SoftDeleteAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> SoftDeleteAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var school = await db.Schools.FirstOrDefaultAsync(s => s.SchoolId == id && s.DeletedAt == null, ct);
         if (school is null) return Results.NotFound();
 
@@ -102,8 +106,9 @@ public sealed class SchoolsV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { schoolId = id });
     }
 
-    private static async Task<IResult> RestoreAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> RestoreAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var school = await db.Schools.FirstOrDefaultAsync(s => s.SchoolId == id, ct);
         if (school is null) return Results.NotFound();
         school.DeletedAt = null;

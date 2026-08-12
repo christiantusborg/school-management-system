@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains.Intake;
 
 namespace School.IntakeApi.QuestionnaireTemplates;
@@ -72,8 +73,10 @@ public sealed class QuestionnaireTemplatesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> CreateAsync(
-        [FromBody] WriteRequest body, HttpContext http, OdinDbContext db, CancellationToken ct)
+        [FromBody] WriteRequest body, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.builder", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (string.IsNullOrWhiteSpace(body.Name)) return Fail("name_required");
         if (string.IsNullOrWhiteSpace(body.DefinitionJson)) return Fail("definition_required");
         if (!IsValidJson(body.DefinitionJson)) return Fail("definition_not_valid_json");
@@ -123,8 +126,10 @@ public sealed class QuestionnaireTemplatesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UpdateAsync(
-        Guid questionnaireTemplateId, [FromBody] WriteRequest body, OdinDbContext db, CancellationToken ct)
+        Guid questionnaireTemplateId, [FromBody] WriteRequest body, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.builder", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var t = await db.QuestionnaireTemplates
             .FirstOrDefaultAsync(x => x.QuestionnaireTemplateId == questionnaireTemplateId && x.DeletedAt == null, ct);
         if (t is null) return Fail("not_found", StatusCodes.Status404NotFound);
@@ -186,8 +191,10 @@ public sealed class QuestionnaireTemplatesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SoftDeleteAsync(
-        Guid questionnaireTemplateId, OdinDbContext db, CancellationToken ct)
+        Guid questionnaireTemplateId, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.templates", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var t = await db.QuestionnaireTemplates
             .FirstOrDefaultAsync(x => x.QuestionnaireTemplateId == questionnaireTemplateId && x.DeletedAt == null, ct);
         if (t is null) return Fail("not_found", StatusCodes.Status404NotFound);
@@ -197,8 +204,10 @@ public sealed class QuestionnaireTemplatesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> RestoreAsync(
-        Guid questionnaireTemplateId, OdinDbContext db, CancellationToken ct)
+        Guid questionnaireTemplateId, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.builder", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var t = await db.QuestionnaireTemplates
             .FirstOrDefaultAsync(x => x.QuestionnaireTemplateId == questionnaireTemplateId && x.DeletedAt != null, ct);
         if (t is null) return Fail("not_found", StatusCodes.Status404NotFound);

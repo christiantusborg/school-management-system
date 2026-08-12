@@ -354,8 +354,10 @@ public sealed class AdminV1MailEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SendAsync(
-        [FromBody] SendBody body, HttpContext ctx, OdinDbContext db, MailHubService mail, CancellationToken ct)
+        [FromBody] SendBody body, HttpContext ctx, IPermissionService perms, OdinDbContext db, MailHubService mail, CancellationToken ct)
     {
+        if (await perms.AccessAsync(ctx.User, "mail.send", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (string.IsNullOrWhiteSpace(body.To) || string.IsNullOrWhiteSpace(body.Body))
             return Results.BadRequest(new { error = "to and body are required." });
         var allowed = await AccessibleAccounts(db, ctx).AnyAsync(a => a.MailAccountId == body.AccountId, ct);

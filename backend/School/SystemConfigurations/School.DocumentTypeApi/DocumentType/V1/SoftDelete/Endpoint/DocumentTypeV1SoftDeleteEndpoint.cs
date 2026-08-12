@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using School.DocumentTypeApi.DocumentType.V1.SoftDelete.Command;
 
 namespace School.DocumentTypeApi.DocumentType.V1.SoftDelete.Endpoint;
@@ -17,8 +18,11 @@ public sealed class DocumentTypeV1SoftDeleteEndpoint : IEndpointMarker
         Guid id,
         [FromServices] IDispatcher sender,
         [FromServices] IMapper<DocumentTypeV1SoftDeleteCommandResult, DocumentTypeV1SoftDeleteEndpointResponse> responseMapper,
+        [FromServices] IPermissionService perms,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", cancellationToken) != AccessLevel.Edit) return Results.Forbid();
         var command = new DocumentTypeV1SoftDeleteCommand { DocumentTypeId = id };
         var commandResult = await sender.SendAsync(command, cancellationToken).ConfigureAwait(false);
         return commandResult.ToResult(responseMapper);

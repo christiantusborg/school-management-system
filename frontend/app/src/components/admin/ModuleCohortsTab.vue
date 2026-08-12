@@ -7,7 +7,7 @@
           assigned students, teaching materials, grading sheets and QA. Cohort numbers generate from the pattern
           in System Config → Module Cohorts.</p>
       </div>
-      <button v-if="!readOnly" type="button" class="btn-primary-sm" @click="openAdd">+ Add cohort</button>
+      <button v-if="!readOnly && auth.can('cohorts.manage')" type="button" class="btn-primary-sm" @click="openAdd">+ Add cohort</button>
     </div>
 
     <div v-if="mode === 'admin'" class="mc-filters">
@@ -45,7 +45,7 @@
           </td>
           <td class="actions-cell">
             <button type="button" class="btn-sm" @click="openDetail(c)">✎ Open</button>
-            <button v-if="!readOnly" type="button" class="btn-sm btn-danger" @click="removeCohort(c)">✕</button>
+            <button v-if="!readOnly && auth.can('cohorts.manage')" type="button" class="btn-sm btn-danger" @click="removeCohort(c)">✕</button>
           </td>
         </tr>
       </tbody>
@@ -190,9 +190,9 @@
                 <div v-for="file in f.files" :key="file.id" class="mc-file-row">
                   <span>📄 {{ file.fileName }}</span>
                   <button type="button" class="btn-sm" @click="downloadFile(file)">⤓</button>
-                  <button v-if="!readOnly" type="button" class="btn-sm btn-danger" @click="deleteFile(f, file)">✕</button>
+                  <button v-if="!readOnly && auth.can('cohorts.files')" type="button" class="btn-sm btn-danger" @click="deleteFile(f, file)">✕</button>
                 </div>
-                <input v-if="!readOnly" type="file" :multiple="f.allowMultiple" @change="uploadFiles(f, $event)" />
+                <input v-if="!readOnly" type="file" :multiple="f.allowMultiple" :disabled="auth.access('cohorts.files') < 3" @change="uploadFiles(f, $event)" />
               </div>
             </div>
 
@@ -215,9 +215,9 @@
                 <div v-for="file in f.files" :key="file.id" class="mc-file-row">
                   <span>📄 {{ file.fileName }}</span>
                   <button type="button" class="btn-sm" @click="downloadFile(file)">⤓</button>
-                  <button v-if="!readOnly" type="button" class="btn-sm btn-danger" @click="deleteFile(f, file)">✕</button>
+                  <button v-if="!readOnly && auth.can('cohorts.files')" type="button" class="btn-sm btn-danger" @click="deleteFile(f, file)">✕</button>
                 </div>
-                <input v-if="!readOnly" type="file" :multiple="f.allowMultiple" @change="uploadFiles(f, $event)" />
+                <input v-if="!readOnly" type="file" :multiple="f.allowMultiple" :disabled="auth.access('cohorts.files') < 3" @change="uploadFiles(f, $event)" />
               </div>
               <div class="mc-grid2" style="margin-top:.6rem">
                 <div>
@@ -299,7 +299,7 @@
                     <td>{{ g.studentNumber }}</td>
                     <td>{{ g.statusName }}</td>
                     <td v-if="!gradesRubric">
-                      <input v-model.number="g.score" type="number" min="0" max="100" class="mc-inp" style="width:110px" /></td>
+                      <input v-model.number="g.score" type="number" min="0" max="100" class="mc-inp" style="width:110px" :disabled="auth.access('cohorts.grades') < 3" /></td>
                     <td v-else><strong>{{ rubricTotal(g) ?? g.score ?? '—' }}</strong></td>
                     <td v-if="gradesRubric">
                       <button type="button" class="btn-sm" @click="rubOpen[g.enrollmentId] = !rubOpen[g.enrollmentId]">
@@ -313,7 +313,7 @@
                         <span style="font-weight:600">{{ r.section }}</span>
                         <span class="mc-muted">{{ r.criteria }}</span>
                         <span>{{ r.maxPercent }}%</span>
-                        <span><input v-model.number="g.rubricScores[r.id]" type="number" min="0" max="100" class="mc-inp" style="width:90px" /></span>
+                        <span><input v-model.number="g.rubricScores[r.id]" type="number" min="0" max="100" class="mc-inp" style="width:90px" :disabled="auth.access('cohorts.grades') < 3" /></span>
                         <span>{{ weightedOf(g, r) }}</span>
                       </div>
                       <div class="mc-rub-grid mc-rub-total">
@@ -398,10 +398,10 @@
         </div>
         <div class="mc-dialog-foot">
           <button type="button" class="btn-sm" @click="detOpen = false">Close</button>
-          <button v-if="detTab === 'grades'" type="button" class="btn-primary-sm"
+          <button v-if="detTab === 'grades' && auth.can('cohorts.grades')" type="button" class="btn-primary-sm"
                   :disabled="savingGrades || !grades.length" @click="saveGradesDraft">
             {{ savingGrades ? 'Saving…' : 'Save grades' }}</button>
-          <button v-else-if="!readOnly" type="button" class="btn-primary-sm" :disabled="savingDet || uploading" @click="saveDetail">
+          <button v-else-if="detTab !== 'grades' && !readOnly && auth.can('cohorts.manage')" type="button" class="btn-primary-sm" :disabled="savingDet || uploading" @click="saveDetail">
             {{ savingDet ? 'Saving…' : 'Save' }}
           </button>
         </div>

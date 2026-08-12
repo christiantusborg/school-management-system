@@ -1,3 +1,5 @@
+using Odin.Api.Base.Authorization;
+
 namespace School.PartnerAdminApi.Admin.V1.ModuleCohorts;
 
 /// <summary>
@@ -56,8 +58,10 @@ public sealed class AdminV1CohortQuestionnairesEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> AttachAsync(
-        Guid cohortId, [FromBody] AttachBody body, OdinDbContext db, CancellationToken ct)
+        Guid cohortId, [FromBody] AttachBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.assign_questionnaire", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (body.QuestionnaireTemplateId is not { } templateId)
             return Results.BadRequest(new { error = "questionnaireTemplateId is required." });
 
@@ -90,8 +94,10 @@ public sealed class AdminV1CohortQuestionnairesEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> DetachAsync(
-        Guid id, OdinDbContext db, CancellationToken ct)
+        Guid id, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.assign_questionnaire", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var row = await db.ModuleCohortQuestionnaires
             .FirstOrDefaultAsync(q => q.ModuleCohortQuestionnaireId == id && q.DeletedAt == null, ct);
         if (row is null) return Results.NotFound();

@@ -1,5 +1,6 @@
 <template>
   <div>
+    <div v-if="auth.access('questionnaires.aggregate_view') > 0">
     <div class="d-flex justify-space-between align-center mb-4 flex-wrap ga-2">
       <div>
         <h2 class="text-h6 font-weight-bold">Questionnaire statistics</h2>
@@ -130,12 +131,15 @@
     </template>
     <p v-else-if="!loading && instanceId" class="text-medium-emphasis">No data.</p>
     <p v-else-if="!loading" class="text-medium-emphasis">Pick a questionnaire above to see its statistics.</p>
+    </div>
+    <p v-else class="text-medium-emphasis">You do not have access to questionnaire statistics.</p>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client.js'
+import { auth } from '../../store/auth.js'
 
 const instances = ref([])
 const instanceId = ref(null)

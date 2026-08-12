@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Odin.Api.Base.Authorization;
 using School.IntakeApi.Stats;
 using SharedLibrary.Basics.Opaque.Domains.Intake;
 
@@ -183,8 +184,10 @@ public sealed class PublicFormsV1Endpoints : IEndpointMarker
     }
 
     private static async Task<IResult> CreateAsync(
-        [FromBody] WriteRequest body, HttpContext http, OdinDbContext db, CancellationToken ct)
+        [FromBody] WriteRequest body, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.public_forms", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (string.IsNullOrWhiteSpace(body.Name)) return Fail("name_required");
         if (body.QuestionnaireTemplateId is not { } tid) return Fail("template_required");
         var template = await db.QuestionnaireTemplates
@@ -212,8 +215,10 @@ public sealed class PublicFormsV1Endpoints : IEndpointMarker
     }
 
     private static async Task<IResult> UpdateAsync(
-        Guid id, [FromBody] WriteRequest body, OdinDbContext db, CancellationToken ct)
+        Guid id, [FromBody] WriteRequest body, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.public_forms", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var f = await db.PublicForms.FirstOrDefaultAsync(x => x.PublicFormId == id && x.DeletedAt == null, ct);
         if (f is null) return Fail("not_found", StatusCodes.Status404NotFound);
         if (string.IsNullOrWhiteSpace(body.Name)) return Fail("name_required");
@@ -238,8 +243,10 @@ public sealed class PublicFormsV1Endpoints : IEndpointMarker
         return Ok(Dto(f, count));
     }
 
-    private static async Task<IResult> DeleteAsync(Guid id, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync(Guid id, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.public_forms", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var f = await db.PublicForms.FirstOrDefaultAsync(x => x.PublicFormId == id && x.DeletedAt == null, ct);
         if (f is null) return Fail("not_found", StatusCodes.Status404NotFound);
         f.DeletedAt = DateTime.UtcNow;

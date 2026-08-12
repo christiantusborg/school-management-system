@@ -8,7 +8,7 @@
           {{ t.name }}
         </option>
       </select>
-      <button class="cq-btn" :disabled="!pickId || busy" @click="attach">+ Attach to cohort</button>
+      <button v-if="auth.can('cohorts.assign_questionnaire')" class="cq-btn" :disabled="!pickId || busy" @click="attach">+ Attach to cohort</button>
     </div>
 
     <p v-if="error" class="cq-error">{{ error }}</p>
@@ -22,9 +22,10 @@
       <div class="cq-card-head">
         <strong>{{ q.name }}</strong>
         <span class="cq-counts">{{ q.responses }} response{{ q.responses !== 1 ? 's' : '' }} · {{ q.completed }}/{{ assigned }} students completed</span>
-        <button v-if="mode === 'admin'" class="cq-btn cq-btn-danger" :disabled="busy" @click="detach(q)">Remove</button>
+        <button v-if="mode === 'admin' && auth.can('cohorts.assign_questionnaire')" class="cq-btn cq-btn-danger" :disabled="busy" @click="detach(q)">Remove</button>
       </div>
 
+      <template v-if="auth.access('cohorts.aggregate_view') > 0">
       <div v-if="statsFor(q)?.locked" class="cq-locked">
         🔒 Results unlock at {{ statsFor(q).requiredResponses }} responses to keep answers anonymous
         (currently {{ statsFor(q).responses }}). The Admission Office can already see them.
@@ -52,6 +53,7 @@
           <p v-else-if="!qu.options" class="cq-muted">No answers yet.</p>
         </div>
       </template>
+      </template>
     </div>
   </div>
 </template>
@@ -59,6 +61,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client.js'
+import { auth } from '../../store/auth.js'
 
 const props = defineProps({
   mode: { type: String, required: true },   // 'admin' | 'partner'

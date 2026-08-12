@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Letters;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
@@ -107,8 +108,10 @@ public sealed class AdminV1PartnerDocumentTypesEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> CreateAsync(
-        [FromBody] WriteBody body, OdinDbContext db, CancellationToken ct)
+        [FromBody] WriteBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.partner_doc_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (string.IsNullOrWhiteSpace(body.Name))
             return Results.BadRequest(new { error = "Name is required." });
         var (fields, error) = NormalizeFields(body.Fields);
@@ -154,8 +157,10 @@ public sealed class AdminV1PartnerDocumentTypesEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UpdateAsync(
-        Guid typeId, [FromBody] WriteBody body, OdinDbContext db, CancellationToken ct)
+        Guid typeId, [FromBody] WriteBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.partner_doc_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var type = await db.PartnerDocumentTypes
             .FirstOrDefaultAsync(t => t.PartnerDocumentTypeId == typeId && t.DeletedAt == null, ct);
         if (type is null) return Results.NotFound();
@@ -172,8 +177,10 @@ public sealed class AdminV1PartnerDocumentTypesEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SaveLayoutAsync(
-        Guid typeId, [FromBody] LayoutBody body, OdinDbContext db, CancellationToken ct)
+        Guid typeId, [FromBody] LayoutBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.partner_doc_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var type = await db.PartnerDocumentTypes
             .FirstOrDefaultAsync(t => t.PartnerDocumentTypeId == typeId && t.DeletedAt == null, ct);
         if (type is null) return Results.NotFound();
@@ -185,8 +192,10 @@ public sealed class AdminV1PartnerDocumentTypesEndpoint : IEndpointMarker
         return Results.Ok(new { saved = true });
     }
 
-    private static async Task<IResult> DeleteAsync(Guid typeId, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync(Guid typeId, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.partner_doc_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var type = await db.PartnerDocumentTypes
             .FirstOrDefaultAsync(t => t.PartnerDocumentTypeId == typeId && t.DeletedAt == null, ct);
         if (type is null) return Results.NotFound();

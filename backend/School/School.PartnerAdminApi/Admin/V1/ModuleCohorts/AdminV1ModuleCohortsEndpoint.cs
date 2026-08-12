@@ -133,8 +133,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SaveSettingsAsync(
-        [FromBody] SettingsBody body, OdinDbContext db, CancellationToken ct)
+        [FromBody] SettingsBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.cohort_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var settings = await ModuleCohortLogic.SettingsAsync(db, ct);
         if (!string.IsNullOrWhiteSpace(body.CohortNumberPattern))
             settings.CohortNumberPattern = body.CohortNumberPattern.Trim();
@@ -210,8 +212,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> CreateAsync(
-        Guid partnerId, [FromBody] CreateBody body, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, [FromBody] CreateBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.manage", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (!await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct))
             return Results.NotFound();
         if (body.ProgrammeId is null || body.SubjectId is null)
@@ -257,8 +261,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UpdateAsync(
-        Guid cohortId, [FromBody] UpdateBody body, OdinDbContext db, CancellationToken ct)
+        Guid cohortId, [FromBody] UpdateBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.manage", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var cohort = await db.ModuleCohorts
             .FirstOrDefaultAsync(c => c.ModuleCohortId == cohortId && c.DeletedAt == null, ct);
         if (cohort is null) return Results.NotFound();
@@ -301,8 +307,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         return Results.Ok(new { saved = true });
     }
 
-    private static async Task<IResult> DeleteAsync(Guid cohortId, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync(Guid cohortId, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.manage", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var cohort = await db.ModuleCohorts
             .FirstOrDefaultAsync(c => c.ModuleCohortId == cohortId && c.DeletedAt == null, ct);
         if (cohort is null) return Results.NotFound();
@@ -392,8 +400,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> CreateTypeAsync(
-        [FromBody] Dictionary<string, string?> body, OdinDbContext db, CancellationToken ct)
+        [FromBody] Dictionary<string, string?> body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.cohort_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var name = body.GetValueOrDefault("name")?.Trim();
         if (string.IsNullOrWhiteSpace(name))
             return Results.BadRequest(new { error = "Name is required." });
@@ -404,8 +414,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> RenameTypeAsync(
-        Guid typeId, [FromBody] Dictionary<string, string?> body, OdinDbContext db, CancellationToken ct)
+        Guid typeId, [FromBody] Dictionary<string, string?> body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.cohort_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var type = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
         if (type is null) return Results.NotFound();
         if (await db.ModuleCohorts.AnyAsync(c => c.CohortTypeId == typeId && c.DeletedAt == null, ct))
@@ -421,8 +433,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     /// <summary>Wholesale field save with soft-delete + restore-by-label so
     /// values entered on cohorts survive structure edits.</summary>
     private static async Task<IResult> SaveTypeStructureAsync(
-        Guid typeId, [FromBody] TypeStructureBody body, OdinDbContext db, CancellationToken ct)
+        Guid typeId, [FromBody] TypeStructureBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.cohort_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var type = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
         if (type is null) return Results.NotFound();
         if (await db.ModuleCohorts.AnyAsync(c => c.CohortTypeId == typeId && c.DeletedAt == null, ct))
@@ -492,8 +506,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
 
     /// <summary>Full editable copy of a (typically locked) type: name +
     /// " (copy)", all data fields and upload fields.</summary>
-    private static async Task<IResult> CloneTypeAsync(Guid typeId, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> CloneTypeAsync(Guid typeId, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.cohort_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var src = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
         if (src is null) return Results.NotFound();
         var clone = new CohortType { Name = src.Name + " (copy)" };
@@ -523,8 +539,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         return Results.Ok(new { cohortTypeId = clone.CohortTypeId });
     }
 
-    private static async Task<IResult> DeleteTypeAsync(Guid typeId, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteTypeAsync(Guid typeId, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.cohort_types", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var type = await db.CohortTypes.FirstOrDefaultAsync(t => t.CohortTypeId == typeId && t.DeletedAt == null, ct);
         if (type is null) return Results.NotFound();
         var inUse = await db.ModuleCohorts.CountAsync(c => c.CohortTypeId == typeId && c.DeletedAt == null, ct);
@@ -536,8 +554,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UploadFieldFileAsync(
-        IFormFile file, IFileStorage storage, CancellationToken ct)
+        IFormFile file, HttpContext httpContext, IPermissionService perms, IFileStorage storage, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.files", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (file is null || file.Length == 0) return Results.BadRequest(new { error = "file is required" });
         if (file.Length > 100 * 1024 * 1024) return Results.BadRequest(new { error = "Max file size is 100 MB." });
         var safeName = Path.GetFileName(file.FileName);
@@ -572,17 +592,22 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SaveGradesDraftAsync(
-        Guid cohortId, [FromBody] ModuleCohortLogic.GradesDraftBody body, OdinDbContext db,
+        Guid cohortId, [FromBody] ModuleCohortLogic.GradesDraftBody body,
+        HttpContext httpContext, IPermissionService perms, OdinDbContext db,
         Odin.Api.Base.Letters.LetterReleaseService letterRelease, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.grades", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var (found, error, saved, skipped) = await ModuleCohortLogic.SaveGradesDraftAsync(db, cohortId, body, ct, letterRelease);
         if (!found) return Results.NotFound();
         return error is null ? Results.Ok(new { saved, skipped }) : Results.BadRequest(new { error });
     }
 
     private static async Task<IResult> SubmitGradesAsync(
-        Guid cohortId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid cohortId, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.grades", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var callerId = httpContext.User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
         Guid.TryParse(callerId, out var byUserId);
         var result = await ModuleCohortLogic.SubmitGradesAsync(db, cohortId, byUserId, "Admission Office", ct);
@@ -650,8 +675,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> AssignStudentsAsync(
-        Guid cohortId, [FromBody] AssignBody body, OdinDbContext db, CancellationToken ct)
+        Guid cohortId, [FromBody] AssignBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.manage", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var cohort = await db.ModuleCohorts
             .FirstOrDefaultAsync(c => c.ModuleCohortId == cohortId && c.DeletedAt == null, ct);
         if (cohort is null) return Results.NotFound();
@@ -673,8 +700,11 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
 
     private static async Task<IResult> UploadFilesAsync(
         Guid cohortId, [FromQuery] Guid fieldId, IFormFileCollection files,
+        HttpContext httpContext, IPermissionService perms,
         OdinDbContext db, IFileStorage storage, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.files", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var cohort = await db.ModuleCohorts
             .FirstOrDefaultAsync(c => c.ModuleCohortId == cohortId && c.DeletedAt == null, ct);
         if (cohort is null) return Results.NotFound();
@@ -726,8 +756,10 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
         return Results.Ok(new { uploaded = files.Count });
     }
 
-    private static async Task<IResult> DeleteFileAsync(Guid fileId, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteFileAsync(Guid fileId, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "cohorts.files", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var file = await db.CohortUploadFiles
             .FirstOrDefaultAsync(f => f.CohortUploadFileId == fileId && f.DeletedAt == null, ct);
         if (file is null) return Results.NotFound();

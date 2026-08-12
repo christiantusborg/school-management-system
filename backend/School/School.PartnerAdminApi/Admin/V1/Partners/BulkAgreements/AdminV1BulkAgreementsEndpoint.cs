@@ -177,8 +177,10 @@ public sealed class AdminV1BulkAgreementsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> CreateAsync(
-        Guid partnerId, [FromBody] WriteBody body, HttpContext ctx, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, [FromBody] WriteBody body, HttpContext ctx, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(ctx.User, "bulk_agreements.manage", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var partner = await db.Partners.FirstOrDefaultAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct);
         if (partner is null) return Results.NotFound();
         if (body.PeriodFrom is not { } from || body.PeriodTo is not { } to || to < from)
@@ -214,8 +216,10 @@ public sealed class AdminV1BulkAgreementsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UpdateAsync(
-        Guid partnerId, Guid id, [FromBody] WriteBody body, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, Guid id, [FromBody] WriteBody body, HttpContext ctx, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(ctx.User, "bulk_agreements.manage", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var agreement = await db.BulkAgreements
             .Include(a => a.Specializations)
             .FirstOrDefaultAsync(a => a.BulkAgreementId == id && a.PartnerId == partnerId && a.DeletedAt == null, ct);
@@ -243,8 +247,10 @@ public sealed class AdminV1BulkAgreementsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> DeleteAsync(
-        Guid partnerId, Guid id, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, Guid id, HttpContext ctx, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(ctx.User, "bulk_agreements.manage", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var agreement = await db.BulkAgreements
             .FirstOrDefaultAsync(a => a.BulkAgreementId == id && a.PartnerId == partnerId && a.DeletedAt == null, ct);
         if (agreement is null) return Results.NotFound();

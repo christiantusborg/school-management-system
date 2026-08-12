@@ -6,7 +6,7 @@
       <select v-if="sub === 'board' && board.pipelines.length > 1" v-model="pipelineId" class="crm-pipe-sel" @change="loadBoard">
         <option v-for="p in board.pipelines" :key="p.crmPipelineId" :value="p.crmPipelineId">{{ p.name }}</option>
       </select>
-      <button v-if="sub === 'board'" class="crm-btn crm-btn-primary" @click="openNewLead">+ New lead</button>
+      <button v-if="sub === 'board' && auth.can('crm.leads_edit')" class="crm-btn crm-btn-primary" @click="openNewLead">+ New lead</button>
     </div>
     <p v-if="err" class="err-banner">{{ err }}</p>
 
@@ -161,13 +161,13 @@
               </div>
               <div class="crm-f crm-f-wide"><label>Notes</label><textarea v-model="drawer.form.note" rows="3"></textarea></div>
               <div class="crm-drawer-actions">
-                <button class="crm-btn crm-btn-primary" :disabled="drawer.busy || !drawer.form.name?.trim()" @click="saveLead">
+                <button v-if="auth.can('crm.leads_edit')" class="crm-btn crm-btn-primary" :disabled="drawer.busy || !drawer.form.name?.trim()" @click="saveLead">
                   {{ drawer.busy ? 'Saving…' : 'Save' }}
                 </button>
                 <button v-if="drawer.lead && drawer.lead.status !== 1" class="crm-btn crm-btn-convert"
                         :disabled="!drawer.form.partnerId" :title="drawer.form.partnerId ? '' : 'Pick a partner first'"
                         @click="convertLead">🎓 Convert to student</button>
-                <button v-if="drawer.lead" class="crm-btn crm-btn-danger" @click="deleteLead">Delete</button>
+                <button v-if="drawer.lead && auth.can('crm.leads_delete')" class="crm-btn crm-btn-danger" @click="deleteLead">Delete</button>
               </div>
             </div>
 

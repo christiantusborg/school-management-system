@@ -136,7 +136,7 @@
           <div class="mailc-f"><label>Subject</label><input v-model="compose.subject" /></div>
           <textarea v-model="compose.body" rows="12" class="mailc-body"></textarea>
           <div class="mailc-actions">
-            <button class="mail-btn mail-btn-primary" :disabled="compose.busy || !compose.to.trim() || !compose.body.trim()" @click="sendMail">
+            <button v-if="auth.can('mail.send')" class="mail-btn mail-btn-primary" :disabled="compose.busy || !compose.to.trim() || !compose.body.trim()" @click="sendMail">
               {{ compose.busy ? 'Sending…' : 'Send' }}
             </button>
             <button class="mail-btn" @click="compose = null">Cancel</button>

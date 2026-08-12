@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using School.PathwayApi.EducationLevel.V1.Update.Command;
 
 namespace School.PathwayApi.EducationLevel.V1.Update.Endpoint;
@@ -19,8 +20,11 @@ public sealed class EducationLevelV1UpdateEndpoint : IEndpointMarker
         [FromServices] IDispatcher sender,
         [FromServices] IMapper<EducationLevelV1UpdateEndpointRequest, EducationLevelV1UpdateCommand> requestMapper,
         [FromServices] IMapper<EducationLevelV1UpdateCommandResult, EducationLevelV1UpdateEndpointResponse> responseMapper,
+        [FromServices] IPermissionService perms,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", cancellationToken) != AccessLevel.Edit) return Results.Forbid();
         var command = requestMapper.MapFrom(request) with { EducationLevelId = id };
         var commandResult = await sender.SendAsync(command, cancellationToken).ConfigureAwait(false);
         return commandResult.ToResult(responseMapper);

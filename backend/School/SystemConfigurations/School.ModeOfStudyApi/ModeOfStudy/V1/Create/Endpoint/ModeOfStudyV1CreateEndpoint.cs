@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using School.ModeOfStudyApi.ModeOfStudy.V1.Create.Command;
 
 namespace School.ModeOfStudyApi.ModeOfStudy.V1.Create.Endpoint;
@@ -18,8 +19,11 @@ public sealed class ModeOfStudyV1CreateEndpoint : IEndpointMarker
         [FromServices] IDispatcher sender,
         [FromServices] IMapper<ModeOfStudyV1CreateEndpointRequest, ModeOfStudyV1CreateCommand> requestMapper,
         [FromServices] IMapper<ModeOfStudyV1CreateCommandResult, ModeOfStudyV1CreateEndpointResponse> responseMapper,
+        [FromServices] IPermissionService perms,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", cancellationToken) != AccessLevel.Edit) return Results.Forbid();
         var command = requestMapper.MapFrom(request);
         var commandResult = await sender.SendAsync(command, cancellationToken).ConfigureAwait(false);
         return commandResult.ToCreatedResult(responseMapper);

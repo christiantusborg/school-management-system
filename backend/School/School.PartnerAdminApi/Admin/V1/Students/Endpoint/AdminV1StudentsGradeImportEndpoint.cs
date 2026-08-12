@@ -1,4 +1,5 @@
 using System.Text;
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Letters;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
@@ -126,9 +127,11 @@ public sealed class AdminV1StudentsGradeImportEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> ImportAsync(
-        HttpContext httpContext, OdinDbContext db,
+        HttpContext httpContext, IPermissionService perms, OdinDbContext db,
         [FromServices] LetterReleaseService letterRelease, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "import.grades", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var (forced, fail) = ParsePartnerScope(httpContext);
         if (fail is not null) return fail;
         return await ImportCoreAsync(db, letterRelease, httpContext.Request, forced, ct);

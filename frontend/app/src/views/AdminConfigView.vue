@@ -16,7 +16,7 @@
 
     <div class="tab-bar">
       <button
-        v-for="t in entities"
+        v-for="t in visibleEntities"
         :key="t.key"
         :class="['tab-btn', { active: activeTab === t.key }]"
         @click="activeTab = t.key"
@@ -26,7 +26,7 @@
     </div>
 
     <div class="container">
-      <template v-for="t in entities" :key="t.key">
+      <template v-for="t in visibleEntities" :key="t.key">
         <EmailSettingsPanel v-if="t.key === 'email'" v-show="activeTab === t.key" />
         <PartnerDocumentTypesTab v-else-if="t.key === 'partnerDocs'" v-show="activeTab === t.key" />
         <FacultyProfileConfigTab v-else-if="t.key === 'facultyProfile'" v-show="activeTab === t.key" />
@@ -60,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { auth } from '../store/auth.js'
 import CrudManager from '../components/crud/CrudManager.vue'
@@ -105,7 +105,30 @@ const entities = [
   { key: 'employmentIndustries', label: 'Employment Industries' },
 ]
 
-const activeTab = ref(entities[0].key)
+// Access-matrix key for each config tab. Tabs without a mapped key
+// (letterTypes, rolesPermissions, email) keep their existing gating.
+const ENTITY_ACCESS_KEYS = {
+  partnerDocs: 'config.partner_doc_types',
+  facultyProfile: 'config.faculty_structure',
+  moduleCohorts: 'config.cohort_types',
+  rubrics: 'config.rubrics',
+  documentTypes: 'config.lists',
+  educationLevels: 'config.lists',
+  modesOfStudy: 'config.lists',
+  pathways: 'config.lists',
+  schools: 'config.lists',
+  currencies: 'config.lists',
+  contactMethods: 'config.lists',
+  positionFunctions: 'config.lists',
+  employmentIndustries: 'config.lists',
+}
+
+const visibleEntities = computed(() => entities.filter(t => {
+  const k = ENTITY_ACCESS_KEYS[t.key]
+  return !k || auth.access(k) > 0
+}))
+
+const activeTab = ref(visibleEntities.value[0]?.key ?? entities[0].key)
 </script>
 
 <style scoped>

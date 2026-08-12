@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains.Intake;
 
 namespace School.IntakeApi.IntakeInstances;
@@ -85,8 +86,10 @@ public sealed class IntakeInstancesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> CreateAsync(
-        [FromBody] WriteRequest body, HttpContext http, OdinDbContext db, CancellationToken ct)
+        [FromBody] WriteRequest body, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.assign", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (string.IsNullOrWhiteSpace(body.Name)) return Fail("name_required");
         if (!ValidAudiences.Contains(body.Audience)) return Fail("audience_invalid");
         if (body.QuestionnaireTemplateId is not { } tid
@@ -108,8 +111,10 @@ public sealed class IntakeInstancesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UpdateAsync(
-        Guid intakeInstanceId, [FromBody] WriteRequest body, OdinDbContext db, CancellationToken ct)
+        Guid intakeInstanceId, [FromBody] WriteRequest body, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.assign", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var entity = await db.IntakeInstances
             .FirstOrDefaultAsync(i => i.IntakeInstanceId == intakeInstanceId && i.DeletedAt == null, ct);
         if (entity is null) return Fail("not_found", StatusCodes.Status404NotFound);
@@ -129,8 +134,10 @@ public sealed class IntakeInstancesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SoftDeleteAsync(
-        Guid intakeInstanceId, OdinDbContext db, CancellationToken ct)
+        Guid intakeInstanceId, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.assign", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var entity = await db.IntakeInstances
             .FirstOrDefaultAsync(i => i.IntakeInstanceId == intakeInstanceId && i.DeletedAt == null, ct);
         if (entity is null) return Fail("not_found", StatusCodes.Status404NotFound);
@@ -140,8 +147,10 @@ public sealed class IntakeInstancesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> RestoreAsync(
-        Guid intakeInstanceId, OdinDbContext db, CancellationToken ct)
+        Guid intakeInstanceId, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.assign", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var entity = await db.IntakeInstances
             .FirstOrDefaultAsync(i => i.IntakeInstanceId == intakeInstanceId && i.DeletedAt != null, ct);
         if (entity is null) return Fail("not_found", StatusCodes.Status404NotFound);
@@ -205,8 +214,10 @@ public sealed class IntakeInstancesV1CrudEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SaveAssignmentsAsync(
-        Guid intakeInstanceId, [FromBody] AssignmentsRequest body, OdinDbContext db, CancellationToken ct)
+        Guid intakeInstanceId, [FromBody] AssignmentsRequest body, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "questionnaires.assign", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var instance = await db.IntakeInstances
             .FirstOrDefaultAsync(i => i.IntakeInstanceId == intakeInstanceId && i.DeletedAt == null, ct);
         if (instance is null) return Fail("not_found", StatusCodes.Status404NotFound);

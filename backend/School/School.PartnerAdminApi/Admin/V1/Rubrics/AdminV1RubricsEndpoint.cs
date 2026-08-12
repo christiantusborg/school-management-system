@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 using School.PartnerAdminApi.Partner.V1.MyUsers;
 
@@ -118,8 +119,10 @@ public sealed class AdminV1RubricsEndpoint : IEndpointMarker
 
     public sealed class NameBody { public string? Name { get; init; } }
 
-    private static async Task<IResult> CreateAsync(OdinDbContext db, [FromBody] NameBody body, CancellationToken ct)
+    private static async Task<IResult> CreateAsync(OdinDbContext db, [FromBody] NameBody body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.rubrics", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var name = body.Name?.Trim();
         if (string.IsNullOrWhiteSpace(name)) return Results.BadRequest(new { error = "Name is required." });
         var template = new RubricTemplate { Name = name, IsShared = true };
@@ -128,8 +131,10 @@ public sealed class AdminV1RubricsEndpoint : IEndpointMarker
         return Results.Ok(new { id = template.RubricTemplateId, name = template.Name });
     }
 
-    private static async Task<IResult> RenameAsync(OdinDbContext db, Guid templateId, [FromBody] NameBody body, CancellationToken ct)
+    private static async Task<IResult> RenameAsync(OdinDbContext db, Guid templateId, [FromBody] NameBody body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.rubrics", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var template = await db.RubricTemplates
             .FirstOrDefaultAsync(t => t.RubricTemplateId == templateId && t.IsShared && t.DeletedAt == null, ct);
         if (template is null) return Results.NotFound();
@@ -142,8 +147,10 @@ public sealed class AdminV1RubricsEndpoint : IEndpointMarker
     public sealed class StructureBody { public List<RowDto>? Rows { get; init; } }
 
     private static async Task<IResult> SaveStructureAsync(
-        OdinDbContext db, Guid templateId, [FromBody] StructureBody body, CancellationToken ct)
+        OdinDbContext db, Guid templateId, [FromBody] StructureBody body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.rubrics", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var template = await db.RubricTemplates
             .FirstOrDefaultAsync(t => t.RubricTemplateId == templateId && t.IsShared && t.DeletedAt == null, ct);
         if (template is null) return Results.NotFound();
@@ -154,8 +161,10 @@ public sealed class AdminV1RubricsEndpoint : IEndpointMarker
         return Results.Ok(new { id = templateId });
     }
 
-    private static async Task<IResult> DeleteAsync(OdinDbContext db, Guid templateId, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync(OdinDbContext db, Guid templateId, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.rubrics", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var template = await db.RubricTemplates
             .FirstOrDefaultAsync(t => t.RubricTemplateId == templateId && t.IsShared && t.DeletedAt == null, ct);
         if (template is null) return Results.NotFound();

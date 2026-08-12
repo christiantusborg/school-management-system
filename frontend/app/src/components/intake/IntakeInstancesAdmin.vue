@@ -9,7 +9,7 @@
           Survey step of the signup wizard.
         </p>
       </div>
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">New assignment</v-btn>
+      <v-btn v-if="auth.can('questionnaires.assign')" color="primary" prepend-icon="mdi-plus" @click="openCreate">New assignment</v-btn>
     </div>
 
     <v-alert v-if="error" type="error" density="compact" class="mb-3">{{ error }}</v-alert>
@@ -38,9 +38,9 @@
               {{ i.assignmentMode === 'Targeted' ? `Targeted (${i.targetCount})` : 'Everyone' }}
             </v-chip>
             <v-btn size="small" variant="text" @click="openTargets(i)">Targets</v-btn>
-            <v-btn size="small" variant="text" @click="openResponses(i)">Responses</v-btn>
+            <v-btn v-if="auth.can('questionnaires.individual_view')" size="small" variant="text" @click="openResponses(i)">Responses</v-btn>
             <v-btn size="small" variant="text" @click="openEdit(i)">Edit</v-btn>
-            <v-btn size="small" variant="text" color="error" @click="remove(i)">Delete</v-btn>
+            <v-btn v-if="auth.can('questionnaires.assign')" size="small" variant="text" color="error" @click="remove(i)">Delete</v-btn>
           </td>
         </tr>
       </tbody>
@@ -62,7 +62,7 @@
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="showForm = false">Cancel</v-btn>
-          <v-btn color="primary" :loading="saving" @click="save">Save</v-btn>
+          <v-btn v-if="auth.can('questionnaires.assign')" color="primary" :loading="saving" @click="save">Save</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -88,7 +88,7 @@
                   </v-chip>
                 </td>
                 <td>{{ fmt(r.submittedAt ?? r.modifiedAt) }}</td>
-                <td><v-btn size="x-small" variant="text" @click="openAnswers(r)">View</v-btn></td>
+                <td><v-btn v-if="auth.can('questionnaires.individual_view')" size="x-small" variant="text" @click="openAnswers(r)">View</v-btn></td>
               </tr>
             </tbody>
           </v-table>
@@ -150,7 +150,7 @@
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="showTargets = false">Cancel</v-btn>
-          <v-btn color="primary" :loading="targetsSaving" @click="saveTargets">Save</v-btn>
+          <v-btn v-if="auth.can('questionnaires.assign')" color="primary" :loading="targetsSaving" @click="saveTargets">Save</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -182,6 +182,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import api from '../../api/client.js'
+import { auth } from '../../store/auth.js'
 
 const AUDIENCES = [
   { value: 'Student', label: 'Students (student portal)' },

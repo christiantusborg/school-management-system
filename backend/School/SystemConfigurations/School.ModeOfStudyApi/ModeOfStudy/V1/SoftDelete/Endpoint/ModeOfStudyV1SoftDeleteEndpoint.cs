@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using School.ModeOfStudyApi.ModeOfStudy.V1.SoftDelete.Command;
 
 namespace School.ModeOfStudyApi.ModeOfStudy.V1.SoftDelete.Endpoint;
@@ -17,8 +18,11 @@ public sealed class ModeOfStudyV1SoftDeleteEndpoint : IEndpointMarker
         int id,
         [FromServices] IDispatcher sender,
         [FromServices] IMapper<ModeOfStudyV1SoftDeleteCommandResult, ModeOfStudyV1SoftDeleteEndpointResponse> responseMapper,
+        [FromServices] IPermissionService perms,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", cancellationToken) != AccessLevel.Edit) return Results.Forbid();
         var command = new ModeOfStudyV1SoftDeleteCommand { ModeOfStudyId = id };
         var commandResult = await sender.SendAsync(command, cancellationToken).ConfigureAwait(false);
         return commandResult.ToResult(responseMapper);

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains.Crm;
 
 namespace School.PartnerAdminApi.Admin.V1.Crm;
@@ -229,8 +230,10 @@ public sealed class AdminV1CrmEndpoint : IEndpointMarker
     // ── lead CRUD ────────────────────────────────────────────────────────────
 
     private static async Task<IResult> CreateAsync(
-        [FromBody] LeadBody body, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        [FromBody] LeadBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "crm.leads_edit", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var scope = ResolveScope(httpContext);
         var name = body.Name?.Trim();
         if (string.IsNullOrWhiteSpace(name))
@@ -280,8 +283,10 @@ public sealed class AdminV1CrmEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> UpdateAsync(
-        Guid id, [FromBody] LeadBody body, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid id, [FromBody] LeadBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "crm.leads_edit", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var scope = ResolveScope(httpContext);
         var lead = await Scoped(db, scope).FirstOrDefaultAsync(l => l.CrmLeadId == id, ct);
         if (lead is null) return Results.NotFound();
@@ -303,8 +308,10 @@ public sealed class AdminV1CrmEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> DeleteAsync(
-        Guid id, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid id, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "crm.leads_delete", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var scope = ResolveScope(httpContext);
         var lead = await Scoped(db, scope).FirstOrDefaultAsync(l => l.CrmLeadId == id, ct);
         if (lead is null) return Results.NotFound();
@@ -314,8 +321,10 @@ public sealed class AdminV1CrmEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SetStageAsync(
-        Guid id, [FromBody] StageBody body, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid id, [FromBody] StageBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "crm.leads_stage", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var scope = ResolveScope(httpContext);
         var lead = await Scoped(db, scope).FirstOrDefaultAsync(l => l.CrmLeadId == id, ct);
         if (lead is null) return Results.NotFound();

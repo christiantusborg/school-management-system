@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains.Partners;
 
 namespace School.ProgrammeApi;
@@ -60,8 +61,9 @@ public sealed class ContactConfigV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { items });
     }
 
-    private static async Task<IResult> MethodsCreateAsync(OdinDbContext db, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> MethodsCreateAsync(OdinDbContext db, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var name = body.Name?.Trim();
         if (string.IsNullOrWhiteSpace(name)) return Results.BadRequest(new { message = "name is required" });
         var entity = new ContactMethodType { Name = name, DisplayOrder = body.DisplayOrder ?? 0 };
@@ -70,8 +72,9 @@ public sealed class ContactConfigV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { contactMethodTypeId = entity.ContactMethodTypeId });
     }
 
-    private static async Task<IResult> MethodsUpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> MethodsUpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var entity = await db.ContactMethodTypes.FirstOrDefaultAsync(c => c.ContactMethodTypeId == id, ct);
         if (entity is null) return Results.NotFound();
         if (!string.IsNullOrWhiteSpace(body.Name)) entity.Name = body.Name.Trim();
@@ -80,8 +83,9 @@ public sealed class ContactConfigV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { contactMethodTypeId = id });
     }
 
-    private static async Task<IResult> MethodsSoftDeleteAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> MethodsSoftDeleteAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var entity = await db.ContactMethodTypes.FirstOrDefaultAsync(c => c.ContactMethodTypeId == id, ct);
         if (entity is null) return Results.NotFound();
         entity.DeletedAt = DateTime.UtcNow;
@@ -89,8 +93,9 @@ public sealed class ContactConfigV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { contactMethodTypeId = id });
     }
 
-    private static async Task<IResult> MethodsRestoreAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> MethodsRestoreAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var entity = await db.ContactMethodTypes.FirstOrDefaultAsync(c => c.ContactMethodTypeId == id, ct);
         if (entity is null) return Results.NotFound();
         entity.DeletedAt = null;
@@ -119,8 +124,9 @@ public sealed class ContactConfigV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { items });
     }
 
-    private static async Task<IResult> TypesCreateAsync(OdinDbContext db, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> TypesCreateAsync(OdinDbContext db, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var name = body.Name?.Trim();
         if (string.IsNullOrWhiteSpace(name)) return Results.BadRequest(new { message = "name is required" });
         var entity = new PartnerContactType { Name = name, DisplayOrder = body.DisplayOrder ?? 0 };
@@ -129,8 +135,9 @@ public sealed class ContactConfigV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { partnerContactTypeId = entity.PartnerContactTypeId });
     }
 
-    private static async Task<IResult> TypesUpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, CancellationToken ct)
+    private static async Task<IResult> TypesUpdateAsync(OdinDbContext db, Guid id, [FromBody] WriteRequest body, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var entity = await db.PartnerContactTypes.FirstOrDefaultAsync(c => c.PartnerContactTypeId == id, ct);
         if (entity is null) return Results.NotFound();
         if (!string.IsNullOrWhiteSpace(body.Name)) entity.Name = body.Name.Trim();
@@ -139,8 +146,9 @@ public sealed class ContactConfigV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { partnerContactTypeId = id });
     }
 
-    private static async Task<IResult> TypesSoftDeleteAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> TypesSoftDeleteAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var entity = await db.PartnerContactTypes.FirstOrDefaultAsync(c => c.PartnerContactTypeId == id, ct);
         if (entity is null) return Results.NotFound();
         entity.DeletedAt = DateTime.UtcNow;
@@ -148,8 +156,9 @@ public sealed class ContactConfigV1CrudEndpoint : IEndpointMarker
         return Results.Ok(new { partnerContactTypeId = id });
     }
 
-    private static async Task<IResult> TypesRestoreAsync(OdinDbContext db, Guid id, CancellationToken ct)
+    private static async Task<IResult> TypesRestoreAsync(OdinDbContext db, Guid id, HttpContext httpContext, IPermissionService perms, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.lists", ct) != AccessLevel.Edit) return Results.Forbid();
         var entity = await db.PartnerContactTypes.FirstOrDefaultAsync(c => c.PartnerContactTypeId == id, ct);
         if (entity is null) return Results.NotFound();
         entity.DeletedAt = null;

@@ -15,14 +15,14 @@
     </nav>
 
     <div class="tab-bar">
-      <button :class="['tab-btn', { active: tab === 'builder' }]" @click="tab = 'builder'">Builder</button>
-      <button :class="['tab-btn', { active: tab === 'templates' }]" @click="tab = 'templates'">Templates</button>
-      <button :class="['tab-btn', { active: tab === 'assignments' }]" @click="tab = 'assignments'">Assignments &amp; Responses</button>
+      <button v-if="auth.access('questionnaires.builder') > 0" :class="['tab-btn', { active: tab === 'builder' }]" @click="tab = 'builder'">Builder</button>
+      <button v-if="auth.access('questionnaires.templates') > 0" :class="['tab-btn', { active: tab === 'templates' }]" @click="tab = 'templates'">Templates</button>
+      <button v-if="auth.access('questionnaires.assign') > 0" :class="['tab-btn', { active: tab === 'assignments' }]" @click="tab = 'assignments'">Assignments &amp; Responses</button>
       <button :class="['tab-btn', { active: tab === 'texts' }]" @click="tab = 'texts'">Text templates</button>
       <button :class="['tab-btn', { active: tab === 'rules' }]" @click="tab = 'rules'">Rules</button>
       <button :class="['tab-btn', { active: tab === 'documents' }]" @click="tab = 'documents'">Documents</button>
-      <button :class="['tab-btn', { active: tab === 'publicforms' }]" @click="tab = 'publicforms'">Public forms</button>
-      <button :class="['tab-btn', { active: tab === 'stats' }]" @click="tab = 'stats'">Statistics</button>
+      <button v-if="auth.access('questionnaires.public_forms') > 0" :class="['tab-btn', { active: tab === 'publicforms' }]" @click="tab = 'publicforms'">Public forms</button>
+      <button v-if="auth.access('questionnaires.aggregate_view') > 0" :class="['tab-btn', { active: tab === 'stats' }]" @click="tab = 'stats'">Statistics</button>
     </div>
 
     <!-- The ported QuVian builder is Vuetify-based; v-app scopes Vuetify's

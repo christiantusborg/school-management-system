@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
 namespace School.PartnerAdminApi.Admin.V1.PartnerDatasheets;
@@ -125,8 +126,10 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> CreateAsync(
-        [FromBody] Dictionary<string, string?> body, OdinDbContext db, CancellationToken ct)
+        [FromBody] Dictionary<string, string?> body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.datasheet_defs", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var name = body.GetValueOrDefault("name")?.Trim();
         if (string.IsNullOrWhiteSpace(name))
             return Results.BadRequest(new { error = "Name is required." });
@@ -140,8 +143,10 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> RenameAsync(
-        Guid definitionId, [FromBody] Dictionary<string, string?> body, OdinDbContext db, CancellationToken ct)
+        Guid definitionId, [FromBody] Dictionary<string, string?> body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.datasheet_defs", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var def = await db.PartnerDatasheetDefinitions
             .FirstOrDefaultAsync(d => d.PartnerDatasheetDefinitionId == definitionId && d.DeletedAt == null, ct);
         if (def is null) return Results.NotFound();
@@ -168,8 +173,10 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
     /// matches a soft-deleted sibling restores that field — and its data.
     /// </summary>
     private static async Task<IResult> SaveStructureAsync(
-        Guid definitionId, [FromBody] StructureBody body, OdinDbContext db, CancellationToken ct)
+        Guid definitionId, [FromBody] StructureBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.datasheet_defs", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var def = await db.PartnerDatasheetDefinitions
             .FirstOrDefaultAsync(d => d.PartnerDatasheetDefinitionId == definitionId && d.DeletedAt == null, ct);
         if (def is null) return Results.NotFound();
@@ -254,8 +261,10 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
         return Results.Ok(new { saved = true });
     }
 
-    private static async Task<IResult> DeleteAsync(Guid definitionId, OdinDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync(Guid definitionId, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "config.datasheet_defs", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var def = await db.PartnerDatasheetDefinitions
             .FirstOrDefaultAsync(d => d.PartnerDatasheetDefinitionId == definitionId && d.DeletedAt == null, ct);
         if (def is null) return Results.NotFound();

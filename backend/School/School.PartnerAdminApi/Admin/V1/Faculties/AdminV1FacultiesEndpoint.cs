@@ -69,8 +69,10 @@ public sealed class AdminV1FacultiesEndpoint : IEndpointMarker
     /// whose label matches a soft-deleted one restores it — and its data.
     /// </summary>
     private static async Task<IResult> SaveStructureAsync(
-        [FromBody] StructureBody body, OdinDbContext db, CancellationToken ct)
+        [FromBody] StructureBody body, HttpContext http, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(http.User, "config.faculty_structure", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var incoming = body.Sections ?? [];
         foreach (var s in incoming)
         {
