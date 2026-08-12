@@ -1,0 +1,351 @@
+<title>Access Matrix</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#F5F6F9; --surface:#FFFFFF; --surface-2:#FBFBFD;
+    --ink:#191D24; --muted:#5B636E; --faint:#98A0AB;
+    --line:#E4E7EC; --line-strong:#D3D8DF;
+    --accent:#3E4DA8; --accent-ink:#2E3B87; --accent-soft:#ECEEF9;
+    --granted:#2F6F4F; --granted-soft:#E7F1EC;
+    --warn:#8A5A12; --warn-soft:#F6EEDD;
+    --shadow:0 1px 2px rgba(20,24,32,.05), 0 8px 28px rgba(20,24,32,.06);
+    --font-display:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif;
+    --font-body:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace;
+  }
+  :root:not([data-theme="light"]){
+    @media (prefers-color-scheme:dark){
+      --bg:#13161B; --surface:#1B1F26; --surface-2:#181C22;
+      --ink:#E8EAEE; --muted:#9AA2AD; --faint:#69717C;
+      --line:#2A2F38; --line-strong:#353B45;
+      --accent:#8C97E8; --accent-ink:#AAB3EF; --accent-soft:#232838;
+      --granted:#7FBE9C; --granted-soft:#1E2A24;
+      --warn:#D6A85C; --warn-soft:#2C2618;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#13161B; --surface:#1B1F26; --surface-2:#181C22;
+    --ink:#E8EAEE; --muted:#9AA2AD; --faint:#69717C;
+    --line:#2A2F38; --line-strong:#353B45;
+    --accent:#8C97E8; --accent-ink:#AAB3EF; --accent-soft:#232838;
+    --granted:#7FBE9C; --granted-soft:#1E2A24;
+    --warn:#D6A85C; --warn-soft:#2C2618;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--font-body); font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:74rem; margin:0 auto; padding:clamp(1.5rem,4vw,4rem) clamp(1.1rem,4vw,2.5rem) 5rem}
+
+  /* ---- Masthead ---- */
+  .eyebrow{font-family:var(--font-mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink); display:flex; gap:.7rem; align-items:center; flex-wrap:wrap}
+  .eyebrow .dot{width:6px; height:6px; border-radius:50%; background:var(--accent)}
+  h1{
+    font-family:var(--font-display); font-weight:600; letter-spacing:-.01em;
+    font-size:clamp(2.4rem,6vw,3.8rem); line-height:1.02; margin:.5rem 0 .4rem;
+    text-wrap:balance;
+  }
+  .lede{font-size:clamp(1.05rem,2.2vw,1.22rem); color:var(--muted); max-width:60ch; margin:0}
+  .masthead{border-bottom:1px solid var(--line); padding-bottom:2rem; margin-bottom:2.5rem}
+  .meta-row{display:flex; gap:1.6rem; flex-wrap:wrap; margin-top:1.4rem; font-size:.82rem; color:var(--faint)}
+  .meta-row b{color:var(--muted); font-weight:600}
+
+  /* ---- Decision cards ---- */
+  .decisions{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:var(--shadow)}
+  .dcard{background:var(--surface); padding:1.05rem 1.15rem}
+  .dcard .k{font-family:var(--font-mono); font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); margin-bottom:.35rem}
+  .dcard .v{font-weight:600; font-size:.98rem; line-height:1.3}
+  .dcard .v small{display:block; font-weight:400; color:var(--muted); font-size:.8rem; margin-top:.2rem}
+
+  /* ---- Sections ---- */
+  section{margin-top:3.2rem; scroll-margin-top:1rem}
+  .sec-head{display:flex; align-items:baseline; gap:.8rem; border-bottom:1px solid var(--line); padding-bottom:.6rem; margin-bottom:1.2rem}
+  .sec-num{font-family:var(--font-mono); font-size:.9rem; color:var(--accent); font-weight:600}
+  h2{font-family:var(--font-display); font-weight:600; font-size:clamp(1.4rem,3vw,1.9rem); margin:0; letter-spacing:-.01em; text-wrap:balance}
+  h3{font-family:var(--font-body); font-weight:700; font-size:1.02rem; margin:1.7rem 0 .5rem; letter-spacing:.01em}
+  p{max-width:70ch}
+  a{color:var(--accent-ink)}
+  code,.mono{font-family:var(--font-mono); font-size:.86em; background:var(--accent-soft); color:var(--accent-ink); padding:.06em .38em; border-radius:5px}
+  ul{padding-left:1.15rem} li{margin:.3rem 0; max-width:68ch}
+  strong{font-weight:650}
+
+  /* ---- Data model grid ---- */
+  .models{display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:1rem; margin-top:.4rem}
+  .model{background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:1rem 1.1rem; box-shadow:var(--shadow)}
+  .model .name{font-family:var(--font-mono); font-weight:600; color:var(--accent-ink); font-size:.9rem; margin-bottom:.5rem; display:flex; align-items:center; gap:.5rem}
+  .model .name .tag{font-family:var(--font-body); font-size:.62rem; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); border:1px solid var(--line-strong); border-radius:99px; padding:.05rem .45rem}
+  .fields{list-style:none; padding:0; margin:0; font-family:var(--font-mono); font-size:.8rem}
+  .fields li{display:flex; justify-content:space-between; gap:1rem; padding:.28rem 0; border-top:1px dashed var(--line); color:var(--muted)}
+  .fields li:first-child{border-top:0}
+  .fields b{color:var(--ink); font-weight:600}
+
+  /* ---- The Matrix ---- */
+  .scroll{overflow-x:auto; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); background:var(--surface)}
+  table.matrix{border-collapse:collapse; width:100%; min-width:760px; font-size:.86rem; font-variant-numeric:tabular-nums}
+  table.matrix th,table.matrix td{text-align:center; padding:.5rem .5rem; border-bottom:1px solid var(--line)}
+  table.matrix thead th{position:sticky; top:0; background:var(--surface-2); z-index:2; font-size:.7rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:700; border-bottom:1.5px solid var(--line-strong)}
+  table.matrix th.perm,table.matrix td.perm{text-align:left; position:sticky; left:0; background:var(--surface); z-index:1; min-width:240px}
+  table.matrix thead th.perm{z-index:3; background:var(--surface-2)}
+  table.matrix td.perm .pk{font-family:var(--font-mono); font-size:.76rem; color:var(--ink); font-weight:600}
+  table.matrix td.perm .pd{color:var(--faint); font-size:.74rem}
+  .area-row td{background:var(--accent-soft); text-align:left; font-family:var(--font-mono); font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-ink); font-weight:700; padding:.45rem .7rem; position:sticky; left:0}
+  .cell-yes{color:var(--granted); font-weight:700}
+  .cell-no{color:var(--faint)}
+  .cell-super{color:var(--accent)}
+  .flag{display:inline-block; font-size:.62rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--warn); background:var(--warn-soft); border-radius:99px; padding:.05rem .4rem; margin-left:.35rem; vertical-align:middle}
+  .legend{display:flex; gap:1.3rem; flex-wrap:wrap; margin:.9rem 0 0; font-size:.8rem; color:var(--muted)}
+  .legend span{display:inline-flex; align-items:center; gap:.4rem}
+  .swatch{font-weight:700}
+
+  /* ---- Callouts ---- */
+  .note{border-left:3px solid var(--accent); background:var(--surface); padding:.9rem 1.1rem; border-radius:0 10px 10px 0; margin:1.2rem 0; box-shadow:var(--shadow)}
+  .note.warn{border-left-color:var(--warn)}
+  .note .t{font-weight:700; font-size:.82rem; letter-spacing:.02em; margin-bottom:.2rem; text-transform:uppercase; font-family:var(--font-mono); color:var(--muted)}
+  .note.warn .t{color:var(--warn)}
+
+  /* ---- Phase timeline ---- */
+  .phases{display:grid; gap:1rem; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); margin-top:.5rem}
+  .phase{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:1.1rem 1.2rem; box-shadow:var(--shadow); position:relative}
+  .phase .pnum{font-family:var(--font-mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--accent-ink); font-weight:700}
+  .phase.now{border-color:var(--accent); border-width:1.5px}
+  .phase .badge{position:absolute; top:1rem; right:1.1rem; font-size:.6rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); background:var(--accent-soft); border-radius:99px; padding:.12rem .5rem}
+  .phase h3{margin:.35rem 0 .5rem; font-family:var(--font-display); font-weight:600; font-size:1.15rem}
+  .phase ul{font-size:.86rem; color:var(--muted); margin:0}
+
+  .signoff{margin-top:3.5rem; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:1.4rem 1.5rem; box-shadow:var(--shadow)}
+  .signoff h2{margin-bottom:.5rem}
+  .footer{margin-top:3rem; padding-top:1.4rem; border-top:1px solid var(--line); color:var(--faint); font-size:.8rem}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px}
+  @media (prefers-reduced-motion:no-preference){a,.dcard{transition:color .15s}}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow"><span class="dot"></span> Design spec · MGW Admin Portal · for sign-off</div>
+    <h1>Access Matrix</h1>
+    <p class="lede">A configurable role&#8202;→&#8202;permission system for the admin portal — replacing today's scattered, hard-coded role checks with one editable matrix, enforced on the server and audited.</p>
+    <div class="meta-row">
+      <span><b>Status</b> &nbsp;Draft — awaiting approval</span>
+      <span><b>Phase</b> &nbsp;1 of 3</span>
+      <span><b>Behaviour change on rollout</b> &nbsp;None</span>
+    </div>
+  </header>
+
+  <!-- DECISIONS -->
+  <div class="decisions" aria-label="Agreed decisions">
+    <div class="dcard"><div class="k">Granularity</div><div class="v">Full matrix<small>Phased: areas + actions now, fields next</small></div></div>
+    <div class="dcard"><div class="k">Roles</div><div class="v">The 6 existing<small>Stored as data — custom roles later</small></div></div>
+    <div class="dcard"><div class="k">Enforcement</div><div class="v">Server-side<small>UI hides what you can't do too</small></div></div>
+    <div class="dcard"><div class="k">Day one</div><div class="v">Reproduce today<small>Nothing changes until you edit it</small></div></div>
+    <div class="dcard"><div class="k">Super&nbsp;Admin</div><div class="v">Bypasses the matrix<small>Always full access — no lockout</small></div></div>
+    <div class="dcard"><div class="k">Who edits it</div><div class="v">Super&nbsp;Administrator only</div></div>
+    <div class="dcard"><div class="k">Audit</div><div class="v">Full change record<small>Who, when, role, old&#8202;→&#8202;new</small></div></div>
+    <div class="dcard"><div class="k">Lives in</div><div class="v">System Config<small>New "Roles &amp; Permissions" tab</small></div></div>
+  </div>
+
+  <!-- 1 CURRENT STATE -->
+  <section id="today">
+    <div class="sec-head"><span class="sec-num">01</span><h2>How access works today</h2></div>
+    <p>Admin "levels" are not a database column or an enum — they are <strong>ASP.NET Identity roles</strong>. Every admin holds the base <code>Admin</code> role plus exactly one level role: <code>SuperAdministrator</code>, <code>Administrator</code>, <code>Manager</code>, <code>Editor</code>, <code>Viewer</code>, or <code>Sales</code>.</p>
+    <p>There is no central rulebook. What each level can do is enforced in three disconnected places:</p>
+    <ul>
+      <li>One coarse <strong>path middleware</strong> that only knows <code>Admin</code> / <code>Partner</code> / <code>Student</code> — not the levels.</li>
+      <li>Roughly <strong>30 hand-written checks</strong> in the API (<code>IsInRole("SuperAdministrator")</code> and the like), each guarding one action.</li>
+      <li>Roughly <strong>20 matching checks in the UI</strong> that show or hide buttons and tabs.</li>
+    </ul>
+    <p>That scattered set <em>is</em> the current access matrix — it's just written in code instead of a table. This spec lifts it into one editable, server-enforced matrix, reproduced exactly (§4) so nothing changes on the day it ships.</p>
+    <div class="note"><div class="t">Kept as-is: Sales data scoping</div>Sales users see only <em>their own assigned partners'</em> students, leads and mail. That's row-level filtering, not a simple on/off — so it stays exactly as it is today. The matrix governs <strong>actions</strong> (can / can't), not <em>which rows</em> a user sees.</div>
+  </section>
+
+  <!-- 2 DATA MODEL -->
+  <section id="model">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Data model</h2></div>
+    <p>The <strong>catalogue of permissions</strong> lives in code (it's defined by the app's features). What each role is <em>granted</em> lives in the database, so it's editable. Roles get a small metadata table so adding custom roles later is a row, not a rewrite.</p>
+    <div class="models">
+      <div class="model">
+        <div class="name">Role <span class="tag">seed the 6</span></div>
+        <ul class="fields">
+          <li><b>name</b><span>identity role</span></li>
+          <li><b>label</b><span>display</span></li>
+          <li><b>description</b><span>text</span></li>
+          <li><b>isSystem</b><span>bool</span></li>
+          <li><b>sortOrder</b><span>int</span></li>
+        </ul>
+      </div>
+      <div class="model">
+        <div class="name">RolePermission <span class="tag">grants</span></div>
+        <ul class="fields">
+          <li><b>roleName</b><span>fk → role</span></li>
+          <li><b>permissionKey</b><span>catalogue</span></li>
+          <li><b>allowed</b><span>bool</span></li>
+        </ul>
+      </div>
+      <div class="model">
+        <div class="name">PermissionAuditLog <span class="tag">history</span></div>
+        <ul class="fields">
+          <li><b>changedByUserId</b><span>who</span></li>
+          <li><b>changedAt</b><span>when</span></li>
+          <li><b>roleName</b><span>which role</span></li>
+          <li><b>permissionKey</b><span>which right</span></li>
+          <li><b>oldValue → newValue</b><span>bool</span></li>
+        </ul>
+      </div>
+      <div class="model">
+        <div class="name">Permission <span class="tag">code registry</span></div>
+        <ul class="fields">
+          <li><b>key</b><span>e.g. students.delete</span></li>
+          <li><b>area</b><span>group</span></li>
+          <li><b>label</b><span>human</span></li>
+          <li><b>description</b><span>what it lets you do</span></li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:1.1rem">User&#8202;→&#8202;role assignment is unchanged (still Identity roles), so existing logins and the Admin Users screen keep working untouched. Permission resolution: <strong>Super&nbsp;Administrator&nbsp;=&nbsp;everything</strong>; every other user gets the grants for their one level role.</p>
+  </section>
+
+  <!-- 3 ENFORCEMENT -->
+  <section id="enforce">
+    <div class="sec-head"><span class="sec-num">03</span><h2>How it's enforced</h2></div>
+    <h3>Server (the real gate)</h3>
+    <p>A single helper — <code>require("students.delete")</code> — replaces each of the ~30 hand-written role checks. It returns <strong>403</strong> when the caller's role lacks the permission (Super&nbsp;Administrator always passes). The existing coarse path middleware stays as the first line (is this an <code>Admin</code> at all?); the fine matrix decides <em>which</em> admin action is allowed.</p>
+    <h3>UI (what you see)</h3>
+    <p>Login (<code>/v1/me</code>) returns the user's effective permission keys. The frontend gains <code>auth.can("students.delete")</code>, replacing the ~20 <code>adminLevel === …</code> branches, so buttons and tabs appear only when the action is permitted. This is convenience, not security — the server is the gate.</p>
+    <div class="note"><div class="t">One source of truth</div>Today the level list is duplicated in three files. After this, the permission catalogue and each role's grants are defined once; the UI and API both read the same resolved set.</div>
+  </section>
+
+  <!-- 4 MATRIX -->
+  <section id="matrix">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Permission catalogue &amp; the seed matrix</h2></div>
+    <p>Every action gated in code today becomes one permission, grouped by area. The grid below is the <strong>seed</strong> — it reproduces the current rules exactly. On rollout this is what the matrix contains; you edit it from there.</p>
+    <div class="legend">
+      <span><span class="swatch cell-yes">●</span> granted</span>
+      <span><span class="swatch cell-no">–</span> denied</span>
+      <span><span class="swatch cell-super">◆</span> Super&nbsp;Admin: always (bypass)</span>
+      <span><span class="flag">verify</span> to confirm against code during build</span>
+    </div>
+    <div class="scroll" style="margin-top:.9rem">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th class="perm">Permission</th>
+            <th>Super</th><th>Admin</th><th>Manager</th><th>Editor</th><th>Viewer</th><th>Sales</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="area-row"><td colspan="7">Security &amp; roles</td></tr>
+          <tr><td class="perm"><span class="pk">admin_users.manage</span><br><span class="pd">Create / edit / delete admin users, reset passwords</span></td><td class="cell-super">◆</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">roles.manage</span><br><span class="pd">Edit this access matrix</span></td><td class="cell-super">◆</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">changelog.view</span><br><span class="pd">See the in-app changelog tab</span></td><td class="cell-super">◆</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+
+          <tr class="area-row"><td colspan="7">Students &amp; enrolment</td></tr>
+          <tr><td class="perm"><span class="pk">students.view</span><br><span class="pd">See the students area <em>(Sales scoped to own partners)</em></span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td></tr>
+          <tr><td class="perm"><span class="pk">students.submit_grade</span><br><span class="pd">Submit / edit a grade</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">students.set_handled_by</span><br><span class="pd">Set "Handled by" (Sales attribution)</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">students.edit_specialization</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">students.edit_duration</span><span class="pd"> · commencement · letter dates · legacy ID</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">students.send_letter_email</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">students.regenerate_letters</span><span class="flag">verify</span><br><span class="pd">UI says Admin+; API may allow Manager/Editor</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">students.delete</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">students.remove_programme</span><br><span class="pd">Irreversible — SuperAdmin only today</span></td><td class="cell-super">◆</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">students.export</span><br><span class="pd"><em>(Sales scoped)</em></span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td></tr>
+
+          <tr class="area-row"><td colspan="7">Letters</td></tr>
+          <tr><td class="perm"><span class="pk">letter_types.manage</span><br><span class="pd">Create / edit letter-type definitions</span></td><td class="cell-super">◆</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">letters.generate</span><br><span class="pd">Generate an approval letter <em>(opened to all levels)</em></span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td></tr>
+          <tr><td class="perm"><span class="pk">letters.email_edit</span><span class="flag">verify</span><br><span class="pd">Edit dynamic letter-emails (blocks Viewer + Sales)</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+
+          <tr class="area-row"><td colspan="7">CRM · Mail · Statistics</td></tr>
+          <tr><td class="perm"><span class="pk">crm.view</span><br><span class="pd"><em>(Sales scoped to own leads)</em></span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td></tr>
+          <tr><td class="perm"><span class="pk">crm.settings</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">mail.accounts_manage</span><br><span class="pd">Add / remove mail accounts &amp; access</span></td><td class="cell-super">◆</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">mail.settings</span><span class="pd"> · global &amp; per-school</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">statistics.view</span><br><span class="pd"><em>(Sales sees Signups only)</em></span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td></tr>
+          <tr><td class="perm"><span class="pk">statistics.financial</span><span class="pd"> · full leaderboard</span></td><td class="cell-super">◆</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+
+          <tr class="area-row"><td colspan="7">Partners · Programmes · Invoices</td></tr>
+          <tr><td class="perm"><span class="pk">partners.assign_sales</span><br><span class="pd">Assign Sales staff to a partner</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">programmes.edit_duration</span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">invoices.mark_paid</span><br><span class="pd">Mark an invoice paid <em>(Sales excluded)</em></span></td><td class="cell-super">◆</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-yes">●</td><td class="cell-no">–</td></tr>
+          <tr><td class="perm"><span class="pk">invoices.delete</span><span class="pd"> · mark unpaid / revert</span></td><td class="cell-super">◆</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td><td class="cell-no">–</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:.9rem; font-size:.85rem; color:var(--muted)">Plus a <code>&lt;area&gt;.access</code> permission per top-nav area (Students, Partners, Statistics, CRM, Mail, Messages, Academic, Questionnaires, System Config) reproducing today's tab visibility — e.g. Sales currently sees a reduced set. The exact rows marked <span class="flag">verify</span> are read straight from the code during the build to confirm the seed before it ships.</p>
+  </section>
+
+  <!-- 5 UI + AUDIT -->
+  <section id="ui">
+    <div class="sec-head"><span class="sec-num">05</span><h2>The editor &amp; the audit trail</h2></div>
+    <p><strong>System Config → Roles &amp; Permissions</strong> (Super&nbsp;Administrator only) shows this exact grid with checkboxes: rows are permissions grouped by area, columns are the six roles. The Super&nbsp;Administrator column is locked on — it always has everything. Saving a change writes the grant and appends to the audit log.</p>
+    <p>A <strong>History</strong> panel on the same tab lists every change: who made it, when, which role and permission, and the before → after value. Nothing is deleted; the trail is append-only.</p>
+  </section>
+
+  <!-- 6 PHASING -->
+  <section id="phases">
+    <div class="sec-head"><span class="sec-num">06</span><h2>Delivery in three phases</h2></div>
+    <div class="phases">
+      <div class="phase now">
+        <span class="badge">this build</span>
+        <div class="pnum">Phase 1</div>
+        <h3>Areas &amp; actions</h3>
+        <ul>
+          <li>Permission catalogue + role/grant/audit tables</li>
+          <li>Seed = today's access, exactly</li>
+          <li>Server enforcement at all ~30 sites</li>
+          <li>UI reads permissions; matrix editor + audit log</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <div class="pnum">Phase 2</div>
+        <h3>Field-level</h3>
+        <ul>
+          <li>Per-field view / edit permissions</li>
+          <li>Enforced where records are read &amp; saved</li>
+          <li>Built on the same engine &amp; UI</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <div class="pnum">Phase 3</div>
+        <h3>Partner tiers</h3>
+        <ul>
+          <li>Partner self-service permissions by tier</li>
+          <li>Reuses this engine (the <code>Partner.Tier</code> column already exists)</li>
+          <li>Design now, build later</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 OPEN ITEMS -->
+  <section id="open">
+    <div class="sec-head"><span class="sec-num">07</span><h2>To confirm during the build</h2></div>
+    <ul>
+      <li><strong>Two ambiguous gates</strong> (marked <span class="flag">verify</span>): <code>students.regenerate_letters</code> and <code>letters.email_edit</code> — the UI and API appear to disagree on Manager/Editor. The API (the real gate) is authoritative; I'll read the exact code and seed to match.</li>
+      <li><strong>Deliberate least-privilege rules to preserve</strong>: <code>students.remove_programme</code> was intentionally tightened to SuperAdmin ("verified live: an Administrator gets 403"). The seed keeps it that way.</li>
+      <li><strong>Sales scoping stays hard-coded</strong> — the matrix does not (yet) make "sees all vs sees own" configurable.</li>
+      <li><strong>Migration surface</strong>: ~30 API checks + ~20 UI checks + 3 duplicated level lists to converge on one source.</li>
+    </ul>
+    <div class="note warn"><div class="t">Risk to manage</div>This touches the security-critical path across ~50 sites. Each replacement keeps the same effective rule; the plan is to migrate area by area and confirm the seed reproduces today's behaviour before the editor is opened up.</div>
+  </section>
+
+  <div class="signoff">
+    <h2>What I need from you</h2>
+    <p style="margin-bottom:.4rem">Confirm the seed matrix in §4 reads correctly and this scope is right for Phase&nbsp;1. Two things worth a look:</p>
+    <ul>
+      <li>Any permission you'd want to <strong>rename or split</strong> before it becomes the catalogue.</li>
+      <li>The two <span class="flag">verify</span> rows — happy for me to make the API's current rule the source of truth?</li>
+    </ul>
+    <p style="margin-top:.6rem; margin-bottom:0">On your OK, I'll build Phase&nbsp;1. Nothing here changes anyone's access until you edit the matrix after it ships.</p>
+  </div>
+
+  <div class="footer">
+    Access Matrix · Phase 1 design spec · reproduces current access with zero behaviour change on rollout.
+  </div>
+</div>
