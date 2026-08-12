@@ -5,6 +5,16 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'letters-old-always-hidden',
+    date: '2026-08-12',
+    title: 'Old letters are now always hidden on the Letters row',
+    summary: 'The Show/Hide-old toggle is removed; the programme Letters row shows the new letters only.',
+    details: [
+      'After the cutover the old built-in letters are dormant, so the "Letters:" row now lists only the new config-created letters — no Show/Hide-old toggle and no (O) chips.',
+      'Nothing was deleted: the old letters and all data remain; the toggle markup is just commented out in code and can be re-enabled if ever needed.',
+    ],
+  },
+  {
     id: 'letters-old-publish-syncs-new',
     date: '2026-08-12',
     title: 'Saving an old letter also publishes its new twin',

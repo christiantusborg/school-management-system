@@ -1,19 +1,19 @@
 <template>
   <div class="letters-row">
     <span class="letters-label">Letters:</span>
-    <!-- Old/new toggle: the OLD built-in (enum) letters are hidden by default
-         so the new config-created letters stand out. One toggle drives every
-         programme row (shared state). -->
+    <!-- Show/Hide-old toggle and the OLD (enum) letter chips are DISABLED after
+         the enum->dynamic cutover: old letters are dormant, so the row shows the
+         new config-created letters only. Data is untouched; markup kept below,
+         commented out, for easy re-enable.
     <button class="lbtn lbtn-toggle" @click="showOldLetters = !showOldLetters"
-            :title="showOldLetters ? 'Hide the old built-in letters' : 'Show the old built-in letters (marked (O))'">
+            :title="showOldLetters ? 'Hide the old built-in letters' : 'Show the old built-in letters'">
       {{ showOldLetters ? `Hide old (${TYPES.length})` : `Show old (${TYPES.length})` }}
     </button>
-    <!-- OLD built-in (enum) letters — hidden by default, marked (O). -->
     <template v-if="showOldLetters">
       <span v-for="t in TYPES" :key="t.code" class="lbtn-group">
         <button class="lbtn lbtn-old" :class="badgeClass(t.code)"
                 @click="open(t.code)"
-                :title="(published[t.code] ? 'Published — releases are live' : 'Draft — no releases until you save') + ' · OLD built-in letter'">
+                :title="(published[t.code] ? 'Published, releases are live' : 'Draft, no releases until you save') + ' OLD built-in letter'">
           <span class="lbtn-old-tag">(O)</span>
           <span class="lbtn-dot">{{ published[t.code] ? '🟢' : '🟠' }}</span>
           {{ t.label }}
@@ -22,6 +22,7 @@
                 @click="openEmail(t.code)" title="Edit the email sent with this letter">✉</button>
       </span>
     </template>
+    -->
     <!-- Config-created letter types (System Config → Letter Types). One chip
          per type editing the English default; language mini-buttons edit the
          per-language versions. -->
@@ -68,7 +69,8 @@ import { ref, watch, computed } from 'vue'
 import apiClient from '../../api/client.js'
 import CertificateEditorModal from './CertificateEditorModal.vue'
 import LetterEmailEditorModal from './LetterEmailEditorModal.vue'
-import { showOldLetters } from './letterRowState.js'
+// Disabled after cutover — old letters are always hidden now. Kept for revert:
+// import { showOldLetters } from './letterRowState.js'
 
 const props = defineProps({
   programmeId: { type: String, required: true },
