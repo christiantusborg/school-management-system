@@ -4,6 +4,7 @@ using ClosedXML.Excel;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using Odin.Api.Base.Authorization;
 using SharedLibrary.Basics.Opaque.Domains;
 
 namespace School.PartnerAdminApi.Admin.V1.Statistics;
@@ -519,7 +520,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
     };
 
     private static async Task<IResult> ExportTabAsync(
-        string tab, OdinDbContext db, HttpContext httpContext, ILogger<AdminV1StatisticsExtraEndpoint> log, CancellationToken ct,
+        string tab, OdinDbContext db, HttpContext httpContext, ILogger<AdminV1StatisticsExtraEndpoint> log, IPermissionService perms, CancellationToken ct,
         [FromQuery] string? format = null,
         [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
         [FromQuery] string? granularity = null)
@@ -539,7 +540,7 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
             "demographics" => await DemographicsAsync(db, ct, from, to),
             "operations" => await OperationsAsync(db, ct, from, to),
             "finance" => await FinanceAsync(db, ct, from, to),
-            "signups" => await SignupsAsync(db, httpContext, ct, from, to),
+            "signups" => await SignupsAsync(db, httpContext, perms, ct, from, to),
             _ => await TrendsAsync(db, ct, from, to, granularity),
         };
         if (inner is not IValueHttpResult { Value: { } payload }) return Results.NotFound();
@@ -988,13 +989,13 @@ public sealed class AdminV1StatisticsExtraEndpoint : IEndpointMarker
         decimal? Amount, string? Currency, string? Note, string? School);
 
     private static async Task<IResult> SignupsAsync(
-        OdinDbContext db, HttpContext httpContext, CancellationToken ct,
+        OdinDbContext db, HttpContext httpContext, IPermissionService perms, CancellationToken ct,
         [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null,
         [FromQuery] string? metric = null, [FromQuery] bool salesOnly = false)
     {
         var (f, t) = Range(from, to);
         var callerId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var isSuper = httpContext.User.IsInRole("SuperAdministrator");
+        var isSuper = await perms.HasAsync(httpContext.User, AdminPermissions.StatisticsFinancial, ct);
 
         List<SignupEvent> events;
         if (string.Equals(metric, "paid", StringComparison.OrdinalIgnoreCase))

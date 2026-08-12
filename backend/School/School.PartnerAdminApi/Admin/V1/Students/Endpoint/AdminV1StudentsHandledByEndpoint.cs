@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Odin.Api.Base.Authorization;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 
@@ -46,13 +47,10 @@ public sealed class AdminV1StudentsHandledByEndpoint : IEndpointMarker
 
     public sealed class SetBody { public string? UserId { get; init; } }
 
-    private static readonly string[] AllowedLevels =
-        ["SuperAdministrator", "Administrator", "Manager", "Editor"];
-
     private static async Task<IResult> SetAsync(
-        Guid studentId, [FromBody] SetBody body, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid studentId, [FromBody] SetBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (!AllowedLevels.Any(httpContext.User.IsInRole))
+        if (!await perms.HasAsync(httpContext.User, AdminPermissions.StudentsSetHandledBy, ct))
             return Results.Json(new { error = "Requires Editor level or above." }, statusCode: StatusCodes.Status403Forbidden);
 
         var student = await db.Students.FirstOrDefaultAsync(s => s.StudentId == studentId && s.DeletedAt == null, ct);

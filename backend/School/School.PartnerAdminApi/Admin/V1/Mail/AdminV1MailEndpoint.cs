@@ -126,9 +126,9 @@ public sealed class AdminV1MailEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> AccountCreateAsync(
-        [FromBody] AccountBody body, HttpContext ctx, OdinDbContext db, CancellationToken ct)
+        [FromBody] AccountBody body, HttpContext ctx, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (!IsSuperAdmin(ctx))
+        if (!await perms.HasAsync(ctx.User, AdminPermissions.MailAccountsManage, ct))
             return Results.Json(new { error = "Only SuperAdministrator can add mail accounts." }, statusCode: StatusCodes.Status403Forbidden);
         if (string.IsNullOrWhiteSpace(body.EmailAddress) || string.IsNullOrWhiteSpace(body.ImapHost)
             || string.IsNullOrWhiteSpace(body.SmtpHost) || string.IsNullOrWhiteSpace(body.Username)
@@ -156,9 +156,9 @@ public sealed class AdminV1MailEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> AccountUpdateAsync(
-        Guid id, [FromBody] AccountBody body, HttpContext ctx, OdinDbContext db, CancellationToken ct)
+        Guid id, [FromBody] AccountBody body, HttpContext ctx, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (!IsSuperAdmin(ctx))
+        if (!await perms.HasAsync(ctx.User, AdminPermissions.MailAccountsManage, ct))
             return Results.Json(new { error = "Only SuperAdministrator can edit mail accounts." }, statusCode: StatusCodes.Status403Forbidden);
         var account = await db.MailAccounts.FirstOrDefaultAsync(a => a.MailAccountId == id && a.DeletedAt == null, ct);
         if (account is null) return Results.NotFound();
@@ -180,9 +180,9 @@ public sealed class AdminV1MailEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> AccountDeleteAsync(
-        Guid id, HttpContext ctx, OdinDbContext db, CancellationToken ct)
+        Guid id, HttpContext ctx, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (!IsSuperAdmin(ctx))
+        if (!await perms.HasAsync(ctx.User, AdminPermissions.MailAccountsManage, ct))
             return Results.Json(new { error = "Only SuperAdministrator can remove mail accounts." }, statusCode: StatusCodes.Status403Forbidden);
         var account = await db.MailAccounts.FirstOrDefaultAsync(a => a.MailAccountId == id && a.DeletedAt == null, ct);
         if (account is null) return Results.NotFound();
@@ -193,9 +193,9 @@ public sealed class AdminV1MailEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> AccountAccessAsync(
-        Guid id, [FromBody] AccessBody body, HttpContext ctx, OdinDbContext db, CancellationToken ct)
+        Guid id, [FromBody] AccessBody body, HttpContext ctx, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (!IsSuperAdmin(ctx))
+        if (!await perms.HasAsync(ctx.User, AdminPermissions.MailAccountsManage, ct))
             return Results.Json(new { error = "Only SuperAdministrator can change mail access." }, statusCode: StatusCodes.Status403Forbidden);
         var exists = await db.MailAccounts.AnyAsync(a => a.MailAccountId == id && a.DeletedAt == null, ct);
         if (!exists) return Results.NotFound();

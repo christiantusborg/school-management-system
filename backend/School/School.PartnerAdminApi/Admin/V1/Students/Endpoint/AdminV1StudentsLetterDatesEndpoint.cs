@@ -37,6 +37,7 @@ public sealed class AdminV1StudentsLetterDatesEndpoint : IEndpointMarker
         [FromBody] LetterDatesBody body,
         HttpContext httpContext,
         [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] IPermissionService perms,
         LetterReleaseService letterRelease,
         OdinDbContext db, CancellationToken ct)
     {
@@ -45,9 +46,7 @@ public sealed class AdminV1StudentsLetterDatesEndpoint : IEndpointMarker
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled) return Results.Unauthorized();
-        var isAdministrator = await userManager.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
-        if (!isAdministrator)
+        if (!await perms.HasAsync(httpContext.User, AdminPermissions.StudentsEditLetterDates, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
 
         var enrolment = await db.Enrollments

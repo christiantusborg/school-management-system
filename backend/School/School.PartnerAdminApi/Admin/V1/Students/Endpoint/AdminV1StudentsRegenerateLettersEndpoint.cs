@@ -48,6 +48,7 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
         [FromQuery] string? language,
         HttpContext httpContext,
         [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] IPermissionService perms,
         LetterReleaseService letterRelease,
         OdinDbContext db, CancellationToken ct)
     {
@@ -92,8 +93,7 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
         // The final-project approval letters are day-to-day Admission Office
         // work: any non-read-only admin level may generate them. Everything
         // else stays Administrator+ like the duration override.
-        var isAdministrator = await userManager.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
+        var isAdministrator = await perms.HasAsync(httpContext.User, AdminPermissions.StudentsRegenerateLetters, ct);
         if (!isAdministrator)
         {
             var isApprovalLetter = onlyType is LetterType.FinalProposalApproval or LetterType.FinalProjectApproval;

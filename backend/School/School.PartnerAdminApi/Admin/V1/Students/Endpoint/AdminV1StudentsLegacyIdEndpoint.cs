@@ -33,15 +33,14 @@ public sealed class AdminV1StudentsLegacyIdEndpoint : IEndpointMarker
         [FromBody] LegacyIdBody body,
         HttpContext http,
         [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] IPermissionService perms,
         OdinDbContext db, CancellationToken ct)
     {
         var callerId = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled) return Results.Unauthorized();
-        var isAdministrator = await userManager.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
-        if (!isAdministrator)
+        if (!await perms.HasAsync(http.User, AdminPermissions.StudentsEditLegacyId, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
 
         var newNumber = body.StudentNumber?.Trim();

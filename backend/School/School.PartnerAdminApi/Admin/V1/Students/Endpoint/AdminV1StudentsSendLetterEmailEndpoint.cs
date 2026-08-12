@@ -34,6 +34,7 @@ public sealed class AdminV1StudentsSendLetterEmailEndpoint : IEndpointMarker
         [FromBody] SendBody? body,
         HttpContext httpContext,
         [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] IPermissionService perms,
         LetterEmailService letterEmail,
         OdinDbContext db, CancellationToken ct)
     {
@@ -42,9 +43,7 @@ public sealed class AdminV1StudentsSendLetterEmailEndpoint : IEndpointMarker
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled)
             return Results.Unauthorized();
-        var isAdministrator = await userManager.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
-        if (!isAdministrator)
+        if (!await perms.HasAsync(httpContext.User, AdminPermissions.StudentsSendLetterEmail, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
 
         if (!Enum.TryParse<LetterType>(type, ignoreCase: true, out var letterType))

@@ -33,23 +33,23 @@ public sealed class AdminProgrammesV1DurationEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult?> RequireAdministratorAsync(
-        HttpContext ctx, UserManager<ApplicationUser> um)
+        HttpContext ctx, UserManager<ApplicationUser> um,
+        IPermissionService perms, CancellationToken ct)
     {
         var callerId = ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
         var caller = await um.FindByIdAsync(callerId);
         if (caller is null) return Results.Unauthorized();
-        var ok = await um.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await um.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
+        var ok = await perms.HasAsync(ctx.User, AdminPermissions.ProgrammesEditDuration, ct);
         return ok ? null : Results.Json(new { error = "Requires Administrator level or above." },
             statusCode: StatusCodes.Status403Forbidden);
     }
 
     private static async Task<IResult> RangeAsync(
         Guid programmeId, [FromBody] RangeBody body, HttpContext ctx, OdinDbContext db,
-        UserManager<ApplicationUser> um, CancellationToken ct)
+        UserManager<ApplicationUser> um, IPermissionService perms, CancellationToken ct)
     {
-        if (await RequireAdministratorAsync(ctx, um) is { } fail) return fail;
+        if (await RequireAdministratorAsync(ctx, um, perms, ct) is { } fail) return fail;
         var prog = await db.Programmes.FirstOrDefaultAsync(p => p.ProgrammeId == programmeId && p.DeletedAt == null, ct);
         if (prog is null) return Results.NotFound();
 
@@ -130,9 +130,9 @@ public sealed class AdminProgrammesV1DurationEndpoint : IEndpointMarker
     };
 
     private static async Task<IResult> PreviewAsync(
-        Guid programmeId, HttpContext ctx, OdinDbContext db, UserManager<ApplicationUser> um, CancellationToken ct)
+        Guid programmeId, HttpContext ctx, OdinDbContext db, UserManager<ApplicationUser> um, IPermissionService perms, CancellationToken ct)
     {
-        if (await RequireAdministratorAsync(ctx, um) is { } fail) return fail;
+        if (await RequireAdministratorAsync(ctx, um, perms, ct) is { } fail) return fail;
         if (!await db.Programmes.AnyAsync(p => p.ProgrammeId == programmeId && p.DeletedAt == null, ct))
             return Results.NotFound();
         var rows = await BuildRowsAsync(db, programmeId, ct);
@@ -145,9 +145,9 @@ public sealed class AdminProgrammesV1DurationEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> ApplyAsync(
-        Guid programmeId, HttpContext ctx, OdinDbContext db, UserManager<ApplicationUser> um, CancellationToken ct)
+        Guid programmeId, HttpContext ctx, OdinDbContext db, UserManager<ApplicationUser> um, IPermissionService perms, CancellationToken ct)
     {
-        if (await RequireAdministratorAsync(ctx, um) is { } fail) return fail;
+        if (await RequireAdministratorAsync(ctx, um, perms, ct) is { } fail) return fail;
         if (!await db.Programmes.AnyAsync(p => p.ProgrammeId == programmeId && p.DeletedAt == null, ct))
             return Results.NotFound();
         var rows = await BuildRowsAsync(db, programmeId, ct);

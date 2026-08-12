@@ -34,6 +34,7 @@ public sealed class AdminV1StudentsEnrolmentDurationEndpoint : IEndpointMarker
         [FromBody] DurationBody body,
         HttpContext httpContext,
         [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] IPermissionService perms,
         OdinDbContext db, CancellationToken ct)
     {
         // Administrator+ only. AdminOnly (any admin level) is not enough:
@@ -44,9 +45,7 @@ public sealed class AdminV1StudentsEnrolmentDurationEndpoint : IEndpointMarker
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled)
             return Results.Unauthorized();
-        var isAdministrator = await userManager.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
-        if (!isAdministrator)
+        if (!await perms.HasAsync(httpContext.User, AdminPermissions.StudentsEditDuration, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
 
         var enrolment = await db.Enrollments

@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using Odin.Api.Base.Authorization;
 
 namespace School.PartnerAdminApi.Admin.V1.Partners;
 
@@ -21,9 +21,6 @@ public sealed class AdminV1SalesAssignmentsEndpoint : IEndpointMarker
         return app;
     }
 
-    private static bool IsAdministrator(ClaimsPrincipal user) =>
-        user.IsInRole("Administrator") || user.IsInRole("SuperAdministrator");
-
     private static async Task<IResult> ListForPartnerAsync(Guid partnerId, OdinDbContext db, CancellationToken ct)
     {
         var userIds = await db.SalesPartnerAssignments
@@ -36,9 +33,9 @@ public sealed class AdminV1SalesAssignmentsEndpoint : IEndpointMarker
     public sealed class PartnerBody { public List<string>? UserIds { get; init; } }
 
     private static async Task<IResult> SetForPartnerAsync(
-        Guid partnerId, [FromBody] PartnerBody body, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, [FromBody] PartnerBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (!IsAdministrator(httpContext.User))
+        if (!await perms.HasAsync(httpContext.User, AdminPermissions.PartnersAssignSales, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
         if (!await db.Partners.AnyAsync(p => p.PartnerId == partnerId && p.DeletedAt == null, ct))
             return Results.NotFound();
@@ -64,9 +61,9 @@ public sealed class AdminV1SalesAssignmentsEndpoint : IEndpointMarker
     public sealed class UserBody { public List<Guid>? PartnerIds { get; init; } }
 
     private static async Task<IResult> SetForUserAsync(
-        string userId, [FromBody] UserBody body, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        string userId, [FromBody] UserBody body, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (!IsAdministrator(httpContext.User))
+        if (!await perms.HasAsync(httpContext.User, AdminPermissions.PartnersAssignSales, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
 
         var wanted = (body.PartnerIds ?? []).Distinct().ToHashSet();

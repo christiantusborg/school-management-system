@@ -26,7 +26,7 @@ public sealed class AdminV1StudentsEnrolmentDeleteEndpoint : IEndpointMarker
 
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId, [FromBody] Body body,
-        HttpContext httpContext, UserManager<ApplicationUser> userManager,
+        HttpContext httpContext, UserManager<ApplicationUser> userManager, IPermissionService perms,
         OdinDbContext db, CancellationToken ct)
     {
         var callerId = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -35,7 +35,7 @@ public sealed class AdminV1StudentsEnrolmentDeleteEndpoint : IEndpointMarker
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled) return Results.Unauthorized();
         // SuperAdministrator ONLY — removing a programme is irreversible from
         // the portal, so it sits above the normal admin levels.
-        if (!await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator))
+        if (!await perms.HasAsync(httpContext.User, AdminPermissions.StudentsRemoveProgramme, ct))
             return Results.Json(new { error = "Requires SuperAdministrator." }, statusCode: StatusCodes.Status403Forbidden);
 
         var enrolment = await db.Enrollments

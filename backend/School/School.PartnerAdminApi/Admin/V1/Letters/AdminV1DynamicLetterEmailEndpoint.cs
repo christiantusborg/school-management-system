@@ -36,16 +36,14 @@ public sealed class AdminV1DynamicLetterEmailEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult?> GuardAsync(
-        HttpContext http, UserManager<ApplicationUser> userManager, OdinDbContext db,
+        HttpContext http, UserManager<ApplicationUser> userManager, IPermissionService perms, OdinDbContext db,
         Guid studentId, Guid enrollmentId, Guid definitionId, CancellationToken ct)
     {
         var callerId = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled) return Results.Unauthorized();
-        var isReadOnly = await userManager.IsInRoleAsync(caller, AdminLevels.Viewer)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.Sales);
-        if (isReadOnly)
+        if (!await perms.HasAsync(http.User, AdminPermissions.LettersEmailEdit, ct))
             return Results.Json(new { error = "Read-only access cannot send letter emails." }, statusCode: StatusCodes.Status403Forbidden);
         var owns = await db.Enrollments.AnyAsync(e => e.StudentEnrollmentId == enrollmentId
             && e.StudentId == studentId && e.DeletedAt == null, ct);
@@ -63,10 +61,10 @@ public sealed class AdminV1DynamicLetterEmailEndpoint : IEndpointMarker
     private static async Task<IResult> PreviewAsync(
         Guid studentId, Guid enrollmentId, Guid definitionId,
         [FromQuery] string? additionalText,
-        HttpContext http, UserManager<ApplicationUser> userManager,
+        HttpContext http, UserManager<ApplicationUser> userManager, IPermissionService perms,
         OdinDbContext db, LetterEmailService letterEmail, CancellationToken ct)
     {
-        if (await GuardAsync(http, userManager, db, studentId, enrollmentId, definitionId, ct) is { } fail) return fail;
+        if (await GuardAsync(http, userManager, perms, db, studentId, enrollmentId, definitionId, ct) is { } fail) return fail;
         var (composeFail, subject, bodyHtml, to, cc, bcc, isEnabled, isDefault) = await letterEmail.ComposeDynamicAsync(
             enrollmentId, definitionId, adHocCc: null, adHocBcc: null, additionalText, ct);
         if (composeFail is not null)
@@ -77,10 +75,10 @@ public sealed class AdminV1DynamicLetterEmailEndpoint : IEndpointMarker
     private static async Task<IResult> SendAsync(
         Guid studentId, Guid enrollmentId, Guid definitionId,
         [FromBody] SendBody body,
-        HttpContext http, UserManager<ApplicationUser> userManager,
+        HttpContext http, UserManager<ApplicationUser> userManager, IPermissionService perms,
         OdinDbContext db, LetterEmailService letterEmail, CancellationToken ct)
     {
-        if (await GuardAsync(http, userManager, db, studentId, enrollmentId, definitionId, ct) is { } fail) return fail;
+        if (await GuardAsync(http, userManager, perms, db, studentId, enrollmentId, definitionId, ct) is { } fail) return fail;
         var result = await letterEmail.SendForDynamicLetterAsync(
             enrollmentId, definitionId, body.Cc, body.Bcc, body.AdditionalText, requireEnabled: false, ct,
             overrideSubject: body.Subject, overrideBodyHtml: body.BodyHtml);

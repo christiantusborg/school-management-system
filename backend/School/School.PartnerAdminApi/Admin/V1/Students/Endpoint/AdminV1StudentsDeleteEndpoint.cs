@@ -27,6 +27,7 @@ public sealed class AdminV1StudentsDeleteEndpoint : IEndpointMarker
         Guid studentId,
         HttpContext httpContext,
         [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] IPermissionService perms,
         OdinDbContext db, CancellationToken ct)
     {
         // Administrator+ only. Removing an applicant is destructive, so it is
@@ -36,9 +37,7 @@ public sealed class AdminV1StudentsDeleteEndpoint : IEndpointMarker
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled)
             return Results.Unauthorized();
-        var isAdministrator = await userManager.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
-        if (!isAdministrator)
+        if (!await perms.HasAsync(httpContext.User, AdminPermissions.StudentsDelete, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
 
         var student = await db.Students

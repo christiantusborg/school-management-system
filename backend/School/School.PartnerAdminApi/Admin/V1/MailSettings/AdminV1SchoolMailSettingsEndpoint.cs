@@ -47,21 +47,21 @@ public sealed class AdminV1SchoolMailSettingsEndpoint : IEndpointMarker
     }
 
     private static async Task<bool> IsAdministratorAsync(
-        HttpContext http, UserManager<ApplicationUser> userManager)
+        HttpContext http, UserManager<ApplicationUser> userManager,
+        IPermissionService perms, CancellationToken ct)
     {
         var callerId = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(callerId)) return false;
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled) return false;
-        return await userManager.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
+        return await perms.HasAsync(http.User, AdminPermissions.MailSettings, ct);
     }
 
     private static async Task<IResult> GetAsync(
-        Guid schoolId, HttpContext http, [FromServices] UserManager<ApplicationUser> userManager,
+        Guid schoolId, HttpContext http, [FromServices] UserManager<ApplicationUser> userManager, [FromServices] IPermissionService perms,
         OdinDbContext db, CancellationToken ct)
     {
-        if (!await IsAdministratorAsync(http, userManager))
+        if (!await IsAdministratorAsync(http, userManager, perms, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
         if (!await db.Schools.AnyAsync(s => s.SchoolId == schoolId && s.DeletedAt == null, ct))
             return Results.NotFound();
@@ -84,10 +84,10 @@ public sealed class AdminV1SchoolMailSettingsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SaveAsync(
-        Guid schoolId, HttpContext http, [FromServices] UserManager<ApplicationUser> userManager,
+        Guid schoolId, HttpContext http, [FromServices] UserManager<ApplicationUser> userManager, [FromServices] IPermissionService perms,
         [FromBody] WriteRequest body, OdinDbContext db, CancellationToken ct)
     {
-        if (!await IsAdministratorAsync(http, userManager))
+        if (!await IsAdministratorAsync(http, userManager, perms, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
         if (!await db.Schools.AnyAsync(s => s.SchoolId == schoolId && s.DeletedAt == null, ct))
             return Results.NotFound();
@@ -128,11 +128,11 @@ public sealed class AdminV1SchoolMailSettingsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> TestAsync(
-        Guid schoolId, HttpContext http, [FromServices] UserManager<ApplicationUser> userManager,
+        Guid schoolId, HttpContext http, [FromServices] UserManager<ApplicationUser> userManager, [FromServices] IPermissionService perms,
         [FromBody] TestRequest body, OdinDbContext db,
         [FromServices] ISchoolMailTester tester, CancellationToken ct)
     {
-        if (!await IsAdministratorAsync(http, userManager))
+        if (!await IsAdministratorAsync(http, userManager, perms, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
         if (!await db.Schools.AnyAsync(s => s.SchoolId == schoolId && s.DeletedAt == null, ct))
             return Results.NotFound();

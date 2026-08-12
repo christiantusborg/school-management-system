@@ -52,14 +52,15 @@ public sealed class AdminV1LetterTypeDefinitionsEndpoint : IEndpointMarker
         body.SortOrder != 0 ? body.SortOrder : body.DisplayOrder;
 
     private static async Task<IResult?> RequireSuperAdminAsync(
-        HttpContext http, UserManager<ApplicationUser> userManager)
+        HttpContext http, UserManager<ApplicationUser> userManager,
+        IPermissionService perms, CancellationToken ct)
     {
         var callerId = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled)
             return Results.Unauthorized();
-        if (!await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator))
+        if (!await perms.HasAsync(http.User, AdminPermissions.LetterTypesManage, ct))
             return Results.Json(new { error = "Letter type configuration requires SuperAdministrator." },
                 statusCode: StatusCodes.Status403Forbidden);
         return null;
@@ -107,9 +108,9 @@ public sealed class AdminV1LetterTypeDefinitionsEndpoint : IEndpointMarker
 
     private static async Task<IResult> CreateAsync(
         [FromBody] TypeBody body, HttpContext http,
-        UserManager<ApplicationUser> userManager, OdinDbContext db, CancellationToken ct)
+        UserManager<ApplicationUser> userManager, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (await RequireSuperAdminAsync(http, userManager) is { } fail) return fail;
+        if (await RequireSuperAdminAsync(http, userManager, perms, ct) is { } fail) return fail;
         var name = (body.Name ?? string.Empty).Trim();
         if (name.Length == 0) return Results.BadRequest(new { error = "Name is required." });
         if (await db.LetterTypeDefinitions.AnyAsync(d => d.DeletedAt == null && d.Name == name, ct))
@@ -143,9 +144,9 @@ public sealed class AdminV1LetterTypeDefinitionsEndpoint : IEndpointMarker
 
     private static async Task<IResult> UpdateAsync(
         Guid id, [FromBody] TypeBody body, HttpContext http,
-        UserManager<ApplicationUser> userManager, OdinDbContext db, CancellationToken ct)
+        UserManager<ApplicationUser> userManager, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (await RequireSuperAdminAsync(http, userManager) is { } fail) return fail;
+        if (await RequireSuperAdminAsync(http, userManager, perms, ct) is { } fail) return fail;
         var def = await db.LetterTypeDefinitions
             .FirstOrDefaultAsync(d => d.LetterTypeDefinitionId == id && d.DeletedAt == null, ct);
         if (def is null) return Results.NotFound();
@@ -169,9 +170,9 @@ public sealed class AdminV1LetterTypeDefinitionsEndpoint : IEndpointMarker
 
     private static async Task<IResult> DeleteAsync(
         Guid id, HttpContext http,
-        UserManager<ApplicationUser> userManager, OdinDbContext db, CancellationToken ct)
+        UserManager<ApplicationUser> userManager, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (await RequireSuperAdminAsync(http, userManager) is { } fail) return fail;
+        if (await RequireSuperAdminAsync(http, userManager, perms, ct) is { } fail) return fail;
         var def = await db.LetterTypeDefinitions
             .FirstOrDefaultAsync(d => d.LetterTypeDefinitionId == id && d.DeletedAt == null, ct);
         if (def is null) return Results.NotFound();
@@ -193,9 +194,9 @@ public sealed class AdminV1LetterTypeDefinitionsEndpoint : IEndpointMarker
 
     private static async Task<IResult> LanguageCreateAsync(
         [FromBody] LanguageBody body, HttpContext http,
-        UserManager<ApplicationUser> userManager, OdinDbContext db, CancellationToken ct)
+        UserManager<ApplicationUser> userManager, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (await RequireSuperAdminAsync(http, userManager) is { } fail) return fail;
+        if (await RequireSuperAdminAsync(http, userManager, perms, ct) is { } fail) return fail;
         var name = (body.Name ?? string.Empty).Trim();
         if (name.Length == 0) return Results.BadRequest(new { error = "Name is required." });
         if (string.Equals(name, "English", StringComparison.OrdinalIgnoreCase))
@@ -214,9 +215,9 @@ public sealed class AdminV1LetterTypeDefinitionsEndpoint : IEndpointMarker
 
     private static async Task<IResult> LanguageUpdateAsync(
         Guid id, [FromBody] LanguageBody body, HttpContext http,
-        UserManager<ApplicationUser> userManager, OdinDbContext db, CancellationToken ct)
+        UserManager<ApplicationUser> userManager, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (await RequireSuperAdminAsync(http, userManager) is { } fail) return fail;
+        if (await RequireSuperAdminAsync(http, userManager, perms, ct) is { } fail) return fail;
         var lang = await db.LetterLanguages
             .FirstOrDefaultAsync(l => l.LetterLanguageId == id && l.DeletedAt == null, ct);
         if (lang is null) return Results.NotFound();
@@ -230,9 +231,9 @@ public sealed class AdminV1LetterTypeDefinitionsEndpoint : IEndpointMarker
 
     private static async Task<IResult> LanguageDeleteAsync(
         Guid id, HttpContext http,
-        UserManager<ApplicationUser> userManager, OdinDbContext db, CancellationToken ct)
+        UserManager<ApplicationUser> userManager, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (await RequireSuperAdminAsync(http, userManager) is { } fail) return fail;
+        if (await RequireSuperAdminAsync(http, userManager, perms, ct) is { } fail) return fail;
         var lang = await db.LetterLanguages
             .FirstOrDefaultAsync(l => l.LetterLanguageId == id && l.DeletedAt == null, ct);
         if (lang is null) return Results.NotFound();

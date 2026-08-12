@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Odin.Api.Base.Authorization;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -296,14 +297,14 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
     /// within 1 hour of creation. Soft delete unlocks the underlying items
     /// back into the pick list.</summary>
     private static async Task<IResult> DeleteAsync(
-        Guid partnerId, Guid invoiceId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, Guid invoiceId, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
         var invoice = await db.CombinedInvoices.FirstOrDefaultAsync(i =>
             i.CombinedInvoiceId == invoiceId && i.PartnerId == partnerId && i.DeletedAt == null, ct);
         if (invoice is null) return Results.NotFound();
         if (invoice.Status == CombinedInvoice.StatusPaid)
             return Results.BadRequest(new { error = "A paid invoice cannot be deleted — mark it unpaid first (SuperAdministrator only)." });
-        var isSuper = httpContext.User.IsInRole("SuperAdministrator");
+        var isSuper = await perms.HasAsync(httpContext.User, AdminPermissions.InvoicesDelete, ct);
         if (!isSuper && DateTime.UtcNow - invoice.CreatedAt > TimeSpan.FromHours(1))
             return Results.Json(new { error = "Only a SuperAdministrator can delete an invoice older than 1 hour." },
                 statusCode: StatusCodes.Status403Forbidden);
@@ -315,9 +316,9 @@ public sealed class PartnerV1InvoicesEndpoint : IEndpointMarker
     /// <summary>SuperAdministrator only: reverts Paid → Open and un-pays the
     /// underlying items that this invoice settled.</summary>
     private static async Task<IResult> UnmarkPaidAsync(
-        Guid partnerId, Guid invoiceId, HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        Guid partnerId, Guid invoiceId, HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
-        if (!httpContext.User.IsInRole("SuperAdministrator"))
+        if (!await perms.HasAsync(httpContext.User, AdminPermissions.InvoicesDelete, ct))
             return Results.Json(new { error = "Only a SuperAdministrator can mark an invoice unpaid." },
                 statusCode: StatusCodes.Status403Forbidden);
         var invoice = await db.CombinedInvoices.FirstOrDefaultAsync(i =>

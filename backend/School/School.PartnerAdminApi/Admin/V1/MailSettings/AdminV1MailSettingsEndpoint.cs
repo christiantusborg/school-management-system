@@ -47,14 +47,14 @@ public sealed class AdminV1MailSettingsEndpoint : IEndpointMarker
     }
 
     private static async Task<bool> IsAdministratorAsync(
-        HttpContext http, UserManager<ApplicationUser> userManager)
+        HttpContext http, UserManager<ApplicationUser> userManager,
+        IPermissionService perms, CancellationToken ct)
     {
         var callerId = http.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(callerId)) return false;
         var caller = await userManager.FindByIdAsync(callerId);
         if (caller is null || caller.DeletedAt is not null || !caller.IsEnabled) return false;
-        return await userManager.IsInRoleAsync(caller, AdminLevels.Administrator)
-            || await userManager.IsInRoleAsync(caller, AdminLevels.SuperAdministrator);
+        return await perms.HasAsync(http.User, AdminPermissions.MailSettings, ct);
     }
 
     private static async Task<MailSettings> LoadOrCreateAsync(OdinDbContext db, CancellationToken ct)
@@ -69,10 +69,10 @@ public sealed class AdminV1MailSettingsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> GetAsync(
-        HttpContext http, [FromServices] UserManager<ApplicationUser> userManager,
+        HttpContext http, [FromServices] UserManager<ApplicationUser> userManager, [FromServices] IPermissionService perms,
         OdinDbContext db, CancellationToken ct)
     {
-        if (!await IsAdministratorAsync(http, userManager))
+        if (!await IsAdministratorAsync(http, userManager, perms, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
 
         var s = await db.MailSettings.FirstOrDefaultAsync(ct);
@@ -93,10 +93,10 @@ public sealed class AdminV1MailSettingsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> SaveAsync(
-        HttpContext http, [FromServices] UserManager<ApplicationUser> userManager,
+        HttpContext http, [FromServices] UserManager<ApplicationUser> userManager, [FromServices] IPermissionService perms,
         [FromBody] WriteRequest body, OdinDbContext db, CancellationToken ct)
     {
-        if (!await IsAdministratorAsync(http, userManager))
+        if (!await IsAdministratorAsync(http, userManager, perms, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
 
         var provider = body.Provider ?? "Brevo";
@@ -129,10 +129,10 @@ public sealed class AdminV1MailSettingsEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> TestAsync(
-        HttpContext http, [FromServices] UserManager<ApplicationUser> userManager,
+        HttpContext http, [FromServices] UserManager<ApplicationUser> userManager, [FromServices] IPermissionService perms,
         [FromBody] TestRequest body, IEmailSender emailSender, CancellationToken ct)
     {
-        if (!await IsAdministratorAsync(http, userManager))
+        if (!await IsAdministratorAsync(http, userManager, perms, ct))
             return Results.Json(new { error = "Requires Administrator level or above." }, statusCode: StatusCodes.Status403Forbidden);
         if (string.IsNullOrWhiteSpace(body.To))
             return Results.BadRequest(new { error = "A recipient address is required." });
