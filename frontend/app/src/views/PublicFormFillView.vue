@@ -3,6 +3,12 @@
        same approach as the student-verify page. -->
   <div class="pff-wrap">
     <p v-if="loading" class="pff-muted">Loading…</p>
+    <template v-else-if="closed">
+      <h2 class="pff-title">{{ formName || 'This form is closed' }}</h2>
+      <p class="pff-muted">
+        This form is no longer accepting responses{{ closedOn ? ` (closed ${closedOn})` : '' }}. Thank you for your interest.
+      </p>
+    </template>
     <p v-else-if="notFound" class="pff-muted">This form is not available.</p>
     <template v-else-if="done">
       <h2 class="pff-title">Thank you</h2>
@@ -36,6 +42,8 @@ import QuestionnaireRenderer from '../components/questionnaire/QuestionnaireRend
 const route = useRoute()
 const loading = ref(true)
 const notFound = ref(false)
+const closed = ref(false)
+const closedOn = ref('')
 const done = ref(false)
 const error = ref('')
 const formName = ref('')
@@ -47,14 +55,33 @@ async function load() {
   try {
     const res = await api.get(`/v1/public/forms/${route.params.slug}`)
     formName.value = res.data.name
+    // Past the run-end date the backend returns { closed:true } with no definition.
+    if (res.data.closed) {
+      closed.value = true
+      closedOn.value = res.data.runEndDate
+        ? new Date(res.data.runEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        : ''
+      return
+    }
     description.value = res.data.description ?? ''
     try { definition.value = JSON.parse(res.data.definitionJson) } catch { definition.value = null }
     if (!definition.value) notFound.value = true
+    else seedReferenceAnswers(res.data.references)
   } catch {
     notFound.value = true
   } finally {
     loading.value = false
   }
+}
+
+// Owner-set reference values for this public form (School / Partner /
+// Programme / Reference text) arrive from the server. Seed them into the
+// answers so they show read-only and submit with the response. (The backend
+// also stamps them server-side, so stats are correct regardless.)
+function seedReferenceAnswers(references) {
+  for (const r of references ?? [])
+    if (r?.fieldId && r?.display != null && r.display !== '')
+      answers.value[r.fieldId] = r.display
 }
 
 async function submit() {

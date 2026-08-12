@@ -220,6 +220,18 @@
         </template>
       </v-checkbox>
 
+      <!-- Owner-set reference fields (School / Partner / Partner→Programme /
+           Reference text). The respondent never edits these: the form owner
+           sets the value in the Inspector, and it shows read-only here. -->
+      <div v-else-if="isRefType" class="ref-field">
+        <div v-if="mode === 'builder'" class="ref-builder pa-2 rounded bg-grey-lighten-4">
+          <v-icon size="small" class="mr-1">mdi-tag-outline</v-icon>
+          <span class="text-medium-emphasis">Owner reference — value set per public form</span>
+          <v-chip v-if="item.props.showInStats === false" size="x-small" class="ml-2" label>hidden from stats</v-chip>
+        </div>
+        <div v-else class="ref-live text-body-1">{{ refDisplay || '—' }}</div>
+      </div>
+
       <!-- Fallback for unsupported types -->
       <v-alert v-else type="warning" variant="tonal">
         Unsupported field type: {{ item.type }}
@@ -230,7 +242,11 @@
 
 <script setup lang="ts">
 // -nocheck — ported SysCase file; TS strict cleanup is a follow-up
+import { computed } from 'vue'
 import type { QuestionnaireItem } from '@quvian/shared/types/questionnaire'
+
+// Owner-set reference field types: read-only for the respondent.
+const REF_TYPES = ['refSchool', 'refPartner', 'refPartnerProgramme', 'refText']
 
 // Props
 const props = defineProps<{
@@ -252,6 +268,10 @@ const emit = defineEmits<{
   'update:value': [value: any]
   'update:showInLive': [value: boolean]
 }>()
+
+const isRefType = computed(() => REF_TYPES.includes(props.item.type as string))
+// The value is filled per public form and arrives as this field's answer.
+const refDisplay = computed(() => props.value || props.item.props?.display || props.item.props?.value || '')
 
 // Methods
 const updateCheckbox = (optionValue: string, checked: boolean | null) => {

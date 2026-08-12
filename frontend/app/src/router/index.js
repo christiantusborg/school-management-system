@@ -56,6 +56,14 @@ const routes = [
     },
   },
   {
+    path: '/admin/public-form-stats/:id',
+    component: () => import('../views/PublicFormStatsView.vue'),
+    beforeEnter: () => {
+      if (!auth.user) return '/login'
+      if (!auth.isEmployee) return '/partner'
+    },
+  },
+  {
     path: '/admin/students/:id',
     component: AdminStudentView,
     beforeEnter: () => {

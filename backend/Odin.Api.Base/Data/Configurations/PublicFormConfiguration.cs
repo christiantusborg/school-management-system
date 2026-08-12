@@ -15,6 +15,8 @@ public class PublicFormConfiguration : IEntityTypeConfiguration<PublicForm>
         builder.HasIndex(e => e.Slug).IsUnique();
         builder.Property(e => e.Currency).HasMaxLength(8).IsRequired();
         builder.Property(e => e.CreatedByUserId).HasMaxLength(450);
+        // Per-form owner reference values, stored as queryable jsonb (Npgsql).
+        builder.Property(e => e.OwnerReferencesJson).HasColumnType("jsonb");
 
         builder.HasOne(e => e.QuestionnaireTemplate)
             .WithMany()

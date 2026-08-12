@@ -225,6 +225,20 @@
               />
             </div>
           </template>
+
+          <!-- Owner-set reference fields: the VALUE is chosen per public form
+               (on the Public forms dialog), not here. Here we only control
+               whether it counts toward Statistics. -->
+          <template v-if="REF_TYPES.includes(selectedItem.type)">
+            <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+              {{ REF_HINT }}
+            </v-alert>
+            <v-switch
+              :model-value="selectedItem.props.showInStats !== false"
+              label="Show in Statistics" color="primary" density="compact" hide-details
+              @update:model-value="updateProp('showInStats', $event)"
+            />
+          </template>
         </div>
 
         <!-- Validation Rules -->
@@ -350,6 +364,9 @@ import { computed } from 'vue'
 import { componentRegistry } from '@/utils/questionnaire/componentRegistry'
 import RichTextEditorSimple from '@/components/forms/RichTextEditorSimple.vue'
 import type { QuestionnaireItem, ConditionalVisibility } from '@quvian/shared/types/questionnaire'
+
+const REF_TYPES = ['refSchool', 'refPartner', 'refPartnerProgramme', 'refText']
+const REF_HINT = 'This value is set per public form (Public forms → New/Edit), not here. It is hidden from the respondent, shown read-only on the form, and recorded with every submission.'
 
 // Props
 const props = defineProps<{
@@ -511,6 +528,7 @@ const updateProp = (key: string, value: any) => {
 
   emit('updateItem', { props: updatedProps })
 }
+
 
 const updateLayout = (key: string, value: any) => {
   if (!props.selectedItem) return

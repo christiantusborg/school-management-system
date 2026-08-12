@@ -40,6 +40,8 @@ export type ComponentType =
   | 'text' | 'textarea' | 'richtext' | 'number' | 'email' | 'phone' | 'date' | 'time' | 'datetime'
   | 'select' | 'radio' | 'checkbox' | 'toggle' | 'file-upload'
   | 'address' | 'repeater' | 'heading' | 'paragraph' | 'divider' | 'consent'
+  // Owner-set reference fields (filled in the builder, hidden from respondents)
+  | 'refSchool' | 'refPartner' | 'refPartnerProgramme' | 'refText'
 
 export interface ComponentSchema {
   type: ComponentType

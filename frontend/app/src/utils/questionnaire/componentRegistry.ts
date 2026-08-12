@@ -421,6 +421,66 @@ export const componentRegistry: ComponentRegistry = {
     accessibility: {
       role: 'checkbox'
     }
+  },
+
+  // ── Owner-set reference fields ────────────────────────────────────────────
+  // The respondent never answers these. The form owner sets the value here in
+  // the Builder (it lives in the questionnaire definition — no per-form DB row);
+  // on the public fill page it is shown read-only and stamped into every
+  // submission's answers, so it aggregates generically in Statistics. Toggle
+  // `showInStats` off to keep a reference out of the aggregates (submissions
+  // still show it). NOTE: wired into public forms today; other surfaces later.
+  refSchool: {
+    type: 'refSchool',
+    title: t('School'),
+    description: t('Owner-set reference: the issuing school. Chosen in the builder; hidden from the respondent.'),
+    icon: 'mdi-school',
+    category: 'special',
+    properties: {
+      showInStats: { type: 'boolean', title: 'Show in Statistics', default: true }
+    },
+    defaultProps: { value: '', display: '', showInStats: true },
+    validation: [],
+    accessibility: { role: 'textbox' }
+  },
+  refPartner: {
+    type: 'refPartner',
+    title: t('Partner'),
+    description: t('Owner-set reference: the partner. Chosen in the builder; hidden from the respondent.'),
+    icon: 'mdi-handshake',
+    category: 'special',
+    properties: {
+      showInStats: { type: 'boolean', title: 'Show in Statistics', default: true }
+    },
+    defaultProps: { value: '', display: '', showInStats: true },
+    validation: [],
+    accessibility: { role: 'textbox' }
+  },
+  refPartnerProgramme: {
+    type: 'refPartnerProgramme',
+    title: t('Partner → Programme'),
+    description: t('Owner-set reference: pick a partner, then one of their programmes. Hidden from the respondent.'),
+    icon: 'mdi-file-tree',
+    category: 'special',
+    properties: {
+      showInStats: { type: 'boolean', title: 'Show in Statistics', default: true }
+    },
+    defaultProps: { value: '', display: '', partnerId: '', partnerName: '', showInStats: true },
+    validation: [],
+    accessibility: { role: 'textbox' }
+  },
+  refText: {
+    type: 'refText',
+    title: t('Reference text'),
+    description: t('Owner-set reference: a free-text value. Typed in the builder; hidden from the respondent.'),
+    icon: 'mdi-tag-text',
+    category: 'special',
+    properties: {
+      showInStats: { type: 'boolean', title: 'Show in Statistics', default: true }
+    },
+    defaultProps: { value: '', display: '', showInStats: true },
+    validation: [],
+    accessibility: { role: 'textbox' }
   }
 }
 

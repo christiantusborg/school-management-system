@@ -19,6 +19,23 @@ public class PublicForm : IDeletedAtEntity
     public string Slug { get; set; } = null!;
     public Guid QuestionnaireTemplateId { get; set; }
     public Guid? DocumentTemplateId { get; set; }
+
+    /// <summary>A "run" of the form: the period it collects for. Start is
+    /// informational (labels/groups runs of the same questionnaire); End is
+    /// enforced — once past, the public link is closed and rejects
+    /// submissions. Null = no window (always open). Multiple public forms of
+    /// the same questionnaire are the separate runs, grouped in statistics.</summary>
+    public DateTime? RunStartDate { get; set; }
+    public DateTime? RunEndDate { get; set; }
+
+    /// <summary>Per-form values for the questionnaire's owner-set reference
+    /// fields (school / partner / partner→programme / free text), as jsonb.
+    /// Shape: <c>[{ "fieldId", "type", "value", "partnerValue", "display" }]</c>.
+    /// The owner fills these on the public-form dialog; on submit they are
+    /// stamped into the submission's answers so they aggregate generically in
+    /// statistics. Null = the questionnaire has no reference fields.</summary>
+    public string? OwnerReferencesJson { get; set; }
+
     public int PriceAmountCents { get; set; }
     public string Currency { get; set; } = "USD";
     public bool IsPublished { get; set; }
