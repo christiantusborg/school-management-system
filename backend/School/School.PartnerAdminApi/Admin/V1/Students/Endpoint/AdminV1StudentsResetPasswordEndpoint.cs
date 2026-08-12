@@ -1,3 +1,5 @@
+using Odin.Api.Base.Authorization;
+
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 
 /// <summary>
@@ -26,10 +28,14 @@ public sealed class AdminV1StudentsResetPasswordEndpoint : IEndpointMarker
     private static async Task<IResult> HandleAsync(
         Guid studentId,
         [FromBody] ResetRequest? body,
+        HttpContext httpContext,
+        [FromServices] IPermissionService perms,
         [FromServices] OdinDbContext db,
         [FromServices] OpaqueUserCreationService creator,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.details.reset_password", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var student = await db.Students
             .Where(s => s.StudentId == studentId && s.DeletedAt == null)
             .Select(s => new { s.UserId })

@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using School.PartnerAdminApi.SharedStudentEdits;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
@@ -19,9 +20,13 @@ public sealed class AdminV1StudentsBackgroundEndpoint : IEndpointMarker
     private static async Task<IResult> HandleAsync(
         Guid studentId,
         [FromBody] StudentEditService.BackgroundDto body,
+        HttpContext httpContext,
+        IPermissionService perms,
         OdinDbContext db,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.details.background", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var student = await db.Students
             .FirstOrDefaultAsync(s => s.StudentId == studentId && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();

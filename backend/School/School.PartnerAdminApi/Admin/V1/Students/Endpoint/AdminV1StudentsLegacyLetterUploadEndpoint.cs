@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Storage;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
@@ -34,8 +35,11 @@ public sealed class AdminV1StudentsLegacyLetterUploadEndpoint : IEndpointMarker
 
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId, string letterKey,
-        IFormFile file, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+        IFormFile file, HttpContext httpContext, IPermissionService perms,
+        OdinDbContext db, IFileStorage storage, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.letters.upload", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (!UploadableTypes.TryGetValue(letterKey, out var documentTypeId))
             return Results.BadRequest(new { error = "This letter type does not accept legacy uploads." });
         if (file.Length == 0)

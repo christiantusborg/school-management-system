@@ -244,7 +244,8 @@
                 <RubricGradeCell v-if="row.rubric" :row="row" :editable="gradeModal.mode === 'submit'" />
                 <template v-else>
                   <input v-if="gradeModal.mode === 'submit'" type="number" min="0" max="100"
-                         v-model.number="row.score" class="grade-input gr-input" />
+                         v-model.number="row.score" class="grade-input gr-input"
+                         :disabled="auth.access('student.grades.enter') < 3" />
                   <strong v-else :class="['grade-score', scoreClass(row.score)]">{{ row.score ?? '—' }}</strong>
                 </template>
                 <span class="gr-letter" :title="`School grade for ${row.score ?? '—'}`">{{ scoreToLetter(row.score) }}</span>
@@ -255,7 +256,7 @@
             <!-- Thesis/dissertation project title — shown once the thesis module has a grade. -->
             <div v-if="gradeModal.mode === 'submit' || adminThesisGraded" class="project-title-row">
               <label>Project title <span class="muted" style="font-weight:400;">(thesis/dissertation — shown on the transcript)</span></label>
-              <input v-if="gradeModal.mode === 'submit'" v-model="gradeModal.projectTitle" class="grade-input" style="width:100%;" placeholder="e.g. The impact of …" />
+              <input v-if="gradeModal.mode === 'submit'" v-model="gradeModal.projectTitle" class="grade-input" style="width:100%;" placeholder="e.g. The impact of …" :disabled="auth.access('student.grades.enter') < 3" />
               <strong v-else>{{ gradeModal.projectTitle || '—' }}</strong>
             </div>
 
@@ -297,11 +298,11 @@
                 <button class="btn-link" :disabled="gradeModal.downloadingProvisional" @click="downloadAdminProvisional">
                   {{ gradeModal.downloadingProvisional ? 'Preparing…' : '⤓ Provisional transcript' }}
                 </button>
-                <button class="btn-confirm-manage" style="background:#003366;border-color:#003366;"
+                <button v-if="auth.can('student.grades.save_draft')" class="btn-confirm-manage" style="background:#003366;border-color:#003366;"
                         :disabled="gradeModal.savingDraft" @click="saveAdminGradesDraft">
                   {{ gradeModal.savingDraft ? 'Saving…' : 'Save grades' }}
                 </button>
-                <button v-if="!gradeModal.postApproval" class="btn-confirm-manage btn-approve-final"
+                <button v-if="!gradeModal.postApproval && auth.can('student.grades.submit')" class="btn-confirm-manage btn-approve-final"
                         :disabled="!canCommitAdminGrades || gradeModal.submitting"
                         :title="adminEctsRemaining > 0 ? `Need ${adminEctsRemaining} more ECTS to reach the ${gradeModal.requiredEcts} ECTS completion threshold.` : ''"
                         @click="confirmGradeSubmission">
@@ -312,12 +313,12 @@
                 </span>
               </template>
               <div v-else-if="gradeModal.mode !== 'reject'" class="grade-actions">
-                <button class="btn-confirm-manage btn-reject-final"
+                <button v-if="auth.can('student.grades.reject')" class="btn-confirm-manage btn-reject-final"
                         :disabled="!gradeModal.subjects?.length || gradeModal.submitting"
                         @click="gradeModal.mode = 'reject'">
                   ✕ Reject
                 </button>
-                <button class="btn-confirm-manage btn-approve-final"
+                <button v-if="auth.can('student.grades.approve')" class="btn-confirm-manage btn-approve-final"
                         :disabled="!gradeModal.subjects?.length || !gradeModal.confirmTuitionPaid || gradeModal.submitting"
                         :title="!gradeModal.confirmTuitionPaid ? 'Tick the tuition-paid checkbox first.' : ''"
                         @click="confirmGradeApproval">
@@ -384,7 +385,7 @@
             </div>
 
             <div class="detail-tabs">
-              <button v-for="t in DETAIL_TABS" :key="t.id"
+              <button v-for="t in visibleDetailTabs" :key="t.id"
                       :class="['tab-btn', { active: detailModal.activeTab === t.id }]"
                       @click="detailModal.activeTab = t.id">{{ t.label }}</button>
             </div>
@@ -397,8 +398,8 @@
                   <dl>
                     <dt>Username</dt><dd>@{{ detailModal.data.account?.username }}</dd>
                     <dt>Email</dt><dd>
-                      <input v-model="emailDraft" class="email-inline" type="email" />
-                      <button class="btn-sm" :disabled="savingEmail || !emailDraft.trim()" @click="saveEmail">
+                      <input v-model="emailDraft" class="email-inline" type="email" :disabled="auth.access('student.details.email') < 3" />
+                      <button v-if="auth.can('student.details.email')" class="btn-sm" :disabled="savingEmail || !emailDraft.trim()" @click="saveEmail">
                         {{ savingEmail ? 'Saving…' : 'Save' }}</button>
                       <span v-if="!detailModal.data.account?.emailVerified" class="s-badge unverified">unverified</span>
                       <span v-if="emailError" class="email-err">{{ emailError }}</span>
@@ -452,7 +453,7 @@
                     <span v-if="handledByError" class="err-banner" style="display:block;margin-top:.4rem;">{{ handledByError }}</span>
                     <span v-else-if="handledByOk" class="ok-banner" style="display:block;margin-top:.4rem;">Saved</span>
                   </div>
-                  <div class="reset-pw-row">
+                  <div v-if="auth.can('student.details.reset_password')" class="reset-pw-row">
                     <button class="btn-row-details" :disabled="resettingStudentPw" @click="resetStudentPassword">
                       {{ resettingStudentPw ? 'Resetting…' : '🔑 Reset student password' }}
                     </button>
@@ -463,30 +464,30 @@
                     </div>
                   </div>
                 </div>
-                <div class="detail-section">
+                <div class="detail-section" v-if="auth.access('student.details.personal') > 0">
                   <h4>Personal</h4>
                   <p v-if="personalSaveError" class="err-banner">{{ personalSaveError }}</p>
                   <p v-if="personalSaveOk" class="ok-banner">{{ personalSaveOk }}</p>
                   <div class="edit-grid">
                     <label class="edit-field">
                       <span>First name</span>
-                      <input v-model="detailModal.data.account.firstName" />
+                      <input v-model="detailModal.data.account.firstName" :disabled="auth.access('student.details.personal') < 3" />
                     </label>
                     <label class="edit-field">
                       <span>Last name</span>
-                      <input v-model="detailModal.data.account.lastName" />
+                      <input v-model="detailModal.data.account.lastName" :disabled="auth.access('student.details.personal') < 3" />
                     </label>
                     <label class="edit-field">
                       <span>Date of birth</span>
-                      <input type="date" v-model="personalDobInput" />
+                      <input type="date" v-model="personalDobInput" :disabled="auth.access('student.details.personal') < 3" />
                     </label>
                     <label class="edit-field">
                       <span>Passport / ID</span>
-                      <input v-model="detailModal.data.personal.passportId" />
+                      <input v-model="detailModal.data.personal.passportId" :disabled="auth.access('student.details.personal') < 3" />
                     </label>
                     <label class="edit-field">
                       <span>Student card ID</span>
-                      <input v-model="detailModal.data.personal.studentCardId"
+                      <input v-model="detailModal.data.personal.studentCardId" :disabled="auth.access('student.details.personal') < 3"
                              placeholder="Overrides the ID on the card only" />
                     </label>
                     <div class="edit-field edit-field-wide sid-box">
@@ -500,63 +501,63 @@
                         <button v-if="!i.isPrimary" class="btn-mini btn-remove" @click="deleteId(i)">✕</button>
                       </div>
                       <div class="sid-add">
-                        <input v-model="sidNew.value" placeholder="New Student ID…" class="sid-inp" />
-                        <input v-model="sidNew.label" placeholder="Label (optional)" class="sid-inp" />
+                        <input v-model="sidNew.value" placeholder="New Student ID…" class="sid-inp" :disabled="auth.access('student.details.personal') < 3" />
+                        <input v-model="sidNew.label" placeholder="Label (optional)" class="sid-inp" :disabled="auth.access('student.details.personal') < 3" />
                         <button class="btn-mini" :disabled="!sidNew.value.trim() || sidNew.busy" @click="addId">+ Add ID</button>
                       </div>
                       <p v-if="sidNew.error" class="card-toggle-err" style="margin:.2rem 0 0;">{{ sidNew.error }}</p>
                     </div>
                     <label class="edit-field edit-field-wide">
                       <span>Nationality</span>
-                      <select v-model.number="detailModal.data.personal.nationalityId">
+                      <select v-model.number="detailModal.data.personal.nationalityId" :disabled="auth.access('student.details.personal') < 3">
                         <option :value="null">—</option>
                         <option v-for="n in nationalities" :key="n.nationalityId" :value="n.nationalityId">{{ n.name }}</option>
                       </select>
                     </label>
                     <label class="edit-field edit-field-wide">
                       <span>Address line 1</span>
-                      <input v-model="detailModal.data.personal.address.line1" />
+                      <input v-model="detailModal.data.personal.address.line1" :disabled="auth.access('student.details.personal') < 3" />
                     </label>
                     <label class="edit-field">
                       <span>City</span>
-                      <input v-model="detailModal.data.personal.address.city" />
+                      <input v-model="detailModal.data.personal.address.city" :disabled="auth.access('student.details.personal') < 3" />
                     </label>
                     <label class="edit-field">
                       <span>State / Region</span>
-                      <input v-model="detailModal.data.personal.address.stateRegion" />
+                      <input v-model="detailModal.data.personal.address.stateRegion" :disabled="auth.access('student.details.personal') < 3" />
                     </label>
                     <label class="edit-field">
                       <span>Postal code</span>
-                      <input v-model="detailModal.data.personal.address.postalCode" />
+                      <input v-model="detailModal.data.personal.address.postalCode" :disabled="auth.access('student.details.personal') < 3" />
                     </label>
                     <label class="edit-field">
                       <span>Country</span>
-                      <select v-model="detailModal.data.personal.address.countryCode">
+                      <select v-model="detailModal.data.personal.address.countryCode" :disabled="auth.access('student.details.personal') < 3">
                         <option value="">—</option>
                         <option v-for="n in nationalities" :key="n.code" :value="n.code">{{ n.name }}</option>
                       </select>
                     </label>
                   </div>
-                  <button class="btn-row-details btn-save-admin" :disabled="savingPersonal" @click="saveAdminPersonal">
+                  <button v-if="auth.can('student.details.personal')" class="btn-row-details btn-save-admin" :disabled="savingPersonal" @click="saveAdminPersonal">
                     {{ savingPersonal ? 'Saving…' : 'Save personal' }}
                   </button>
                 </div>
-                <div class="detail-section">
+                <div class="detail-section" v-if="auth.access('student.details.background') > 0">
                   <h4>Background</h4>
                   <p v-if="backgroundSaveError" class="err-banner">{{ backgroundSaveError }}</p>
                   <p v-if="backgroundSaveOk" class="ok-banner">{{ backgroundSaveOk }}</p>
                   <div class="edit-grid">
                     <label class="edit-field edit-field-wide">
                       <span>Highest degree</span>
-                      <input v-model="detailModal.data.background.highestDegree" />
+                      <input v-model="detailModal.data.background.highestDegree" :disabled="auth.access('student.details.background') < 3" />
                     </label>
                     <label class="edit-field edit-field-wide">
                       <span>Specialization for degree</span>
-                      <input v-model="detailModal.data.background.degreeSpecialization" placeholder="Specialty from previous education" />
+                      <input v-model="detailModal.data.background.degreeSpecialization" placeholder="Specialty from previous education" :disabled="auth.access('student.details.background') < 3" />
                     </label>
                     <label class="edit-field">
                       <span>Years of experience</span>
-                      <input type="number" min="0" v-model.number="detailModal.data.background.yearsWorkExperience" />
+                      <input type="number" min="0" v-model.number="detailModal.data.background.yearsWorkExperience" :disabled="auth.access('student.details.background') < 3" />
                     </label>
                   </div>
                   <div class="lang-block">
@@ -565,17 +566,17 @@
                       <button class="btn-mini" @click="addAdminLanguage">+ Add language</button>
                     </div>
                     <div v-for="(l, idx) in (detailModal.data.background.languages || [])" :key="idx" class="lang-row">
-                      <select v-model.number="l.languageId">
+                      <select v-model.number="l.languageId" :disabled="auth.access('student.details.background') < 3">
                         <option :value="0">— Pick language —</option>
                         <option v-for="lg in languages" :key="lg.languageId" :value="lg.languageId">{{ lg.name }}</option>
                       </select>
-                      <select v-model.number="l.proficiency">
+                      <select v-model.number="l.proficiency" :disabled="auth.access('student.details.background') < 3">
                         <option v-for="p in PROFICIENCIES" :key="p.id" :value="p.id">{{ p.label }}</option>
                       </select>
                       <button class="btn-mini btn-remove" @click="removeAdminLanguage(idx)">✕</button>
                     </div>
                   </div>
-                  <button class="btn-row-details btn-save-admin" :disabled="savingBackground" @click="saveAdminBackground">
+                  <button v-if="auth.can('student.details.background')" class="btn-row-details btn-save-admin" :disabled="savingBackground" @click="saveAdminBackground">
                     {{ savingBackground ? 'Saving…' : 'Save background' }}
                   </button>
                 </div>
@@ -742,7 +743,7 @@
                     <dd>{{ expectedCompletion || '—' }}</dd>
                     <dt>Bulk agreement</dt>
                     <dd>
-                      <select :value="activeEnrollment.bulkAgreementId ?? ''" class="inp" @change="moveAgreement($event.target.value || null)">
+                      <select :value="activeEnrollment.bulkAgreementId ?? ''" class="inp" :disabled="auth.access('student.enrolment.bulk_agreement') < 3" @change="moveAgreement($event.target.value || null)">
                         <option value="">— none —</option>
                         <option v-for="a in partnerAgreements" :key="a.bulkAgreementId" :value="a.bulkAgreementId">
                           {{ a.agreementNumber }} ({{ a.kind === 0 ? 'commencement' : 'graduation' }})
@@ -754,7 +755,7 @@
                     <dd>
                       <template v-if="!statusEdit">
                         <span :class="['s-badge', statusClass(activeEnrollment.statusCode)]">{{ activeEnrollment.statusName }}</span>
-                        <button class="btn-row-details btn-row-details-sm" style="margin-left:.5rem;" @click="openStatusEdit">✎ Change status</button>
+                        <button v-if="auth.can('student.enrolment.change_status')" class="btn-row-details btn-row-details-sm" style="margin-left:.5rem;" @click="openStatusEdit">✎ Change status</button>
                       </template>
                       <template v-else>
                         <select v-model="statusDraft" class="dur-input" style="width:230px;">
@@ -812,6 +813,7 @@
                           <span class="muted" style="font-size:.74rem; margin-left:auto;">Cohort:</span>
                           <select class="ms-inp" style="min-width:220px"
                                   :value="mod.assignedCohortId ?? ''"
+                                  :disabled="auth.access('student.enrolment.cohort_assign') < 3"
                                   @change="setStudentCohort(mod.subjectId, $event.target.value)">
                             <option value="">— none —</option>
                             <option v-for="c in mod.cohorts" :key="c.moduleCohortId" :value="c.moduleCohortId">
@@ -842,8 +844,8 @@
               <div v-else class="letters-list">
                 <div class="passmark-row">
                   <span>🎯 Approval-letter pass mark for this programme:</span>
-                  <input type="number" min="0" max="100" v-model.number="passMarkDraft" class="passmark-inp" />
-                  <button class="btn-mini" :disabled="passMarkBusy" @click="savePassMark">{{ passMarkBusy ? 'Saving…' : 'Save' }}</button>
+                  <input type="number" min="0" max="100" v-model.number="passMarkDraft" class="passmark-inp" :disabled="auth.access('student.letters.passmark') < 3" />
+                  <button v-if="auth.can('student.letters.passmark')" class="btn-mini" :disabled="passMarkBusy" @click="savePassMark">{{ passMarkBusy ? 'Saving…' : 'Save' }}</button>
                   <span v-if="passMarkMsg" class="muted">{{ passMarkMsg }}</span>
                 </div>
                 <template v-for="t in LETTER_TYPES" :key="t.key">
@@ -933,7 +935,7 @@
                       <option value="">English</option>
                       <option v-for="l in letterLanguages" :key="l.letterLanguageId" :value="l.name">{{ l.name }}</option>
                     </select>
-                    <button class="btn-mini" :disabled="!dl.letter" @click="downloadLetter(dl.letter)">Download</button>
+                    <button v-if="auth.can('student.letters.download')" class="btn-mini" :disabled="!dl.letter" @click="downloadLetter(dl.letter)">Download</button>
                     <button v-if="canGenerateApprovalLetters" class="btn-mini btn-mini-ghost"
                             :disabled="regeneratingLetterKey === dl.letterTypeDefinitionId"
                             @click="generateDynamicLetter(dl)">
@@ -941,7 +943,7 @@
                           ? (dl.letter ? 'Regenerating…' : 'Generating…')
                           : (dl.letter ? 'Regenerate' : 'Generate') }}
                     </button>
-                    <button v-if="dl.letter" class="btn-mini btn-mini-ghost" @click="toggleLetterVersions(dl)">🕘 History</button>
+                    <button v-if="dl.letter && auth.can('student.letters.history')" class="btn-mini btn-mini-ghost" @click="toggleLetterVersions(dl)">🕘 History</button>
                     <button v-if="dl.emailOnRelease && canGenerateApprovalLetters" class="btn-mini btn-mini-email"
                             :disabled="!dl.letter" title="Send the letter email (template + optional extra text)"
                             @click="openDynEmailSend(dl)">✉ Send</button>
@@ -1035,15 +1037,15 @@
                   <div class="pay-field">
                     <label>Total tuition fee</label>
                     <div class="pay-fee-row">
-                      <select v-model="payment.currency" class="pay-cur">
+                      <select v-model="payment.currency" class="pay-cur" :disabled="auth.access('student.payment') < 3">
                         <option v-for="c in currencyOptions" :key="c.code" :value="c.code">{{ c.code }}</option>
                       </select>
-                      <input type="number" min="0" step="0.01" v-model.number="payment.total" placeholder="e.g. 6000" />
+                      <input type="number" min="0" step="0.01" v-model.number="payment.total" placeholder="e.g. 6000" :disabled="auth.access('student.payment') < 3" />
                     </div>
                   </div>
                   <div class="pay-field">
                     <label>Number of payments</label>
-                    <select v-model.number="payment.count">
+                    <select v-model.number="payment.count" :disabled="auth.access('student.payment') < 3">
                       <option v-for="n in 12" :key="n" :value="n">{{ n }}</option>
                     </select>
                   </div>
@@ -1056,8 +1058,8 @@
                     <template v-for="(inst, idx) in payment.installments" :key="idx">
                       <tr>
                         <td>{{ idx + 1 }}</td>
-                        <td><input type="number" min="0" step="0.01" v-model.number="inst.amount" class="pay-inp" /></td>
-                        <td><input type="date" v-model="inst.dueDate" class="pay-inp" /></td>
+                        <td><input type="number" min="0" step="0.01" v-model.number="inst.amount" class="pay-inp" :disabled="auth.access('student.payment') < 3" /></td>
+                        <td><input type="date" v-model="inst.dueDate" class="pay-inp" :disabled="auth.access('student.payment') < 3" /></td>
                         <td class="pay-center">
                           <span v-if="inst.isPaid" class="pay-badge pay-badge-paid">✓ {{ inst.paidDate || 'Paid' }}</span>
                           <span v-else-if="(inst.amountPaid || 0) > 0" class="pay-badge pay-badge-part">Partial</span>
@@ -1083,10 +1085,10 @@
                               <span class="pay-rec-date">{{ (r.paidDate || '').slice(0, 10) }}</span>
                               <span class="pay-rec-amt">{{ payment.currency }} {{ fmtMoney(r.amount) }}</span>
                               <span class="pay-rec-note">{{ r.note || '' }}</span>
-                              <button class="btn-mini btn-remove" title="Delete this payment" @click="deletePaymentRecord(r)">✕</button>
+                              <button v-if="auth.can('student.payment.records')" class="btn-mini btn-remove" title="Delete this payment" @click="deletePaymentRecord(r)">✕</button>
                             </div>
                             <p v-if="!(inst.payments || []).length" class="muted" style="margin:.15rem 0;">No payments recorded yet.</p>
-                            <div class="pay-rec-add">
+                            <div v-if="auth.can('student.payment.records')" class="pay-rec-add">
                               <input type="number" min="0.01" step="0.01" v-model.number="payRec.amount" placeholder="Amount" class="pay-inp" />
                               <input type="date" v-model="payRec.date" class="pay-inp" />
                               <input type="text" v-model="payRec.note" placeholder="Note — where paid to, reference…" class="pay-rec-note-inp" />
@@ -1105,19 +1107,19 @@
                           <div class="pay-methods">
                             <div class="pay-method">
                               <label class="pay-method-toggle">
-                                <input type="checkbox" v-model="inst.payByCard" />
+                                <input type="checkbox" v-model="inst.payByCard" :disabled="auth.access('student.payment') < 3" />
                                 Pay by card (payment link)
                               </label>
                               <input v-if="inst.payByCard" type="text" v-model="inst.cardPaymentLink"
-                                placeholder="https://… payment link for this installment" class="pay-method-input" />
+                                placeholder="https://… payment link for this installment" class="pay-method-input" :disabled="auth.access('student.payment') < 3" />
                             </div>
                             <div class="pay-method">
                               <label class="pay-method-toggle">
-                                <input type="checkbox" v-model="inst.payByBank" />
+                                <input type="checkbox" v-model="inst.payByBank" :disabled="auth.access('student.payment') < 3" />
                                 Pay by bank transfer
                               </label>
                               <textarea v-if="inst.payByBank" v-model="inst.bankAccountDetails" rows="2"
-                                placeholder="Bank name, IBAN / account no., payment reference…" class="pay-method-input"></textarea>
+                                placeholder="Bank name, IBAN / account no., payment reference…" class="pay-method-input" :disabled="auth.access('student.payment') < 3"></textarea>
                             </div>
                           </div>
                         </td>
@@ -1147,14 +1149,14 @@
                   </div>
                   <div v-for="(line, lidx) in ai.lines" :key="lidx" class="pay-ai-line">
                     <div class="pay-ai-line-fields">
-                      <input type="number" min="0" step="0.01" v-model.number="line.amount" placeholder="Amount" class="pay-inp" />
-                      <input type="text" v-model="line.text" placeholder="What is this fee? (e.g. Attestation fee)" class="pay-inp pay-ai-text" />
+                      <input type="number" min="0" step="0.01" v-model.number="line.amount" placeholder="Amount" class="pay-inp" :disabled="auth.access('student.payment') < 3" />
+                      <input type="text" v-model="line.text" placeholder="What is this fee? (e.g. Attestation fee)" class="pay-inp pay-ai-text" :disabled="auth.access('student.payment') < 3" />
                     </div>
                     <button v-if="ai.lines.length > 1" class="btn-mini btn-mini-ghost" title="Remove line" @click="ai.lines.splice(lidx, 1)">✕</button>
                   </div>
                   <button class="btn-mini btn-mini-ghost" style="margin:.2rem 0 .4rem;" @click="ai.lines.push({ text: '', amount: 0 })">+ Add line</button>
                   <div class="pay-ai-meta">
-                    <label>Due date <input type="date" v-model="ai.dueDate" class="pay-inp" /></label>
+                    <label>Due date <input type="date" v-model="ai.dueDate" class="pay-inp" :disabled="auth.access('student.payment') < 3" /></label>
                     <span v-if="ai.isPaid" class="pay-badge pay-badge-paid">✓ {{ ai.paidDate || 'Paid' }}</span>
                     <span v-else-if="(ai.amountPaid || 0) > 0" class="pay-badge pay-badge-part">Partial</span>
                     <span class="muted" style="font-size:.78rem;">Paid: {{ payment.currency }} {{ fmtMoney(ai.amountPaid || 0) }}</span>
@@ -1169,10 +1171,10 @@
                       <span class="pay-rec-date">{{ (r.paidDate || '').slice(0, 10) }}</span>
                       <span class="pay-rec-amt">{{ payment.currency }} {{ fmtMoney(r.amount) }}</span>
                       <span class="pay-rec-note">{{ r.note || '' }}</span>
-                      <button class="btn-mini btn-remove" title="Delete this payment" @click="deletePaymentRecord(r)">✕</button>
+                      <button v-if="auth.can('student.payment.records')" class="btn-mini btn-remove" title="Delete this payment" @click="deletePaymentRecord(r)">✕</button>
                     </div>
                     <p v-if="!(ai.payments || []).length" class="muted" style="margin:.15rem 0;">No payments recorded yet.</p>
-                    <div class="pay-rec-add">
+                    <div v-if="auth.can('student.payment.records')" class="pay-rec-add">
                       <input type="number" min="0.01" step="0.01" v-model.number="payRec.amount" placeholder="Amount" class="pay-inp" />
                       <input type="date" v-model="payRec.date" class="pay-inp" />
                       <input type="text" v-model="payRec.note" placeholder="Note — where paid to, reference…" class="pay-rec-note-inp" />
@@ -1186,19 +1188,19 @@
                   <div class="pay-methods">
                     <div class="pay-method">
                       <label class="pay-method-toggle">
-                        <input type="checkbox" v-model="ai.payByCard" />
+                        <input type="checkbox" v-model="ai.payByCard" :disabled="auth.access('student.payment') < 3" />
                         Pay by card (payment link)
                       </label>
                       <input v-if="ai.payByCard" type="text" v-model="ai.cardPaymentLink"
-                        placeholder="https://… payment link for this invoice" class="pay-method-input" />
+                        placeholder="https://… payment link for this invoice" class="pay-method-input" :disabled="auth.access('student.payment') < 3" />
                     </div>
                     <div class="pay-method">
                       <label class="pay-method-toggle">
-                        <input type="checkbox" v-model="ai.payByBank" />
+                        <input type="checkbox" v-model="ai.payByBank" :disabled="auth.access('student.payment') < 3" />
                         Pay by bank transfer
                       </label>
                       <textarea v-if="ai.payByBank" v-model="ai.bankAccountDetails" rows="2"
-                        placeholder="Bank name, IBAN / account no., payment reference…" class="pay-method-input"></textarea>
+                        placeholder="Bank name, IBAN / account no., payment reference…" class="pay-method-input" :disabled="auth.access('student.payment') < 3"></textarea>
                     </div>
                   </div>
                 </div>
@@ -1216,7 +1218,7 @@
                 </p>
 
                 <div style="margin-top:.75rem; display:flex; align-items:center; gap:.6rem;">
-                  <button class="btn-row-details btn-row-details-sm" :disabled="payment.saving" @click="savePayment">
+                  <button v-if="auth.can('student.payment')" class="btn-row-details btn-row-details-sm" :disabled="payment.saving" @click="savePayment">
                     {{ payment.saving ? 'Saving…' : 'Save payment plan' }}
                   </button>
                   <a v-if="payment.installments.length" class="pay-invoice-link" :class="{ disabled: payment.downloadingInvoice }" @click="downloadInvoice()">
@@ -1262,7 +1264,7 @@
                   <strong>{{ enr.programmeCode }}</strong> · {{ enr.specializationName }}
                   <span v-if="enr.partnerName" class="doc-partner-chip" title="Partner this application belongs to">🤝 {{ enr.partnerName }}</span>
                   <span class="docs-group-count">{{ enr.coreDocs.length + enr.additionalDocs.length }}</span>
-                  <button class="btn-mini" style="margin-left:auto"
+                  <button v-if="auth.can('student.documents.add')" class="btn-mini" style="margin-left:auto"
                           @click="openAdditionalDialog(enr.enrollmentId)">
                     + Add additional document
                   </button>
@@ -1284,8 +1286,8 @@
                         {{ d.fileName }} · uploaded {{ formatDate(d.uploadedAt) }} · {{ d.statusName }}
                       </div>
                     </div>
-                    <button class="btn-mini" @click="downloadStudentDoc(d)">Open</button>
-                    <label class="btn-mini" v-if="!d.isVerified" style="margin-left:6px">
+                    <button v-if="auth.can('student.documents.open')" class="btn-mini" @click="downloadStudentDoc(d)">Open</button>
+                    <label class="btn-mini" v-if="!d.isVerified && auth.can('student.documents.replace')" style="margin-left:6px">
                       Replace
                       <input type="file" :accept="ACCEPTED_DOC_ACCEPT_ATTR" hidden
                              @change="onAdminReplace($event, enr.enrollmentId, d)" />
@@ -1314,7 +1316,7 @@
                         {{ d.fileName }} · uploaded {{ formatDate(d.uploadedAt) }} · {{ d.statusName }}
                       </div>
                     </div>
-                    <button class="btn-mini" @click="downloadStudentDoc(d)">Open</button>
+                    <button v-if="auth.can('student.documents.open')" class="btn-mini" @click="downloadStudentDoc(d)">Open</button>
                   </div>
                 </div>
               </div>
@@ -1340,22 +1342,22 @@
                   <div class="muted" style="font-size:.78rem;">Whether this student is enabled in the Moodle LMS.</div>
                 </div>
                 <label class="moodle-toggle">
-                  <input type="checkbox" v-model="moodleDraft.enabled" />
+                  <input type="checkbox" v-model="moodleDraft.enabled" :disabled="auth.access('student.moodle.settings') < 3" />
                   <span>{{ moodleDraft.enabled ? 'Yes' : 'No' }}</span>
                 </label>
               </div>
               <div class="moodle-creds">
                 <div class="moodle-field">
                   <label>User for Moodle</label>
-                  <input v-model="moodleDraft.username" placeholder="Moodle username" />
+                  <input v-model="moodleDraft.username" placeholder="Moodle username" :disabled="auth.access('student.moodle.settings') < 3" />
                 </div>
                 <div class="moodle-field">
                   <label>Password for Moodle</label>
-                  <input v-model="moodleDraft.password" placeholder="Moodle password" />
+                  <input v-model="moodleDraft.password" placeholder="Moodle password" :disabled="auth.access('student.moodle.settings') < 3" />
                 </div>
               </div>
               <div style="margin-top:.75rem;">
-                <button class="btn-row-details btn-row-details-sm" :disabled="savingMoodle" @click="saveMoodle">
+                <button v-if="auth.can('student.moodle.settings')" class="btn-row-details btn-row-details-sm" :disabled="savingMoodle" @click="saveMoodle">
                   {{ savingMoodle ? 'Saving…' : 'Save Moodle settings' }}
                 </button>
                 <span v-if="moodleError" class="err-banner" style="display:inline-block;margin-left:.5rem;">{{ moodleError }}</span>
@@ -1654,6 +1656,8 @@ const DETAIL_TABS = [
   { id: 'log',         label: 'Log' },
   { id: 'activity',    label: 'Activity log' },
 ]
+// Hide a drawer tab entirely when its access level is Hidden (0).
+const visibleDetailTabs = computed(() => DETAIL_TABS.filter(t => auth.access('student.tab.' + t.id) > 0))
 const ALL_LETTER_TYPES = [
   { key: 'offerLetter',            label: 'Offer Letter',           icon: '📄' },
   { key: 'admissionLetter',        label: 'Admission Letter',       icon: '📋' },

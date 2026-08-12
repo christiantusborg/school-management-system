@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Odin.Api.Base.Authorization;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 
@@ -46,8 +47,10 @@ public sealed class AdminV1StudentsSubmitGradesEndpoint : IEndpointMarker
 
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId, [FromBody] SubmitGradesRequest body,
-        HttpContext httpContext, OdinDbContext db, CancellationToken ct)
+        HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.grades.submit", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var callerId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
 

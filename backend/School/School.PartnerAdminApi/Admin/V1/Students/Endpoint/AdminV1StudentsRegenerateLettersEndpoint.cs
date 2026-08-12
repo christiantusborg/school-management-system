@@ -149,8 +149,12 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
     /// letters (default 40): a proposal/project cohort mark at or above it
     /// releases the matching approval letter automatically.</summary>
     private static async Task<IResult> PassMarkAsync(
-        Guid programmeId, [FromBody] PassMarkBody body, OdinDbContext db, CancellationToken ct)
+        Guid programmeId, [FromBody] PassMarkBody body,
+        HttpContext httpContext, [FromServices] IPermissionService perms,
+        OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.letters.passmark", ct) != AccessLevel.Edit) return Results.Forbid();
+
         if (body.PassMark is < 0 or > 100)
             return Results.BadRequest(new { error = "Pass mark must be between 0 and 100." });
         var programme = await db.Programmes.FirstOrDefaultAsync(p => p.ProgrammeId == programmeId && p.DeletedAt == null, ct);

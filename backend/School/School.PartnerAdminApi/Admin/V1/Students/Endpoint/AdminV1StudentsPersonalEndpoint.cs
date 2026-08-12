@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Letters;
 using School.PartnerAdminApi.SharedStudentEdits;
 
@@ -21,10 +22,14 @@ public sealed class AdminV1StudentsPersonalEndpoint : IEndpointMarker
     private static async Task<IResult> HandleAsync(
         Guid studentId,
         [FromBody] StudentEditService.PersonalDto body,
+        HttpContext httpContext,
+        IPermissionService perms,
         OdinDbContext db,
         LetterReleaseService letterRelease,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.details.personal", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var student = await db.Students
             .FirstOrDefaultAsync(s => s.StudentId == studentId && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();

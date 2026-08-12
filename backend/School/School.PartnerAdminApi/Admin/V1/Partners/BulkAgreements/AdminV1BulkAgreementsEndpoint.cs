@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Odin.Api.Base.Authorization;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -259,8 +260,11 @@ public sealed class AdminV1BulkAgreementsEndpoint : IEndpointMarker
     /// <summary>Admission moves an enrolment to another agreement of the SAME
     /// partner (or detaches it with null). Manual placements stick.</summary>
     private static async Task<IResult> MoveAsync(
-        Guid studentId, Guid enrollmentId, [FromBody] MoveBody body, OdinDbContext db, CancellationToken ct)
+        Guid studentId, Guid enrollmentId, [FromBody] MoveBody body,
+        HttpContext httpContext, IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.enrolment.bulk_agreement", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var enrolment = await db.Enrollments.FirstOrDefaultAsync(e =>
             e.StudentEnrollmentId == enrollmentId && e.StudentId == studentId && e.DeletedAt == null, ct);
         if (enrolment is null) return Results.NotFound();

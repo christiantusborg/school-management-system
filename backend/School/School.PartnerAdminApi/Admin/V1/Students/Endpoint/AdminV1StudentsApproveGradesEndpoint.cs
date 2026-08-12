@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.Extensions.Logging;
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Letters;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
@@ -24,11 +25,13 @@ public sealed class AdminV1StudentsApproveGradesEndpoint : IEndpointMarker
 
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId,
-        HttpContext httpContext, OdinDbContext db,
+        HttpContext httpContext, IPermissionService perms, OdinDbContext db,
         LetterReleaseService letterRelease,
         ILogger<AdminV1StudentsApproveGradesEndpoint> logger,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.grades.approve", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var callerId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
 

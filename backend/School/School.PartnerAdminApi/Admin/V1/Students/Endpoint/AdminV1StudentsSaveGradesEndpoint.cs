@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Letters;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
@@ -37,8 +38,11 @@ public sealed class AdminV1StudentsSaveGradesEndpoint : IEndpointMarker
 
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId, [FromBody] SaveGradesRequest body,
+        HttpContext httpContext, IPermissionService perms,
         OdinDbContext db, LetterReleaseService letterRelease, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.grades.save_draft", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var enrolment = await db.Enrollments
             .FirstOrDefaultAsync(e => e.StudentEnrollmentId == enrollmentId
                 && e.StudentId == studentId

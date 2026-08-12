@@ -1,3 +1,5 @@
+using Odin.Api.Base.Authorization;
+
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
 
 /// <summary>
@@ -23,8 +25,11 @@ public sealed class AdminV1StudentsMoodleEndpoint : IEndpointMarker
     }
 
     private static async Task<IResult> HandleAsync(
-        Guid studentId, [FromBody] MoodleBody body, OdinDbContext db, CancellationToken ct)
+        Guid studentId, [FromBody] MoodleBody body, HttpContext httpContext,
+        IPermissionService perms, OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.moodle.settings", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var student = await db.Students
             .FirstOrDefaultAsync(s => s.StudentId == studentId && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();

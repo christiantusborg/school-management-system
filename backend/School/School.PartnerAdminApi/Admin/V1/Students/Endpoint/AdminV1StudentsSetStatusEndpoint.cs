@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Letters;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
@@ -39,10 +40,13 @@ public sealed class AdminV1StudentsSetStatusEndpoint : IEndpointMarker
     private static async Task<IResult> SetAsync(
         Guid studentId, Guid enrollmentId, [FromBody] SetStatusBody body,
         HttpContext httpContext, OdinDbContext db,
+        [FromServices] IPermissionService perms,
         LetterReleaseService letterRelease,
         [FromServices] ILogger<AdminV1StudentsSetStatusEndpoint> logger,
         CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.enrolment.change_status", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var enrolment = await db.Enrollments
             .FirstOrDefaultAsync(e => e.StudentEnrollmentId == enrollmentId
                 && e.StudentId == studentId && e.DeletedAt == null, ct);

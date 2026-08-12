@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using School.PartnerAdminApi.Partner.V1.MyUsers;
 
 namespace School.PartnerAdminApi.Admin.V1.Students.Endpoint;
@@ -23,9 +24,12 @@ public sealed class AdminV1StudentsEmailEndpoint : IEndpointMarker
     public sealed class Body { public string? Email { get; init; } }
 
     private static async Task<IResult> AdminAsync(
-        Guid studentId, [FromBody] Body body, OdinDbContext db,
+        Guid studentId, [FromBody] Body body, HttpContext httpContext,
+        IPermissionService perms, OdinDbContext db,
         UserManager<ApplicationUser> userManager, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.details.email", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var student = await db.Students.FirstOrDefaultAsync(s => s.StudentId == studentId && s.DeletedAt == null, ct);
         if (student is null) return Results.NotFound();
         return await ChangeAsync(student, body, userManager);

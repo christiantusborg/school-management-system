@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Storage;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
@@ -826,8 +827,11 @@ public sealed class AdminV1ModuleCohortsEndpoint : IEndpointMarker
 
     private static async Task<IResult> SetStudentCohortAsync(
         Guid studentId, Guid enrollmentId, [FromBody] SetStudentCohortBody body,
+        HttpContext httpContext, IPermissionService perms,
         OdinDbContext db, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.enrolment.cohort_assign", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var enrolment = await db.Enrollments
             .Where(e => e.StudentEnrollmentId == enrollmentId && e.StudentId == studentId && e.DeletedAt == null)
             .Select(e => new { e.PartnerId })

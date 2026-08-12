@@ -1,3 +1,4 @@
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Letters;
 using Odin.Api.Base.Payments;
 using SharedLibrary.Basics.Opaque.Domains;
@@ -165,8 +166,11 @@ public sealed class AdminV1StudentsPaymentEndpoint : IEndpointMarker
 
     private static async Task<IResult> SaveAsync(
         Guid studentId, Guid enrollmentId, [FromBody] SaveRequest body,
+        HttpContext httpContext, IPermissionService perms,
         OdinDbContext db, LetterReleaseService letterRelease, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.payment", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var owns = await db.Enrollments.AnyAsync(e =>
             e.StudentEnrollmentId == enrollmentId && e.StudentId == studentId && e.DeletedAt == null, ct);
         if (!owns) return Results.NotFound();
@@ -295,8 +299,10 @@ public sealed class AdminV1StudentsPaymentEndpoint : IEndpointMarker
     /// records cover the full amount.</summary>
     private static async Task<IResult> AddRecordAsync(
         Guid studentId, Guid enrollmentId, [FromBody] RecordBody body,
-        HttpContext httpContext, OdinDbContext db, LetterReleaseService letterRelease, CancellationToken ct)
+        HttpContext httpContext, IPermissionService perms, OdinDbContext db, LetterReleaseService letterRelease, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.payment.records", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var owns = await db.Enrollments.AnyAsync(e =>
             e.StudentEnrollmentId == enrollmentId && e.StudentId == studentId && e.DeletedAt == null, ct);
         if (!owns) return Results.NotFound();
@@ -341,8 +347,11 @@ public sealed class AdminV1StudentsPaymentEndpoint : IEndpointMarker
 
     private static async Task<IResult> DeleteRecordAsync(
         Guid studentId, Guid enrollmentId, Guid recordId,
+        HttpContext httpContext, IPermissionService perms,
         OdinDbContext db, LetterReleaseService letterRelease, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.payment.records", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var owns = await db.Enrollments.AnyAsync(e =>
             e.StudentEnrollmentId == enrollmentId && e.StudentId == studentId && e.DeletedAt == null, ct);
         if (!owns) return Results.NotFound();

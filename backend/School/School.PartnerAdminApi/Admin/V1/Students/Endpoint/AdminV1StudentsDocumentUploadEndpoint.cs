@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Odin.Api.Base.Authorization;
 using Odin.Api.Base.Documents;
 using Odin.Api.Base.Storage;
 
@@ -31,8 +32,10 @@ public sealed class AdminV1StudentsDocumentUploadEndpoint : IEndpointMarker
 
     private static async Task<IResult> HandleAsync(
         Guid studentId, Guid enrollmentId,
-        HttpContext httpContext, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+        HttpContext httpContext, IPermissionService perms, OdinDbContext db, IFileStorage storage, CancellationToken ct)
     {
+        if (await perms.AccessAsync(httpContext.User, "student.documents.add", ct) != AccessLevel.Edit) return Results.Forbid();
+
         var callerId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(callerId)) return Results.Unauthorized();
 
