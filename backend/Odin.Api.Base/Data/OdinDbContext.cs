@@ -177,6 +177,11 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     public DbSet<Language> Languages => Set<Language>();
     public DbSet<Nationality> Nationalities => Set<Nationality>();
 
+    // Access matrix (RBAC)
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Authorization.AdminRole> AdminRoles => Set<SharedLibrary.Basics.Opaque.Domains.Authorization.AdminRole>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Authorization.RolePermission> RolePermissions => Set<SharedLibrary.Basics.Opaque.Domains.Authorization.RolePermission>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Authorization.PermissionAuditLog> PermissionAuditLogs => Set<SharedLibrary.Basics.Opaque.Domains.Authorization.PermissionAuditLog>();
+
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

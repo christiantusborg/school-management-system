@@ -267,6 +267,9 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AdminOrPartner", policy => policy.RequireRole("Admin", "Partner"));
 });
 
+// Configurable access matrix (RBAC) — resolves per-user permissions.
+builder.Services.AddScoped<Odin.Api.Base.Authorization.IPermissionService, Odin.Api.Base.Authorization.PermissionService>();
+
 // File storage
 {
     var provider = builder.Configuration["Storage:Provider"] ?? "Local";

@@ -178,6 +178,55 @@ public static class DatabaseSeeder
         await SeedDocumentStatusesAsync(context, logger);
         await SeedDocumentTypeVerifyRequirementsAsync(context, logger);
         await SeedProgrammeDocumentRequirementsAsync(context, logger);
+        await SeedAccessMatrixAsync(context, logger);
+    }
+
+    /// <summary>
+    /// Seeds the configurable access matrix: the six built-in
+    /// <see cref="Odin.Api.Base.Authorization.AdminLevels"/> roles as
+    /// <c>AdminRole</c> rows, and each role's default grants from
+    /// <see cref="Odin.Api.Base.Authorization.AdminPermissions"/> (which
+    /// reproduce the previously hard-coded access rules). Idempotent AND
+    /// edit-preserving: role metadata is upserted, but grants are seeded for a
+    /// role ONLY when that role has no grants yet — so a SuperAdmin's later
+    /// edits are never overwritten on reboot. SuperAdministrator is intentionally
+    /// not granted rows (it bypasses the matrix in code).
+    /// </summary>
+    private static async Task SeedAccessMatrixAsync(OdinDbContext context, ILogger logger)
+    {
+        var roleMeta = new (string Name, string Label, string? Desc, int Sort)[]
+        {
+            (Odin.Api.Base.Authorization.AdminLevels.SuperAdministrator, "Super Administrator", "Full access; bypasses the access matrix; manages roles and admin users.", 0),
+            (Odin.Api.Base.Authorization.AdminLevels.Administrator,      "Administrator",       "Broad admin access across the portal.", 1),
+            (Odin.Api.Base.Authorization.AdminLevels.Manager,            "Manager",             "Day-to-day admission management.", 2),
+            (Odin.Api.Base.Authorization.AdminLevels.Editor,            "Editor",              "Edits student records and grades.", 3),
+            (Odin.Api.Base.Authorization.AdminLevels.Viewer,           "Viewer",              "Read-only admission access.", 4),
+            (Odin.Api.Base.Authorization.AdminLevels.Sales,           "Sales",               "Read-only admission access for referral links; sees only assigned partners.", 5),
+        };
+        foreach (var (name, label, desc, sort) in roleMeta)
+        {
+            var existing = await context.AdminRoles.FirstOrDefaultAsync(r => r.Name == name);
+            if (existing is null)
+                context.AdminRoles.Add(new SharedLibrary.Basics.Opaque.Domains.Authorization.AdminRole
+                { Name = name, Label = label, Description = desc, IsSystem = true, SortOrder = sort });
+            else { existing.Label = label; existing.Description = desc; existing.IsSystem = true; existing.SortOrder = sort; }
+        }
+        await context.SaveChangesAsync();
+
+        // Grants: only seed a role that has none yet (preserve later edits).
+        foreach (var level in Odin.Api.Base.Authorization.AdminLevels.All)
+        {
+            if (level == Odin.Api.Base.Authorization.AdminLevels.SuperAdministrator) continue; // bypasses
+            var hasAny = await context.RolePermissions.AnyAsync(rp => rp.RoleName == level);
+            if (hasAny) continue;
+            foreach (var def in Odin.Api.Base.Authorization.AdminPermissions.Catalog)
+                if (def.DefaultRoles.Contains(level))
+                    context.RolePermissions.Add(new SharedLibrary.Basics.Opaque.Domains.Authorization.RolePermission
+                    { RoleName = level, PermissionKey = def.Key, Allowed = true });
+        }
+        await context.SaveChangesAsync();
+        logger.LogInformation("Access matrix seeded ({Roles} roles, {Perms} permissions in catalogue).",
+            roleMeta.Length, Odin.Api.Base.Authorization.AdminPermissions.Catalog.Count);
     }
 
     /// <summary>
