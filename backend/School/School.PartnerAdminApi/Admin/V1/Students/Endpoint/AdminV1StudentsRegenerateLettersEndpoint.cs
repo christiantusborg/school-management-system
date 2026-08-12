@@ -75,7 +75,8 @@ public sealed class AdminV1StudentsRegenerateLettersEndpoint : IEndpointMarker
                 .Select(d => d.Name).FirstOrDefaultAsync(ct);
             if (defName is null) return Results.BadRequest(new { error = "Unknown letter type." });
             var docId = await letterRelease.ReleaseDynamicAsync(
-                enrollmentId, definitionId, language, "Manual", caller.UserName, callerId, ct);
+                enrollmentId, definitionId, language, "Manual", caller.UserName, callerId,
+                letterTypeHint: null, ct);
             return Results.Ok(new { regenerated = docId is null ? Array.Empty<string>() : new[] { defName } });
         }
 

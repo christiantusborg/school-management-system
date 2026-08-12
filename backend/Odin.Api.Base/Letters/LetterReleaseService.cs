@@ -23,167 +23,49 @@ public sealed class LetterReleaseService(
     LetterEmailService letterEmail,
     ILogger<LetterReleaseService> logger)
 {
+    /// <summary>
+    /// Fixed definition id of each built-in letter's dynamic twin (created by
+    /// the Phase 1 enum→dynamic migration). Cutover routes every built-in
+    /// release through its twin so all letters share one version-tracked
+    /// pipeline. The twin carries the same template, DocumentType and
+    /// reference prefix, so the released PDF is identical.
+    /// </summary>
+    public static Guid EnumTwinDefinitionId(LetterType t) => t switch
+    {
+        LetterType.OfferLetter            => Guid.Parse("22222222-2222-2222-2222-def000000001"),
+        LetterType.AdmissionLetter        => Guid.Parse("22222222-2222-2222-2222-def000000002"),
+        LetterType.Transcript             => Guid.Parse("22222222-2222-2222-2222-def000000003"),
+        LetterType.Certificate            => Guid.Parse("22222222-2222-2222-2222-def000000004"),
+        LetterType.ProvisionalCertificate => Guid.Parse("22222222-2222-2222-2222-def000000005"),
+        LetterType.PrintableTranscript    => Guid.Parse("22222222-2222-2222-2222-def000000006"),
+        LetterType.StudentIdCard          => Guid.Parse("22222222-2222-2222-2222-def000000007"),
+        LetterType.FinalProposalApproval  => Guid.Parse("22222222-2222-2222-2222-def000000008"),
+        LetterType.FinalProjectApproval   => Guid.Parse("22222222-2222-2222-2222-def000000009"),
+        _ => Guid.Empty,
+    };
+
+    /// <summary>
+    /// Release a built-in letter. Since the enum→dynamic cutover this simply
+    /// delegates to the letter's dynamic twin: same template, same DocumentType
+    /// (so it lands in the same StudentDocuments slot), same MGW-&lt;code&gt;
+    /// reference, plus version history and definition-based email. The
+    /// letterType hint keeps tag resolution exactly as before.
+    /// </summary>
     public async Task<Guid?> ReleaseAsync(
         Guid enrollmentId,
         LetterType letterType,
         CancellationToken ct)
     {
-        var enrollment = await db.Enrollments
-            .Where(e => e.StudentEnrollmentId == enrollmentId)
-            .Select(e => new
-            {
-                e.StudentEnrollmentId,
-                e.StudentId,
-                e.SpecializationId,
-                e.PartnerId,
-                ProgrammeId = db.Specializations
-                    .Where(s => s.SpecializationId == e.SpecializationId)
-                    .Select(s => s.ProgrammeId)
-                    .FirstOrDefault(),
-            })
-            .FirstOrDefaultAsync(ct);
-
-        if (enrollment is null)
+        var defId = EnumTwinDefinitionId(letterType);
+        if (defId == Guid.Empty)
         {
-            logger.LogWarning("[Letters] Enrollment {EnrollmentId} not found", enrollmentId);
+            logger.LogWarning("[Letters] No dynamic twin mapped for {LetterType}", letterType);
             return null;
         }
-
-        // Templates are per (programme, partner, letter type). Resolve the
-        // partner from the enrolment; no cross-partner fallback, so a partner
-        // that hasn't authored this letter simply releases nothing.
-        var template = await db.LetterTemplates
-            .FirstOrDefaultAsync(t =>
-                t.ProgrammeId == enrollment.ProgrammeId &&
-                t.PartnerId == enrollment.PartnerId &&
-                t.LetterType == letterType &&
-                // Enum letters only: config-created (definition) rows keep the
-                // enum column at its default and must never match here.
-                t.LetterTypeDefinitionId == null &&
-                t.Language == null &&
-                t.DeletedAt == null, ct);
-
-        if (template is null)
-        {
-            logger.LogWarning("[Letters] No template for programme {ProgrammeId} partner {PartnerId} type {LetterType}",
-                enrollment.ProgrammeId, enrollment.PartnerId, letterType);
-            return null;
-        }
-
-        // Ensure a stable reference code for this enrolment. Generated once on
-        // the first release (first 8 hex chars of a GUID) and reused for every
-        // letter type and every regeneration after, so a printed reference
-        // never changes. Saved with the document below in the same SaveChanges.
-        var enrollmentEntity = await db.Enrollments
-            .FirstAsync(e => e.StudentEnrollmentId == enrollmentId, ct);
-        if (string.IsNullOrEmpty(enrollmentEntity.LetterReferenceCode))
-            enrollmentEntity.LetterReferenceCode = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
-        var reference = $"MGW-{LetterTypeCode(letterType)}-{enrollmentEntity.LetterReferenceCode}";
-
-        // Gate release on the admin having explicitly published this template.
-        // Seeded defaults sit in the DB as a starting canvas for the editor;
-        // they only become release-eligible when an admin saves them.
-        if (!template.IsPublished)
-        {
-            logger.LogInformation(
-                "[Letters] Skipping {LetterType} for programme {ProgrammeId}: template not published.",
-                letterType, enrollment.ProgrammeId);
-            return null;
-        }
-
-        var pdfBytes = await RenderTemplatePdfAsync(template, enrollment.StudentId, enrollmentId, reference, letterType, ct);
-        if (pdfBytes is null) return null;
-
-        var fileName = $"{letterType}-{DateTime.UtcNow:yyyyMMddHHmmss}.pdf";
-        string storagePath;
-        using (var ms = new MemoryStream(pdfBytes))
-        {
-            storagePath = await storage.SaveAsync(
-                ms,
-                $"letters/{enrollment.StudentId}/{enrollmentId}/{Guid.NewGuid()}-{fileName}",
-                ct);
-        }
-
-        var documentTypeId = letterType switch
-        {
-            LetterType.OfferLetter            => SystemDocumentTypeIds.OfferLetter,
-            LetterType.AdmissionLetter        => SystemDocumentTypeIds.AdmissionLetter,
-            LetterType.Transcript             => SystemDocumentTypeIds.Transcript,
-            LetterType.Certificate            => SystemDocumentTypeIds.Certificate,
-            LetterType.ProvisionalCertificate => SystemDocumentTypeIds.ProvisionalCertificate,
-            LetterType.PrintableTranscript    => SystemDocumentTypeIds.PrintableTranscript,
-            LetterType.StudentIdCard          => SystemDocumentTypeIds.StudentIdCard,
-            LetterType.FinalProposalApproval  => SystemDocumentTypeIds.FinalProposalApproval,
-            LetterType.FinalProjectApproval   => SystemDocumentTypeIds.FinalProjectApproval,
-            _ => throw new ArgumentOutOfRangeException(nameof(letterType)),
-        };
-
-        // A unique index allows only one active document per
-        // (Enrollment, DocumentType). On regeneration the letter already
-        // exists, so update that row in place rather than inserting a
-        // duplicate (which violates the index). The document id stays stable
-        // across regenerations, keeping existing download links valid; the
-        // superseded PDF blob is left in storage.
-        var existing = await db.StudentDocuments
-            .FirstOrDefaultAsync(d => d.EnrollmentId == enrollmentId
-                && d.DocumentTypeId == documentTypeId
-                && d.DeletedAt == null, ct);
-
-        Guid resultId;
-        if (existing is not null)
-        {
-            existing.FileName = fileName;
-            existing.MimeType = "application/pdf";
-            existing.UploadedAt = DateTime.UtcNow;
-            existing.StoragePath = storagePath;
-            existing.CurrentStatusId = DocumentStatusIds.VerifiedByEnrolment;
-            resultId = existing.StudentDocumentId;
-        }
-        else
-        {
-            var document = new StudentDocument
-            {
-                StudentDocumentId = Guid.NewGuid(),
-                StudentId = enrollment.StudentId,
-                EnrollmentId = enrollmentId,
-                DocumentTypeId = documentTypeId,
-                FileName = fileName,
-                MimeType = "application/pdf",
-                UploadedAt = DateTime.UtcNow,
-                StoragePath = storagePath,
-                CurrentStatusId = DocumentStatusIds.VerifiedByEnrolment,
-            };
-            db.StudentDocuments.Add(document);
-            resultId = document.StudentDocumentId;
-        }
-        await db.SaveChangesAsync(ct);
-
-        logger.LogInformation("[Letters] Released {LetterType} for enrollment {EnrollmentId} → {StudentDocumentId} ({Mode})",
-            letterType, enrollmentId, resultId, existing is null ? "new" : "regenerated");
-
-        // Auto-send the accompanying email (offer/admission only) when the
-        // admin enabled it for this programme. Best-effort: a send failure
-        // logs but never rolls back or fails the release.
-        if (letterType is LetterType.OfferLetter or LetterType.AdmissionLetter)
-        {
-            try
-            {
-                var emailResult = await letterEmail.SendForLetterAsync(
-                    enrollmentId, letterType, adHocCc: null, adHocBcc: null, requireEnabled: true, ct);
-                if (emailResult.Outcome == LetterEmailOutcome.Sent)
-                    logger.LogInformation("[Letters] Auto-emailed {LetterType} for enrolment {EnrollmentId} to {To}",
-                        letterType, enrollmentId, emailResult.To);
-                else if (emailResult.Outcome != LetterEmailOutcome.Disabled)
-                    logger.LogInformation("[Letters] Auto-email not sent for {LetterType} enrolment {EnrollmentId}: {Outcome}",
-                        letterType, enrollmentId, emailResult.Outcome);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "[Letters] Auto-email failed for {LetterType} enrolment {EnrollmentId}", letterType, enrollmentId);
-            }
-        }
-
-        return resultId;
+        return await ReleaseDynamicAsync(
+            enrollmentId, defId, language: null, trigger: "System",
+            generatedByName: "System", generatedByUserId: null,
+            letterTypeHint: letterType, ct);
     }
 
     /// <summary>
@@ -308,6 +190,7 @@ public sealed class LetterReleaseService(
     public async Task<Guid?> ReleaseDynamicAsync(
         Guid enrollmentId, Guid letterTypeDefinitionId, string? language,
         string trigger, string? generatedByName, string? generatedByUserId,
+        LetterType? letterTypeHint,
         CancellationToken ct)
     {
         var definition = await db.LetterTypeDefinitions
@@ -361,7 +244,10 @@ public sealed class LetterReleaseService(
             enrollmentEntity.LetterReferenceCode = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
         var reference = $"MGW-{definition.ReferencePrefix}-{enrollmentEntity.LetterReferenceCode}";
 
-        var pdfBytes = await RenderTemplatePdfAsync(template, enrollment.StudentId, enrollmentId, reference, null, ct);
+        // letterTypeHint is set when a built-in letter is delegated here at
+        // cutover, so tag resolution stays exactly as the enum path produced
+        // (e.g. proposal vs project grade). Null for genuinely dynamic types.
+        var pdfBytes = await RenderTemplatePdfAsync(template, enrollment.StudentId, enrollmentId, reference, letterTypeHint, ct);
         if (pdfBytes is null) return null;
 
         var safeType = new string(definition.Name.Where(char.IsLetterOrDigit).ToArray());

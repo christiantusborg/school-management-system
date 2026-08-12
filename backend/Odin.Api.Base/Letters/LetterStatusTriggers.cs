@@ -33,7 +33,8 @@ public static class LetterStatusTriggers
                 if (alreadyReleased) continue;
                 var docId = await letterRelease.ReleaseDynamicAsync(
                     enrollmentId, def.LetterTypeDefinitionId, language: null,
-                    trigger: "StatusTrigger", generatedByName: null, generatedByUserId: null, ct);
+                    trigger: "StatusTrigger", generatedByName: null, generatedByUserId: null,
+                    letterTypeHint: null, ct);
                 if (docId is not null)
                     logger.LogInformation("[Letters] Status trigger released '{Name}' for enrolment {EnrollmentId}",
                         def.Name, enrollmentId);

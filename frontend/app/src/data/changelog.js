@@ -5,6 +5,17 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'letters-cutover-dynamic',
+    date: '2026-08-12',
+    title: 'Letters now generate through the new config-created system',
+    summary: 'Every built-in letter now renders via its new twin: same design, same reference, plus version history and email.',
+    details: [
+      'All automatic and manual letter releases (offer/admission on review, transcripts/certificates on grade approval, proposal/project approval on pass, student ID card) now go through the new config-created letters. The design, DocumentType and MGW reference code are identical, so issued letters look the same.',
+      'Every release now records a version in the letter History, and Offer/Admission auto-emails carry over unchanged (their email templates were copied to the new letters).',
+      'The old built-in letters are hidden by default on the programme "Letters:" row (use "Show old" to reveal them, marked (O)); they are kept, not deleted, until the Admission Office confirms the switch-over. Students still see and download all their letters exactly as before.',
+    ],
+  },
+  {
     id: 'letters-old-as-version-1',
     date: '2026-08-12',
     title: 'Old letters now appear as version 1 in the new letter history',
