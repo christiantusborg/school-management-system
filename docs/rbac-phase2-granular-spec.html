@@ -1,0 +1,223 @@
+<title>Granular Access Matrix</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#F5F6F9; --surface:#FFFFFF; --surface-2:#FBFBFD;
+    --ink:#191D24; --muted:#5B636E; --faint:#98A0AB;
+    --line:#E4E7EC; --line-strong:#D3D8DF;
+    --accent:#3E4DA8; --accent-ink:#2E3B87; --accent-soft:#ECEEF9;
+    --edit:#2F6F4F; --edit-soft:#E7F1EC;
+    --view:#2E5AA8; --view-soft:#E7EEF8;
+    --noacc:#8A5A12; --noacc-soft:#F6EEDD;
+    --hidden:#8A2F3B; --hidden-soft:#F6E7E9;
+    --shadow:0 1px 2px rgba(20,24,32,.05), 0 8px 28px rgba(20,24,32,.06);
+    --font-display:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif;
+    --font-body:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace;
+  }
+  :root:not([data-theme="light"]){ @media (prefers-color-scheme:dark){
+    --bg:#13161B; --surface:#1B1F26; --surface-2:#181C22;
+    --ink:#E8EAEE; --muted:#9AA2AD; --faint:#69717C;
+    --line:#2A2F38; --line-strong:#353B45;
+    --accent:#8C97E8; --accent-ink:#AAB3EF; --accent-soft:#232838;
+    --edit:#7FBE9C; --edit-soft:#1E2A24; --view:#84A9E4; --view-soft:#1B2432;
+    --noacc:#D6A85C; --noacc-soft:#2C2618; --hidden:#DD8A96; --hidden-soft:#2E1C20;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }}
+  :root[data-theme="dark"]{
+    --bg:#13161B; --surface:#1B1F26; --surface-2:#181C22;
+    --ink:#E8EAEE; --muted:#9AA2AD; --faint:#69717C;
+    --line:#2A2F38; --line-strong:#353B45;
+    --accent:#8C97E8; --accent-ink:#AAB3EF; --accent-soft:#232838;
+    --edit:#7FBE9C; --edit-soft:#1E2A24; --view:#84A9E4; --view-soft:#1B2432;
+    --noacc:#D6A85C; --noacc-soft:#2C2618; --hidden:#DD8A96; --hidden-soft:#2E1C20;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-body); font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:76rem; margin:0 auto; padding:clamp(1.5rem,4vw,4rem) clamp(1.1rem,4vw,2.5rem) 5rem}
+  .eyebrow{font-family:var(--font-mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink); display:flex; gap:.7rem; align-items:center; flex-wrap:wrap}
+  .eyebrow .dot{width:6px; height:6px; border-radius:50%; background:var(--accent)}
+  h1{font-family:var(--font-display); font-weight:600; letter-spacing:-.01em; font-size:clamp(2.3rem,6vw,3.6rem); line-height:1.03; margin:.5rem 0 .4rem; text-wrap:balance}
+  .lede{font-size:clamp(1.05rem,2.2vw,1.2rem); color:var(--muted); max-width:62ch; margin:0}
+  .masthead{border-bottom:1px solid var(--line); padding-bottom:2rem; margin-bottom:2.4rem}
+  .meta-row{display:flex; gap:1.6rem; flex-wrap:wrap; margin-top:1.3rem; font-size:.82rem; color:var(--faint)}
+  .meta-row b{color:var(--muted); font-weight:600}
+  .decisions{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:var(--shadow)}
+  .dcard{background:var(--surface); padding:1rem 1.1rem}
+  .dcard .k{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); margin-bottom:.3rem}
+  .dcard .v{font-weight:600; font-size:.95rem; line-height:1.3}
+  .dcard .v small{display:block; font-weight:400; color:var(--muted); font-size:.78rem; margin-top:.2rem}
+  section{margin-top:3rem; scroll-margin-top:1rem}
+  .sec-head{display:flex; align-items:baseline; gap:.8rem; border-bottom:1px solid var(--line); padding-bottom:.55rem; margin-bottom:1.1rem}
+  .sec-num{font-family:var(--font-mono); font-size:.9rem; color:var(--accent); font-weight:600}
+  h2{font-family:var(--font-display); font-weight:600; font-size:clamp(1.4rem,3vw,1.85rem); margin:0; letter-spacing:-.01em; text-wrap:balance}
+  h3{font-weight:700; font-size:1rem; margin:1.5rem 0 .5rem}
+  p{max-width:72ch} li{margin:.28rem 0; max-width:70ch}
+  code,.mono{font-family:var(--font-mono); font-size:.86em; background:var(--accent-soft); color:var(--accent-ink); padding:.06em .38em; border-radius:5px}
+  a{color:var(--accent-ink)}
+  .states{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:.8rem; margin-top:.5rem}
+  .state{border:1px solid var(--line); border-left-width:4px; border-radius:10px; padding:.8rem .95rem; background:var(--surface); box-shadow:var(--shadow)}
+  .state.edit{border-left-color:var(--edit)} .state.view{border-left-color:var(--view)}
+  .state.noacc{border-left-color:var(--noacc)} .state.hidden{border-left-color:var(--hidden)}
+  .state .nm{font-weight:700; font-size:.92rem; display:flex; align-items:center; gap:.4rem}
+  .state .nm .pip{font-family:var(--font-mono); font-weight:800}
+  .state.edit .pip{color:var(--edit)} .state.view .pip{color:var(--view)} .state.noacc .pip{color:var(--noacc)} .state.hidden .pip{color:var(--hidden)}
+  .state .ds{font-size:.8rem; color:var(--muted); margin-top:.25rem}
+  .scroll{overflow-x:auto; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); background:var(--surface); margin-top:.7rem}
+  table{border-collapse:collapse; width:100%; font-size:.85rem; min-width:560px}
+  th,td{text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top}
+  thead th{background:var(--surface-2); font-size:.7rem; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); position:sticky; top:0}
+  td .k{font-family:var(--font-mono); font-size:.78rem; color:var(--ink); font-weight:600}
+  td .d{color:var(--faint); font-size:.76rem}
+  .cnt{font-family:var(--font-mono); font-weight:700; color:var(--accent-ink); text-align:right; font-variant-numeric:tabular-nums}
+  .typ{font-family:var(--font-mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); border:1px solid var(--line-strong); border-radius:99px; padding:.05rem .4rem; white-space:nowrap}
+  .note{border-left:3px solid var(--accent); background:var(--surface); padding:.85rem 1.05rem; border-radius:0 10px 10px 0; margin:1.1rem 0; box-shadow:var(--shadow)}
+  .note.warn{border-left-color:var(--noacc)}
+  .note .t{font-weight:700; font-size:.78rem; letter-spacing:.02em; margin-bottom:.15rem; text-transform:uppercase; font-family:var(--font-mono); color:var(--muted)}
+  .note.warn .t{color:var(--noacc)}
+  .statusgrid{font-size:.82rem}
+  .lvl{font-family:var(--font-mono); font-size:.72rem}
+  .signoff{margin-top:3.4rem; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:1.4rem 1.5rem; box-shadow:var(--shadow)}
+  .footer{margin-top:2.6rem; padding-top:1.3rem; border-top:1px solid var(--line); color:var(--faint); font-size:.8rem}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="eyebrow"><span class="dot"></span> Design spec · MGW Admin Portal · Phase 2 · for sign-off</div>
+    <h1>Granular Access Matrix</h1>
+    <p class="lede">Phase 2 takes the access matrix from "can / can't do an action" down to <strong>individual fields, sections and tabs</strong> — each set to Edit, View, No-access or Hidden per role — and adds a second dimension: <strong>status-based access</strong> across the 15-step student flow.</p>
+    <div class="meta-row">
+      <span><b>Builds on</b> &nbsp;Phase 1 (shipped)</span>
+      <span><b>Release</b> &nbsp;All surfaces together</span>
+      <span><b>Behaviour change on rollout</b> &nbsp;None</span>
+    </div>
+  </header>
+
+  <div class="decisions">
+    <div class="dcard"><div class="k">States</div><div class="v">Edit · View · No-access · Hidden<small>4 levels per item</small></div></div>
+    <div class="dcard"><div class="k">Status access</div><div class="v">See + act<small>Per role × 15 statuses</small></div></div>
+    <div class="dcard"><div class="k">Day one</div><div class="v">Reproduce today<small>Exactly; edit afterwards</small></div></div>
+    <div class="dcard"><div class="k">Release</div><div class="v">Everything, then ship<small>No partial rollout</small></div></div>
+    <div class="dcard"><div class="k">Roles</div><div class="v">The 6 (as Phase 1)<small>Super bypasses all</small></div></div>
+    <div class="dcard"><div class="k">Edits the matrix</div><div class="v">Super Administrator only</div></div>
+  </div>
+
+  <!-- 1 STATES -->
+  <section id="states">
+    <div class="sec-head"><span class="sec-num">01</span><h2>The four access states</h2></div>
+    <p>Every controllable item carries one state per role. Actions (buttons) use only the two ends (Edit = allowed, Hidden/No-access = denied); fields, sections and tabs use all four.</p>
+    <div class="states">
+      <div class="state edit"><div class="nm"><span class="pip">E</span> Edit</div><div class="ds">Full read + write. Can change the value / perform the action.</div></div>
+      <div class="state view"><div class="nm"><span class="pip">V</span> View</div><div class="ds">Read-only. Sees the value but every control is disabled.</div></div>
+      <div class="state noacc"><div class="nm"><span class="pip">N</span> No-access</div><div class="ds">Shown as present but locked (🔒), value masked; the server rejects reads and writes.</div></div>
+      <div class="state hidden"><div class="nm"><span class="pip">H</span> Hidden</div><div class="ds">Not rendered at all — the field / section / tab does not exist for this role.</div></div>
+    </div>
+    <div class="note"><div class="t">Enforcement, both ends</div>The server is the gate: writes require <b>Edit</b>, reads require <b>View</b> or higher, and field values are stripped from API responses below <b>View</b>. The UI mirrors it — Hidden isn't rendered, No-access shows a lock, View disables controls, Edit is live.</div>
+  </section>
+
+  <!-- 2 STATUS ACCESS -->
+  <section id="status">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Status-based access</h2></div>
+    <p>The student flow already has 15 ordered statuses, each with a <code>Level</code> and a <code>NextActionRole</code> (who must act next) — so this dimension has real structure to hang off. A second grid gives each role an access state <em>per status</em>:</p>
+    <ul>
+      <li><b>See</b> — a student whose current status the role can't see (Hidden) is filtered out of the list and drawer for that role.</li>
+      <li><b>Act</b> — View lets the role open the student read-only; Edit lets them change data and perform the status transitions available at that step (approve, reject, defer, drop-out, submit/approve grades…).</li>
+    </ul>
+    <div class="scroll"><table class="statusgrid">
+      <thead><tr><th>The 15 statuses (in flow order)</th><th class="lvl">Level</th><th>Next actor</th></tr></thead>
+      <tbody>
+        <tr><td>Draft</td><td class="lvl">0</td><td>Student</td></tr>
+        <tr><td>Application Submitted</td><td class="lvl">50</td><td>Partner</td></tr>
+        <tr><td>Awaiting Review by Partner</td><td class="lvl">100</td><td>Partner</td></tr>
+        <tr><td>Application Rejected by Partner</td><td class="lvl">75</td><td>—</td></tr>
+        <tr><td>Awaiting Review by Admission</td><td class="lvl">200</td><td>Admission</td></tr>
+        <tr><td>Application Rejected by Admission</td><td class="lvl">85</td><td>—</td></tr>
+        <tr><td>Accept Offer</td><td class="lvl">250</td><td>Student</td></tr>
+        <tr><td>Approved by Admission</td><td class="lvl">300</td><td>Admission</td></tr>
+        <tr><td>Accept Admission</td><td class="lvl">350</td><td>Student</td></tr>
+        <tr><td>Awaiting Grades Submit</td><td class="lvl">400</td><td>Partner</td></tr>
+        <tr><td>Awaiting Grades Approval</td><td class="lvl">450</td><td>Admission</td></tr>
+        <tr><td>Grades Approved</td><td class="lvl">500</td><td>—</td></tr>
+        <tr><td>Deferred · Dropped Out · Transferred out</td><td class="lvl">550+</td><td>terminal</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note warn"><div class="t">Day-one</div>Today every admin level sees students in every status (Sales is scoped by partner, not status). So the status grid seeds to <b>Edit for all roles × all statuses</b> (View for the read-only Viewer role) — nothing hidden until you choose to.</div>
+  </section>
+
+  <!-- 3 CATALOGUE -->
+  <section id="catalogue">
+    <div class="sec-head"><span class="sec-num">03</span><h2>The controllable surface — what gets a setting</h2></div>
+    <p>From a full sweep of the real (backend-connected) admin UI. Each row is a group of items that each get a per-role state; the count is the approximate number of individual settings. <b>~140 item-level settings + the 15-status grid.</b></p>
+    <div class="scroll"><table>
+      <thead><tr><th>Surface / group</th><th>Type</th><th>What's in it</th><th class="cnt">Items</th></tr></thead>
+      <tbody>
+        <tr><td class="k">Student drawer › tabs</td><td><span class="typ">Tab</span></td><td class="d">Details, Programs, Documents, Moodle, Mail, Log, Activity log</td><td class="cnt">7</td></tr>
+        <tr><td class="k">Student › Details</td><td><span class="typ">Field</span></td><td class="d">Account (email, legacy ID, Handled-by, reset password), Personal (~12 fields + identifiers), Background (~4)</td><td class="cnt">~22</td></tr>
+        <tr><td class="k">Student › Programs · Enrolment</td><td><span class="typ">Field/Action</span></td><td class="d">School, programme, specialisation, mode, dates, durations, bulk agreement, <b>change status</b>, module-cohort assignment</td><td class="cnt">~12</td></tr>
+        <tr><td class="k">Student › Programs · Grades</td><td><span class="typ">Action</span></td><td class="d">Enter grade, save draft, submit, approve, reject</td><td class="cnt">5</td></tr>
+        <tr><td class="k">Student › Programs · Letters</td><td><span class="typ">Action</span></td><td class="d">Pass-mark, and per letter type: Generate/Regenerate, Download, Send email, History, Upload</td><td class="cnt">~8</td></tr>
+        <tr><td class="k">Student › Programs · Payment</td><td><span class="typ">Field/Action</span></td><td class="d">Add/delete payment records, bank/card fields, save</td><td class="cnt">~5</td></tr>
+        <tr><td class="k">Student › Advanced · Documents · Moodle</td><td><span class="typ">Action</span></td><td class="d">Remove programme; open/replace/add documents; Moodle settings</td><td class="cnt">~6</td></tr>
+        <tr><td class="k">Module Cohorts</td><td><span class="typ">Section</span></td><td class="d">Cohort edit/view, files, grades, <b>aggregate results</b> (respect the 3-response anonymity gate), assign questionnaire</td><td class="cnt">~6</td></tr>
+        <tr><td class="k">Partner › Profile</td><td><span class="typ">Field</span></td><td class="d">Name, slug, contacts, address, website, reg. no, tax ID, short code, tier, contract, internal notes, Sales staff</td><td class="cnt">~14</td></tr>
+        <tr><td class="k">Partner › Users</td><td><span class="typ">Action</span></td><td class="d">Add, edit, reset password, disable/enable, delete, Teacher flag</td><td class="cnt">~6</td></tr>
+        <tr><td class="k">Partner › Programmes</td><td><span class="typ">Action</span></td><td class="d">Core grant/revoke, spec toggle, student-card, <b>approve/reject/reopen</b>, add/remove core, duration, <b>letter template view/edit</b>, letter email view/edit</td><td class="cnt">~10</td></tr>
+        <tr><td class="k">Partner › Documents · Faculty</td><td><span class="typ">Action</span></td><td class="d">Partnership docs add/edit/delete/view; teachers list/add/edit/delete/files</td><td class="cnt">~9</td></tr>
+        <tr><td class="k">System Config › templates</td><td><span class="typ">Section</span></td><td class="d">Letter Types, Partnership-doc types, Datasheet defs, Faculty structure, Cohort types, Rubrics, generic lists — view/edit each</td><td class="cnt">~20</td></tr>
+        <tr><td class="k">Questionnaires</td><td><span class="typ">Action</span></td><td class="d">Builder edit, templates, <b>assign</b>, <b>view aggregate</b>, <b>view individual</b>, public forms, statistics</td><td class="cnt">~7</td></tr>
+        <tr><td class="k">CRM · Mail · misc</td><td><span class="typ">Action</span></td><td class="d">CRM lead fields/delete/stage/settings; mail accounts/send/settings; bulk agreements; import; statistics financial; invoices; changelog</td><td class="cnt">~18</td></tr>
+      </tbody>
+    </table></div>
+    <p style="font-size:.85rem;color:var(--muted);margin-top:.7rem">The exact per-item list is finalised against the code during build (as with Phase 1's <span class="typ">verify</span> items). Phase 1's 30 action keys fold in unchanged — they become items whose only states are Edit (allowed) and Hidden/No-access (denied).</p>
+  </section>
+
+  <!-- 4 DATA MODEL -->
+  <section id="model">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Data model &amp; enforcement</h2></div>
+    <h3>Storage — extend, don't replace</h3>
+    <ul>
+      <li><code>RolePermission</code> gains an <code>AccessLevel</code> (Hidden / NoAccess / View / Edit) instead of a bare <code>Allowed</code> bool. Phase-1 grants migrate: <code>Allowed=true → Edit</code>, absent → Hidden.</li>
+      <li>New <code>RoleStatusAccess</code> (RoleName, StatusId, AccessLevel) — the status grid.</li>
+      <li>The item catalogue stays in code, now carrying a <code>ResourceType</code> (Tab / Section / Field / Action) that decides which of the four states are offered.</li>
+      <li>The audit log records level changes (old → new) for both grids, as in Phase 1.</li>
+    </ul>
+    <h3>Enforcement</h3>
+    <ul>
+      <li><b>Server</b> — a resolver returns a role's level for a key: writes need <code>Edit</code>, reads need <code>&ge; View</code>. Field-level: responses omit fields below View; save handlers reject changes to View/No-access fields. Status: list queries filter to the role's visible statuses; transition endpoints check the status level.</li>
+      <li><b>Client</b> — <code>auth.access(key)</code> returns the level; components render Hidden (nothing), No-access (lock), View (disabled), Edit (live). <code>auth.can(key)</code> from Phase 1 keeps working (true when level ≥ Edit).</li>
+      <li><b>Super Administrator</b> bypasses everything, as today.</li>
+    </ul>
+    <div class="note warn"><div class="t">This is the big one</div>Field-level enforcement means touching every real admin surface (the ~140 items) on both the API and the UI, plus a status filter on student queries. It's the bulk of the work — planned as one release per your call, but it's genuinely large; the item counts above are the honest scope.</div>
+  </section>
+
+  <!-- 5 UI -->
+  <section id="ui">
+    <div class="sec-head"><span class="sec-num">05</span><h2>The editor</h2></div>
+    <p>System Config → Roles &amp; Permissions grows two views. <b>Permissions</b>: the catalogue grouped by surface into collapsible sections; each item row × six roles, each cell a compact <span class="mono">E / V / N / H</span> selector (Super locked on Edit). <b>Statuses</b>: a second grid of the 15 statuses × six roles. Saving either writes the level and appends to the same change-history the SuperAdmin already sees.</p>
+  </section>
+
+  <!-- 6 OPEN -->
+  <section id="open">
+    <div class="sec-head"><span class="sec-num">06</span><h2>Decisions to confirm</h2></div>
+    <ul>
+      <li><b>No-access vs Hidden for actions.</b> Buttons have no "read", so a denied action is either Hidden (gone) or No-access (shown, locked). Proposed default: <b>Hidden</b> for buttons, with No-access available where you'd rather show "you can't do this".</li>
+      <li><b>Aggregate anonymity gate stays.</b> The 3-response minimum for cohort/questionnaire aggregates is a privacy rule, not a permission — it stays regardless of the matrix.</li>
+      <li><b>Status "See" vs partner scoping.</b> Sales' partner-scoping stays as-is; status visibility is an additional filter layered on top, not a replacement.</li>
+      <li><b>Grade values.</b> Should "View" on Grades show the numbers read-only, or should grades be a No-access (masked) option for some roles? Proposed: View shows them; you can set No-access per role if needed.</li>
+    </ul>
+  </section>
+
+  <div class="signoff">
+    <h2>Sign-off</h2>
+    <p style="margin-bottom:.4rem">Confirm: the four-state model, the status grid, and the ~140-item scope in §3 are right, and the day-one "reproduce today" seed is what you want. Then flag:</p>
+    <ul>
+      <li>Any surface in §3 you'd <b>drop</b> from Phase 2 (to cut scope) or any missing one to <b>add</b>.</li>
+      <li>The four open decisions in §6.</li>
+    </ul>
+    <p style="margin-top:.55rem;margin-bottom:0">On your OK I build it all, then ship as one release. Nothing changes anyone's access until you edit the matrix.</p>
+  </div>
+
+  <div class="footer">Granular Access Matrix · Phase 2 design spec · four states + status flow · reproduces current access on rollout.</div>
+</div>

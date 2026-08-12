@@ -26,6 +26,16 @@ public class RolePermissionConfiguration : IEntityTypeConfiguration<RolePermissi
     }
 }
 
+public class RoleStatusAccessConfiguration : IEntityTypeConfiguration<RoleStatusAccess>
+{
+    public void Configure(EntityTypeBuilder<RoleStatusAccess> builder)
+    {
+        builder.HasKey(e => e.RoleStatusAccessId);
+        builder.Property(e => e.RoleName).HasMaxLength(64).IsRequired();
+        builder.HasIndex(e => new { e.RoleName, e.StatusId }).IsUnique();
+    }
+}
+
 public class PermissionAuditLogConfiguration : IEntityTypeConfiguration<PermissionAuditLog>
 {
     public void Configure(EntityTypeBuilder<PermissionAuditLog> builder)

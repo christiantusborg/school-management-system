@@ -180,6 +180,7 @@ public class OdinDbContext(DbContextOptions<OdinDbContext> options)
     // Access matrix (RBAC)
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Authorization.AdminRole> AdminRoles => Set<SharedLibrary.Basics.Opaque.Domains.Authorization.AdminRole>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Authorization.RolePermission> RolePermissions => Set<SharedLibrary.Basics.Opaque.Domains.Authorization.RolePermission>();
+    public DbSet<SharedLibrary.Basics.Opaque.Domains.Authorization.RoleStatusAccess> RoleStatusAccesses => Set<SharedLibrary.Basics.Opaque.Domains.Authorization.RoleStatusAccess>();
     public DbSet<SharedLibrary.Basics.Opaque.Domains.Authorization.PermissionAuditLog> PermissionAuditLogs => Set<SharedLibrary.Basics.Opaque.Domains.Authorization.PermissionAuditLog>();
 
 

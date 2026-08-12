@@ -29,7 +29,22 @@ public class RolePermission
     public Guid RolePermissionId { get; set; } = Guid.NewGuid();
     public string RoleName { get; set; } = null!;
     public string PermissionKey { get; set; } = null!;
+    /// <summary>Phase-1 flag, kept in sync with <see cref="AccessLevel"/>
+    /// (true when level == Edit). Reads treat absence of a row as "hidden".</summary>
     public bool Allowed { get; set; }
+    /// <summary>Phase-2 access state: 0 Hidden · 1 NoAccess · 2 View · 3 Edit.</summary>
+    public int AccessLevel { get; set; } = 3;
+}
+
+/// <summary>Per-role access to students in a given enrolment status (Phase 2
+/// status-based access). Absence of a row = the role's status default.</summary>
+public class RoleStatusAccess
+{
+    public Guid RoleStatusAccessId { get; set; } = Guid.NewGuid();
+    public string RoleName { get; set; } = null!;
+    public Guid StatusId { get; set; }
+    /// <summary>0 Hidden (student filtered out) · 2 View (read-only) · 3 Edit (act).</summary>
+    public int AccessLevel { get; set; } = 3;
 }
 
 /// <summary>
