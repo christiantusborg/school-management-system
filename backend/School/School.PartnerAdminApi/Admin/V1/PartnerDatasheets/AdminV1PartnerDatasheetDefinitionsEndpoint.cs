@@ -17,8 +17,8 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
     private static readonly string[] FieldTypes =
     [
         PartnerDatasheetField.TypeText, PartnerDatasheetField.TypeNumber, PartnerDatasheetField.TypeDate,
-        PartnerDatasheetField.TypeFile, PartnerDatasheetField.TypeSelect, PartnerDatasheetField.TypeBool,
-        PartnerDatasheetField.TypeAutoId, PartnerDatasheetField.TypeComputed,
+        PartnerDatasheetField.TypeFile, PartnerDatasheetField.TypeFiles, PartnerDatasheetField.TypeSelect,
+        PartnerDatasheetField.TypeBool, PartnerDatasheetField.TypeAutoId, PartnerDatasheetField.TypeComputed,
     ];
     private static readonly string[] AccessLevels =
     [
@@ -44,6 +44,7 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
         public string? Label { get; init; }
         public string? Type { get; init; }
         public string? OptionsText { get; init; }
+        public string? Tooltip { get; init; }
         public bool IsRequired { get; init; }
         public bool PartnerCanEdit { get; init; }
     }
@@ -111,6 +112,7 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
                             label = f.Label,
                             type = f.Type,
                             optionsText = f.OptionsText,
+                            tooltip = f.Tooltip,
                             isRequired = f.IsRequired,
                             partnerCanEdit = f.PartnerCanEdit,
                         })
@@ -234,6 +236,7 @@ public sealed class AdminV1PartnerDatasheetDefinitionsEndpoint : IEndpointMarker
                 field.OptionsText = f.Type == PartnerDatasheetField.TypeSelect || IsSystemType(f.Type)
                     ? f.OptionsText
                     : null;
+                field.Tooltip = string.IsNullOrWhiteSpace(f.Tooltip) ? null : f.Tooltip.Trim();
                 field.IsRequired = f.IsRequired;
                 field.PartnerCanEdit = f.PartnerCanEdit && !IsSystemType(f.Type);
                 field.SortOrder = fieldOrder++;

@@ -19,6 +19,7 @@
         <div class="grid-row"><span>Website</span><strong>{{ profile.website || '—' }}</strong></div>
         <div class="grid-row"><span>Registration no.</span><strong>{{ profile.registrationNumber || '—' }}</strong></div>
         <div class="grid-row"><span>Tax ID</span><strong>{{ profile.taxId || '—' }}</strong></div>
+        <div class="grid-row"><span>Short code</span><strong>{{ profile.shortCode || '—' }}</strong></div>
         <div class="grid-row"><span>Tier</span><strong>{{ profile.tier || '—' }}</strong></div>
         <div class="grid-row"><span>Contract</span><strong>{{ contractSummary || '—' }}</strong></div>
         <div v-if="profile.internalNotes" class="grid-row"><span>Internal notes</span><strong class="multiline">{{ profile.internalNotes }}</strong></div>
@@ -80,6 +81,11 @@
             </select>
           </div>
         </div>
+        <div class="field">
+          <label>Short code (for Faculty &amp; datasheet IDs)</label>
+          <input v-model="form.shortCode" placeholder="e.g. IBAS" />
+          <p class="field-hint">Used in generated Faculty / datasheet IDs in place of the full name, e.g. <code>IBAS-…-001</code>. Applies to IDs generated from now on.</p>
+        </div>
         <div class="row-2">
           <div class="field"><label>Contract start</label><input v-model="form.contractStart" type="date" /></div>
           <div class="field"><label>Contract end</label><input v-model="form.contractEnd" type="date" /></div>
@@ -115,7 +121,7 @@ const form = reactive({
   name: '', slug: '',
   contactPersonName: '', contactPersonTitle: '', contactPersonEmail: '', contactPersonPhone: '',
   addressLine1: '', addressLine2: '', city: '', stateRegion: '', postalCode: '', country: '',
-  website: '', registrationNumber: '', taxId: '',
+  website: '', registrationNumber: '', taxId: '', shortCode: '',
   contractStart: '', contractEnd: '', tier: '', internalNotes: '',
 })
 
@@ -183,6 +189,7 @@ function startEdit() {
     website: p.website ?? '',
     registrationNumber: p.registrationNumber ?? '',
     taxId: p.taxId ?? '',
+    shortCode: p.shortCode ?? '',
     contractStart: p.contractStart ? p.contractStart.slice(0, 10) : '',
     contractEnd: p.contractEnd ? p.contractEnd.slice(0, 10) : '',
     tier: p.tier ?? '',

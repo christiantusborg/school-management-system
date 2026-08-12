@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Odin.Api.Base.Storage;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
@@ -24,6 +25,7 @@ public sealed class AdminV1FacultiesEndpoint : IEndpointMarker
         app.MapDelete("/v1/admin/teachers/{teacherId:guid}", DeleteTeacherAsync).RequireAuthorization("AdminOnly");
         app.MapPost("/v1/admin/faculty-files", UploadFileAsync).RequireAuthorization("AdminOnly").DisableAntiforgery();
         app.MapGet("/v1/admin/faculty-values/{valueId:guid}/file", DownloadFileAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/faculty-values/{valueId:guid}/file/{index:int}", DownloadFilesItemAsync).RequireAuthorization("AdminOnly");
         return app;
     }
 
@@ -33,6 +35,7 @@ public sealed class AdminV1FacultiesEndpoint : IEndpointMarker
         public string? Label { get; init; }
         public string? Type { get; init; }
         public string? OptionsText { get; init; }
+        public string? Tooltip { get; init; }
         public bool IsRequired { get; init; }
         public bool PartnerCanEdit { get; init; }
     }
@@ -123,6 +126,7 @@ public sealed class AdminV1FacultiesEndpoint : IEndpointMarker
                 field.OptionsText = f.Type == FacultyProfileField.TypeSelect || FacultyProfileLogic.IsSystemType(f.Type)
                     ? f.OptionsText
                     : null;
+                field.Tooltip = string.IsNullOrWhiteSpace(f.Tooltip) ? null : f.Tooltip.Trim();
                 field.IsRequired = f.IsRequired;
                 field.PartnerCanEdit = f.PartnerCanEdit && !FacultyProfileLogic.IsSystemType(f.Type);
                 field.SortOrder = fieldOrder++;
@@ -253,6 +257,34 @@ public sealed class AdminV1FacultiesEndpoint : IEndpointMarker
         {
             var stream = await storage.OpenReadAsync(value.Value, ct);
             return Results.File(stream, "application/octet-stream", value.FileName ?? "faculty-file");
+        }
+        catch (FileNotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Streams one file of a "files" cell. The cell's Value is a JSON array of
+    /// {token,name}; the token at {index} is served exactly like the single
+    /// "file" download (must contain the storage prefix, minted by upload).
+    /// </summary>
+    private static async Task<IResult> DownloadFilesItemAsync(
+        Guid valueId, int index, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+    {
+        var value = await db.TeacherProfileValues
+            .Where(v => v.TeacherProfileValueId == valueId)
+            .Select(v => new { v.Value })
+            .FirstOrDefaultAsync(ct);
+        if (value is null) return Results.NotFound();
+
+        var item = FacultyProfileLogic.FilesItemAt(value.Value, index);
+        if (item is null || !item.Token.Contains(FacultyProfileLogic.StoragePrefix)) return Results.NotFound();
+
+        try
+        {
+            var stream = await storage.OpenReadAsync(item.Token, ct);
+            return Results.File(stream, "application/octet-stream", item.Name ?? "faculty-file");
         }
         catch (FileNotFoundException)
         {

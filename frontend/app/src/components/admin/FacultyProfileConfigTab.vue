@@ -47,6 +47,7 @@
             <option value="select">Dropdown</option>
             <option value="bool">Yes / No</option>
             <option value="file">File upload</option>
+            <option value="files">Multiple files</option>
             <option value="autoid">Auto ID (system)</option>
             <option value="computed">Combined (system)</option>
           </select>
@@ -61,8 +62,10 @@
                  placeholder="ID pattern, e.g. MGW-ALC-FAC-{partner}-{n}" />
           <input v-else-if="f.type === 'computed'" v-model="f.optionsText" class="fpc-inp fpc-opts"
                  placeholder="Template from other fields, e.g. {First name} {Last name}" />
+          <input v-model="f.tooltip" class="fpc-inp fpc-opts"
+                 placeholder="Tooltip / help text (optional) — shown as an ⓘ hint next to the field" />
         </div>
-        <button type="button" class="btn-sm" @click="s.fields.push({ id: null, label: '', type: 'text', optionsText: '', isRequired: false, partnerCanEdit: false })">
+        <button type="button" class="btn-sm" @click="s.fields.push({ id: null, label: '', type: 'text', optionsText: '', tooltip: '', isRequired: false, partnerCanEdit: false })">
           + Add {{ s.kind === 'grid' ? 'column' : 'field' }}
         </button>
       </div>
@@ -118,7 +121,8 @@ async function load() {
       kind: s.kind,
       fields: s.fields.map(f => ({
         id: f.id, label: f.label, type: f.type,
-        optionsText: f.optionsText ?? '', isRequired: !!f.isRequired,
+        optionsText: f.optionsText ?? '', tooltip: f.tooltip ?? '',
+        isRequired: !!f.isRequired,
         partnerCanEdit: !!f.partnerCanEdit,
       })),
     }))
@@ -147,6 +151,7 @@ async function save() {
             .map(f => ({
               id: f.id, label: f.label.trim(), type: f.type,
               optionsText: ['select', 'autoid', 'computed'].includes(f.type) ? f.optionsText : null,
+              tooltip: f.tooltip?.trim() || null,
               isRequired: !!f.isRequired,
               partnerCanEdit: !!f.partnerCanEdit,
             })),

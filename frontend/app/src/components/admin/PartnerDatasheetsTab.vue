@@ -2,7 +2,7 @@
   <div>
     <div class="pd-head">
       <div>
-        <div class="manage-section-title">{{ isFaculty ? 'Faculties' : 'Datasheets' }}</div>
+        <div class="manage-section-title">{{ isFaculty ? 'Faculty' : 'Datasheets' }}</div>
         <p v-if="isFaculty" class="pd-sub">This partner's teachers. Each teacher gets a profile based on the
           structure defined in System Config → Faculty Profile Information (auto Faculty ID and combined
           name are generated on save). Partners fill their part from the portal; 🔒 fields are MGW-only.</p>
@@ -138,6 +138,15 @@
                     </template>
                     <input v-else type="file" @change="uploadCell(fieldsRow(sec), f.id, $event)" />
                   </div>
+                  <div v-else-if="f.type === 'files'" class="pd-files">
+                    <div v-for="(fi, i) in filesOf(cell(fieldsRow(sec), f.id).value)" :key="i" class="pd-file">
+                      <span class="pd-file-ok">✓ {{ fi.name || 'file' }}</span>
+                      <button v-if="cell(fieldsRow(sec), f.id).valueId" type="button" class="btn-sm" @click="downloadFilesItem(cell(fieldsRow(sec), f.id), i)">⤓</button>
+                      <span v-else class="pd-muted">(save to download)</span>
+                      <button type="button" class="btn-sm btn-danger" @click="removeFilesItem(fieldsRow(sec), f.id, i)">✕</button>
+                    </div>
+                    <input type="file" multiple @change="uploadFilesCell(fieldsRow(sec), f.id, $event)" />
+                  </div>
                 </component>
               </div>
             </template>
@@ -173,6 +182,15 @@
                           <button type="button" class="btn-sm btn-danger" @click="clearCell(row, f.id)">✕</button>
                         </template>
                         <input v-else type="file" @change="uploadCell(row, f.id, $event)" />
+                      </div>
+                      <div v-else-if="f.type === 'files'" class="pd-files">
+                        <div v-for="(fi, i) in filesOf(cell(row, f.id).value)" :key="i" class="pd-file">
+                          <span class="pd-file-ok">✓ {{ fi.name || 'file' }}</span>
+                          <button v-if="cell(row, f.id).valueId" type="button" class="btn-sm" @click="downloadFilesItem(cell(row, f.id), i)">⤓</button>
+                          <span v-else class="pd-muted">(save to download)</span>
+                          <button type="button" class="btn-sm btn-danger" @click="removeFilesItem(row, f.id, i)">✕</button>
+                        </div>
+                        <input type="file" multiple @change="uploadFilesCell(row, f.id, $event)" />
                       </div>
                     </td>
                     <td><button type="button" class="btn-sm btn-danger" @click="removeGridRow(sec, row)">✕</button></td>
@@ -397,6 +415,12 @@ function clearCell(row, fieldId) {
   row.values[fieldId] = { value: '', fileName: '', valueId: '' }
 }
 
+// A "files" cell stores a JSON array of { token, name } in its value string.
+function filesOf(v) {
+  if (!v) return []
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a : [] } catch { return [] }
+}
+
 async function uploadCell(row, fieldId, ev) {
   const file = ev.target.files?.[0]
   if (!file) return
@@ -422,6 +446,51 @@ async function downloadCell(c) {
     const a = document.createElement('a')
     a.href = url
     a.download = c.fileName || 'datasheet-file'
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch {
+    sheetError.value = 'Download failed'
+  }
+}
+
+async function uploadFilesCell(row, fieldId, ev) {
+  const files = Array.from(ev.target.files || [])
+  if (!files.length) return
+  uploadingCell.value = true
+  sheetError.value = ''
+  try {
+    const c = cell(row, fieldId)
+    const list = filesOf(c.value)
+    for (const file of files) {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await api.post('/v1/admin/partner-datasheet-files', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      list.push({ token: res.data.token, name: res.data.fileName })
+    }
+    row.values[fieldId] = { value: JSON.stringify(list), fileName: '', valueId: c.valueId || '' }
+  } catch (e) {
+    sheetError.value = e.response?.data?.error ?? e.message ?? 'Upload failed'
+  } finally {
+    uploadingCell.value = false
+    ev.target.value = ''
+  }
+}
+
+function removeFilesItem(row, fieldId, index) {
+  const c = cell(row, fieldId)
+  const list = filesOf(c.value)
+  list.splice(index, 1)
+  // Empty list clears the cell so the "empty = delete" save logic removes it.
+  row.values[fieldId] = { value: list.length ? JSON.stringify(list) : '', fileName: '', valueId: c.valueId || '' }
+}
+
+async function downloadFilesItem(c, index) {
+  try {
+    const res = await api.get(`/v1/admin/partner-datasheet-values/${c.valueId}/file/${index}`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filesOf(c.value)[index]?.name || 'datasheet-file'
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   } catch {
@@ -489,6 +558,7 @@ watch(() => props.partnerId, load, { immediate: true })
 .pd-req { color: #b3261e; margin-left: .15rem; }
 .pd-check { display: flex; align-items: center; gap: .35rem; font-size: .82rem; color: #2c3e50; }
 .pd-file { display: flex; align-items: center; gap: .45rem; font-size: .8rem; flex-wrap: wrap; }
+.pd-files { display: flex; flex-direction: column; gap: .3rem; }
 .pd-file-ok { color: #1c7a4a; font-weight: 600; }
 .pd-grid { margin-bottom: .45rem; }
 .pd-grid td { padding: .3rem .35rem; }

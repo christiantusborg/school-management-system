@@ -36,6 +36,7 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
         public string? Website { get; init; }
         public string? RegistrationNumber { get; init; }
         public string? TaxId { get; init; }
+        public string? ShortCode { get; init; }
         public string? ContactPersonName { get; init; }
         public string? ContactPersonTitle { get; init; }
         public string? ContactPersonEmail { get; init; }
@@ -86,6 +87,7 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
             website = partner.Website,
             registrationNumber = partner.RegistrationNumber,
             taxId = partner.TaxId,
+            shortCode = partner.ShortCode,
             contactPersonName = partner.ContactPersonName,
             contactPersonTitle = partner.ContactPersonTitle,
             contactPersonEmail = contactEmail?.Email,
@@ -128,6 +130,7 @@ public sealed class AdminPartnersV1ProfileEndpoint : IEndpointMarker
         if (body.Website is not null) partner.Website = string.IsNullOrWhiteSpace(body.Website) ? null : body.Website.Trim();
         if (body.RegistrationNumber is not null) partner.RegistrationNumber = string.IsNullOrWhiteSpace(body.RegistrationNumber) ? null : body.RegistrationNumber.Trim();
         if (body.TaxId is not null) partner.TaxId = string.IsNullOrWhiteSpace(body.TaxId) ? null : body.TaxId.Trim();
+        if (body.ShortCode is not null) partner.ShortCode = string.IsNullOrWhiteSpace(body.ShortCode) ? null : body.ShortCode.Trim();
         if (body.ContactPersonName is not null) partner.ContactPersonName = string.IsNullOrWhiteSpace(body.ContactPersonName) ? null : body.ContactPersonName.Trim();
         if (body.ContactPersonTitle is not null) partner.ContactPersonTitle = string.IsNullOrWhiteSpace(body.ContactPersonTitle) ? null : body.ContactPersonTitle.Trim();
         if (body.Tier is not null) partner.Tier = string.IsNullOrWhiteSpace(body.Tier) ? null : body.Tier.Trim();

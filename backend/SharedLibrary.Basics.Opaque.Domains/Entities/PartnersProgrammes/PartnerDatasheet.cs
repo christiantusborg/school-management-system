@@ -63,6 +63,9 @@ public class PartnerDatasheetField : IDeletedAtEntity
     public const string TypeNumber = "number";
     public const string TypeDate = "date";
     public const string TypeFile = "file";
+    /// <summary>Multiple file uploads; value is a JSON array of
+    /// {token,name} objects stored in the same Value string.</summary>
+    public const string TypeFiles = "files";
     public const string TypeSelect = "select";
     public const string TypeBool = "bool";
     /// <summary>System-generated id, e.g. "MGW-ALC-FAC-{partner}-{n}" —
@@ -79,6 +82,8 @@ public class PartnerDatasheetField : IDeletedAtEntity
     /// <summary>Dropdown options (one per line) for "select"; the pattern /
     /// template for "autoid" / "computed".</summary>
     public string? OptionsText { get; set; }
+    /// <summary>Optional help text shown as an ⓘ tooltip next to the field.</summary>
+    public string? Tooltip { get; set; }
     public bool IsRequired { get; set; }
     /// <summary>Partner users may fill this field (definitions with
     /// PartnerAccess "edit"). System types and MGW-only checkboxes stay false.</summary>

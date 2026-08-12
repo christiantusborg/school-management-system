@@ -2,7 +2,7 @@
   <div>
     <div class="pf-head">
       <div>
-        <h1>Faculties</h1>
+        <h1>Faculty</h1>
         <p class="pf-sub">Your institution's teachers. Each teacher has a login (Teacher role) and a profile —
           🔒 fields are maintained by the Admission Office; Faculty ID and Name generate automatically on save.</p>
       </div>
@@ -67,7 +67,7 @@
 
             <template v-if="sec.kind === 'fields'">
               <div v-for="f in sec.fields" :key="f.id" class="pf-field">
-                <label class="pf-lbl">{{ f.label }}<span v-if="f.isRequired" class="pf-req">*</span>
+                <label class="pf-lbl">{{ f.label }}<span v-if="f.isRequired" class="pf-req">*</span><span v-if="f.tooltip" class="pf-tip" :title="f.tooltip"> ⓘ</span>
                   <span v-if="locked(f)" title="Maintained by the Admission Office"> 🔒</span></label>
                 <div v-if="locked(f)" class="pf-locked">{{ displayValue(cell(fieldsRow(sec), f.id), f) }}</div>
                 <input v-else-if="f.type === 'text'" v-model="cell(fieldsRow(sec), f.id).value" class="pf-inp" />
@@ -89,13 +89,22 @@
                   </template>
                   <input v-else type="file" @change="uploadCell(fieldsRow(sec), f.id, $event)" />
                 </div>
+                <div v-else-if="f.type === 'files'" class="pf-files">
+                  <div v-for="(fi, i) in filesOf(cell(fieldsRow(sec), f.id).value)" :key="i" class="pf-file">
+                    <span class="pf-file-ok">✓ {{ fi.name || 'file' }}</span>
+                    <button v-if="cell(fieldsRow(sec), f.id).valueId" type="button" class="pf-btn" @click="downloadFilesItem(cell(fieldsRow(sec), f.id), i)">⤓</button>
+                    <span v-else class="pf-muted">(save to download)</span>
+                    <button type="button" class="pf-btn pf-btn-danger" @click="removeFilesItem(fieldsRow(sec), f.id, i)">✕</button>
+                  </div>
+                  <input type="file" multiple @change="uploadFilesCell(fieldsRow(sec), f.id, $event)" />
+                </div>
               </div>
             </template>
 
             <template v-else>
               <table class="partner-tbl pf-grid">
                 <thead><tr>
-                  <th v-for="f in sec.fields" :key="f.id">{{ f.label }}<span v-if="locked(f)"> 🔒</span></th>
+                  <th v-for="f in sec.fields" :key="f.id">{{ f.label }}<span v-if="locked(f)"> 🔒</span><span v-if="f.tooltip" class="pf-tip" :title="f.tooltip"> ⓘ</span></th>
                 </tr></thead>
                 <tbody>
                   <tr v-for="(row, ri) in gridRows(sec)" :key="ri">
@@ -118,6 +127,15 @@
                           <button v-if="cell(row, f.id).valueId" type="button" class="pf-btn" @click="downloadCell(cell(row, f.id))">⤓</button>
                         </template>
                         <input v-else type="file" @change="uploadCell(row, f.id, $event)" />
+                      </div>
+                      <div v-else-if="f.type === 'files'" class="pf-files">
+                        <div v-for="(fi, i) in filesOf(cell(row, f.id).value)" :key="i" class="pf-file">
+                          <span class="pf-file-ok">✓ {{ fi.name || 'file' }}</span>
+                          <button v-if="cell(row, f.id).valueId" type="button" class="pf-btn" @click="downloadFilesItem(cell(row, f.id), i)">⤓</button>
+                          <span v-else class="pf-muted">(save to download)</span>
+                          <button type="button" class="pf-btn pf-btn-danger" @click="removeFilesItem(row, f.id, i)">✕</button>
+                        </div>
+                        <input type="file" multiple @change="uploadFilesCell(row, f.id, $event)" />
                       </div>
                     </td>
                   </tr>
@@ -175,7 +193,14 @@ function fmtDate(d) {
 function displayValue(c, f) {
   if (f.type === 'bool') return c.value === 'true' ? 'Yes' : 'No'
   if (f.type === 'file') return c.fileName || (c.value ? 'file' : '—')
+  if (f.type === 'files') { const a = filesOf(c.value); return a.length ? a.map(x => x.name || 'file').join(', ') : '—' }
   return c.value || '—'
+}
+
+// A "files" cell stores a JSON array of { token, name } in its value string.
+function filesOf(v) {
+  if (!v) return []
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a : [] } catch { return [] }
 }
 
 async function load() {
@@ -316,6 +341,51 @@ async function downloadCell(c) {
   }
 }
 
+async function uploadFilesCell(row, fieldId, ev) {
+  const files = Array.from(ev.target.files || [])
+  if (!files.length) return
+  uploadingCell.value = true
+  profError.value = ''
+  try {
+    const c = cell(row, fieldId)
+    const list = filesOf(c.value)
+    for (const file of files) {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await apiClient.post('/v1/partner/my/faculty-files', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      list.push({ token: res.data.token, name: res.data.fileName })
+    }
+    row.values[fieldId] = { value: JSON.stringify(list), fileName: '', valueId: c.valueId || '' }
+  } catch (e) {
+    profError.value = e.response?.data?.error ?? e.message ?? 'Upload failed'
+  } finally {
+    uploadingCell.value = false
+    ev.target.value = ''
+  }
+}
+
+function removeFilesItem(row, fieldId, index) {
+  const c = cell(row, fieldId)
+  const list = filesOf(c.value)
+  list.splice(index, 1)
+  // Empty list clears the cell so the "empty = delete" save logic removes it.
+  row.values[fieldId] = { value: list.length ? JSON.stringify(list) : '', fileName: '', valueId: c.valueId || '' }
+}
+
+async function downloadFilesItem(c, index) {
+  try {
+    const res = await apiClient.get(`/v1/partner/my/faculty-values/${c.valueId}/file/${index}`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filesOf(c.value)[index]?.name || 'faculty-file'
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch {
+    profError.value = 'Download failed'
+  }
+}
+
 async function saveProfile() {
   if (savingProf.value) return
   savingProf.value = true
@@ -371,6 +441,7 @@ onMounted(load)
 .pf-req { color: #b3261e; margin-left: .15rem; }
 .pf-check { display: flex; align-items: center; gap: .35rem; font-size: .82rem; color: #2c3e50; }
 .pf-file { display: flex; align-items: center; gap: .45rem; font-size: .8rem; flex-wrap: wrap; }
+.pf-files { display: flex; flex-direction: column; gap: .3rem; }
 .pf-file-ok { color: #1c7a4a; font-weight: 600; }
 .pf-grid { margin-bottom: .45rem; box-shadow: none; }
 .pf-grid td { padding: .3rem .35rem; }

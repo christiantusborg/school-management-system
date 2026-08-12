@@ -29,6 +29,15 @@ public class Partner : IDeletedAtEntity
     public string? RegistrationNumber { get; set; }
     public string? TaxId { get; set; }
 
+    /// <summary>
+    /// Short human code / abbreviation for the partner (e.g. "IBAS" for
+    /// International Business Academy of Switzerland). Set by the Admission
+    /// office on the partner profile. Used in generated Faculty / datasheet
+    /// auto-ids in place of the full partner name; falls back to a
+    /// name-derived token when empty.
+    /// </summary>
+    public string? ShortCode { get; set; }
+
     // Profile-tab fields previously dropped on save (no domain columns).
     public string? ContactPersonName { get; set; }
     public string? ContactPersonTitle { get; set; }

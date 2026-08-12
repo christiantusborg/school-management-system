@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SharedLibrary.Basics.Opaque.Domains.PartnersProgrammes;
 
 namespace School.PartnerAdminApi.Admin.V1.PartnerDatasheets;
@@ -12,6 +13,35 @@ namespace School.PartnerAdminApi.Admin.V1.PartnerDatasheets;
 /// </summary>
 public static class PartnerDatasheetSystemValues
 {
+    /// <summary>One entry of a "files" cell value.</summary>
+    public sealed record FilesItem(string Token, string? Name);
+
+    /// <summary>
+    /// Parses a "files" cell Value (a JSON array of {token,name}) and returns
+    /// the entry at <paramref name="index"/>, or null when the JSON is
+    /// malformed, empty, or the index is out of range.
+    /// </summary>
+    public static FilesItem? FilesItemAt(string? value, int index)
+    {
+        if (string.IsNullOrWhiteSpace(value) || index < 0) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(value);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+            if (index >= doc.RootElement.GetArrayLength()) return null;
+            var el = doc.RootElement[index];
+            if (el.ValueKind != JsonValueKind.Object) return null;
+            var token = el.TryGetProperty("token", out var t) ? t.GetString() : null;
+            if (string.IsNullOrWhiteSpace(token)) return null;
+            var name = el.TryGetProperty("name", out var n) ? n.GetString() : null;
+            return new FilesItem(token, name);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     public static async Task ApplyAsync(
         OdinDbContext db, Guid sheetId, Guid partnerId, CancellationToken ct)
     {
@@ -41,11 +71,15 @@ public static class PartnerDatasheetSystemValues
             .Where(v => rowIds.Contains(v.PartnerDatasheetRowId))
             .ToListAsync(ct);
 
-        var partnerName = await db.Partners
+        var partner = await db.Partners
             .Where(p => p.PartnerId == partnerId)
-            .Select(p => p.Name)
-            .FirstOrDefaultAsync(ct) ?? "PARTNER";
-        var partnerToken = new string(partnerName.Where(char.IsLetterOrDigit).ToArray());
+            .Select(p => new { p.ShortCode, p.Name })
+            .FirstOrDefaultAsync(ct);
+        // Prefer the partner's short code (e.g. "IBAS") in the id; fall back to
+        // a name-derived token for partners that have no short code yet.
+        var partnerToken = new string((partner?.ShortCode ?? "").Where(char.IsLetterOrDigit).ToArray());
+        if (partnerToken.Length == 0)
+            partnerToken = new string((partner?.Name ?? "PARTNER").Where(char.IsLetterOrDigit).ToArray());
         if (partnerToken.Length == 0) partnerToken = "PARTNER";
 
         var fieldsByLabel = fields

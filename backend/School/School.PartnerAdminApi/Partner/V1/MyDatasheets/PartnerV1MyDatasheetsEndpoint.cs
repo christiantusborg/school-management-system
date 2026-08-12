@@ -28,6 +28,7 @@ public sealed class PartnerV1MyDatasheetsEndpoint : IEndpointMarker
         app.MapPost("/v1/partner/my/datasheet-files", UploadFileAsync)
             .RequireAuthorization("PartnerOnly").DisableAntiforgery();
         app.MapGet("/v1/partner/my/datasheet-values/{valueId:guid}/file", DownloadFileAsync).RequireAuthorization("PartnerOnly");
+        app.MapGet("/v1/partner/my/datasheet-values/{valueId:guid}/file/{index:int}", DownloadFilesItemAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
@@ -331,6 +332,39 @@ public sealed class PartnerV1MyDatasheetsEndpoint : IEndpointMarker
         {
             var stream = await storage.OpenReadAsync(value.Value, ct);
             return Results.File(stream, "application/octet-stream", value.FileName ?? "datasheet-file");
+        }
+        catch (FileNotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Streams one file of a "files" cell (JSON array of {token,name}) at
+    /// {index}, under the same partner-ownership guard as the single-file
+    /// download.
+    /// </summary>
+    private static async Task<IResult> DownloadFilesItemAsync(
+        Guid valueId, int index, HttpContext httpContext, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+    {
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+
+        var value = await (
+            from v in db.PartnerDatasheetValues
+            join r in db.PartnerDatasheetRows on v.PartnerDatasheetRowId equals r.PartnerDatasheetRowId
+            join s in db.PartnerDatasheets on r.PartnerDatasheetId equals s.PartnerDatasheetId
+            where v.PartnerDatasheetValueId == valueId && s.PartnerId == partnerId && s.DeletedAt == null
+            select new { v.Value }).FirstOrDefaultAsync(ct);
+        if (value is null) return Results.NotFound();
+
+        var item = PartnerDatasheetSystemValues.FilesItemAt(value.Value, index);
+        if (item is null || !item.Token.Contains(StoragePrefix)) return Results.NotFound();
+
+        try
+        {
+            var stream = await storage.OpenReadAsync(item.Token, ct);
+            return Results.File(stream, "application/octet-stream", item.Name ?? "datasheet-file");
         }
         catch (FileNotFoundException)
         {

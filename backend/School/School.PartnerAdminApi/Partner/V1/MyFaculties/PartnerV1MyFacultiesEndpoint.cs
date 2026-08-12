@@ -23,6 +23,7 @@ public sealed class PartnerV1MyFacultiesEndpoint : IEndpointMarker
         app.MapPut("/v1/partner/my/teachers/{teacherId:guid}", SaveProfileAsync).RequireAuthorization("PartnerOnly");
         app.MapPost("/v1/partner/my/faculty-files", UploadFileAsync).RequireAuthorization("PartnerOnly").DisableAntiforgery();
         app.MapGet("/v1/partner/my/faculty-values/{valueId:guid}/file", DownloadFileAsync).RequireAuthorization("PartnerOnly");
+        app.MapGet("/v1/partner/my/faculty-values/{valueId:guid}/file/{index:int}", DownloadFilesItemAsync).RequireAuthorization("PartnerOnly");
         return app;
     }
 
@@ -160,6 +161,39 @@ public sealed class PartnerV1MyFacultiesEndpoint : IEndpointMarker
         {
             var stream = await storage.OpenReadAsync(value.Value, ct);
             return Results.File(stream, "application/octet-stream", value.FileName ?? "faculty-file");
+        }
+        catch (FileNotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Streams one file of a "files" cell (JSON array of {token,name}) at
+    /// {index}, under the same partner-ownership guard as the single-file
+    /// download.
+    /// </summary>
+    private static async Task<IResult> DownloadFilesItemAsync(
+        Guid valueId, int index, HttpContext httpContext, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+    {
+        var (_, partnerId, fail) = await MyUsersHelpers.ResolveAsync(httpContext, db, ct);
+        if (fail is not null) return fail;
+
+        var value = await (
+            from v in db.TeacherProfileValues
+            join r in db.TeacherProfileRows on v.TeacherProfileRowId equals r.TeacherProfileRowId
+            join t in db.Teachers on r.TeacherId equals t.TeacherId
+            where v.TeacherProfileValueId == valueId && t.PartnerId == partnerId && t.DeletedAt == null
+            select new { v.Value }).FirstOrDefaultAsync(ct);
+        if (value is null) return Results.NotFound();
+
+        var item = FacultyProfileLogic.FilesItemAt(value.Value, index);
+        if (item is null || !item.Token.Contains(FacultyProfileLogic.StoragePrefix)) return Results.NotFound();
+
+        try
+        {
+            var stream = await storage.OpenReadAsync(item.Token, ct);
+            return Results.File(stream, "application/octet-stream", item.Name ?? "faculty-file");
         }
         catch (FileNotFoundException)
         {

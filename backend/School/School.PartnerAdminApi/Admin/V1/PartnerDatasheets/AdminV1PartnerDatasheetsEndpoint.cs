@@ -26,6 +26,7 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
         app.MapPost("/v1/admin/partner-datasheet-files", UploadFileAsync)
             .RequireAuthorization("AdminOnly").DisableAntiforgery();
         app.MapGet("/v1/admin/partner-datasheet-values/{valueId:guid}/file", DownloadFileAsync).RequireAuthorization("AdminOnly");
+        app.MapGet("/v1/admin/partner-datasheet-values/{valueId:guid}/file/{index:int}", DownloadFilesItemAsync).RequireAuthorization("AdminOnly");
         return app;
     }
 
@@ -387,6 +388,34 @@ public sealed class AdminV1PartnerDatasheetsEndpoint : IEndpointMarker
         {
             var stream = await storage.OpenReadAsync(value.Value, ct);
             return Results.File(stream, "application/octet-stream", value.FileName ?? "datasheet-file");
+        }
+        catch (FileNotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    /// <summary>
+    /// Streams one file of a "files" cell. The cell's Value is a JSON array of
+    /// {token,name}; the token at {index} is served exactly like the single
+    /// "file" download (must contain the storage prefix, minted by upload).
+    /// </summary>
+    private static async Task<IResult> DownloadFilesItemAsync(
+        Guid valueId, int index, OdinDbContext db, IFileStorage storage, CancellationToken ct)
+    {
+        var value = await db.PartnerDatasheetValues
+            .Where(v => v.PartnerDatasheetValueId == valueId)
+            .Select(v => new { v.Value })
+            .FirstOrDefaultAsync(ct);
+        if (value is null) return Results.NotFound();
+
+        var item = PartnerDatasheetSystemValues.FilesItemAt(value.Value, index);
+        if (item is null || !item.Token.Contains(StoragePrefix)) return Results.NotFound();
+
+        try
+        {
+            var stream = await storage.OpenReadAsync(item.Token, ct);
+            return Results.File(stream, "application/octet-stream", item.Name ?? "datasheet-file");
         }
         catch (FileNotFoundException)
         {
