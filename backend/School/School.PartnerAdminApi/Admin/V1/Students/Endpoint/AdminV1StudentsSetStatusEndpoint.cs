@@ -56,6 +56,14 @@ public sealed class AdminV1StudentsSetStatusEndpoint : IEndpointMarker
             .FirstOrDefaultAsync(s => s.EnrollmentStatusId == body.StatusId && s.DeletedAt == null, ct);
         if (status is null) return Results.BadRequest(new { error = "Unknown status." });
 
+        // Status-based access ("act"): the role must hold Edit on both the
+        // status it is moving FROM and the one it is moving TO. SuperAdmin
+        // bypasses; a status with no explicit row defaults to Edit, so this is
+        // a no-op until an admin restricts a status for the role.
+        if (await perms.StatusAccessAsync(httpContext.User, enrolment.StatusId, ct) != AccessLevel.Edit
+            || await perms.StatusAccessAsync(httpContext.User, status.EnrollmentStatusId, ct) != AccessLevel.Edit)
+            return Results.Forbid();
+
         if (enrolment.StatusId == status.EnrollmentStatusId)
             return Results.Ok(new { statusCode = status.Code, statusName = status.Name });
 

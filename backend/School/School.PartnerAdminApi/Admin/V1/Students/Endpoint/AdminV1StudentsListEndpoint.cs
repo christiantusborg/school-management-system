@@ -23,6 +23,7 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
     private static async Task<IResult> HandleAsync(
         OdinDbContext db,
         HttpContext httpContext,
+        Odin.Api.Base.Authorization.IPermissionService perms,
         CancellationToken cancellationToken,
         [FromQuery] Guid? partnerId = null,
         [FromQuery] Guid? programmeId = null,
@@ -51,6 +52,18 @@ public sealed class AdminV1StudentsListEndpoint : IEndpointMarker
             enrollmentsQuery = enrollmentsQuery.Where(e => e.GraduationDate != null && e.GraduationDate >= gf.Date);
         if (graduationTo is { } gt)
             enrollmentsQuery = enrollmentsQuery.Where(e => e.GraduationDate != null && e.GraduationDate <= gt.Date);
+
+        // Status-based access: hide enrolments whose status this role cannot see
+        // (Hidden). SuperAdmin sees all; missing status rows default to Edit, so
+        // this is a no-op until an admin sets a status to Hidden for the role.
+        if (!perms.IsSuperAdmin(httpContext.User))
+        {
+            var statusMap = await perms.GetStatusMapAsync(httpContext.User, cancellationToken);
+            var hidden = statusMap.Where(kv => kv.Value == (int)Odin.Api.Base.Authorization.AccessLevel.Hidden)
+                .Select(kv => kv.Key).ToHashSet();
+            if (hidden.Count > 0)
+                enrollmentsQuery = enrollmentsQuery.Where(e => !hidden.Contains(e.StatusId));
+        }
 
         var enrollments = await enrollmentsQuery
             .Select(e => new
