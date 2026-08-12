@@ -847,7 +847,12 @@
                   <span v-if="passMarkMsg" class="muted">{{ passMarkMsg }}</span>
                 </div>
                 <template v-for="t in LETTER_TYPES" :key="t.key">
-                  <div class="letter-row" :class="{ disabled: !activeEnrollment.letters?.[t.key] }">
+                  <!-- OLD built-in (enum) letter rows are hidden after the
+                       enum->dynamic cutover: the same letters appear below as
+                       config-created letters (with History). The loop is kept so
+                       the live Provisional Transcript row still renders. Data
+                       untouched; re-enable by removing v-if="false". -->
+                  <div v-if="false" class="letter-row" :class="{ disabled: !activeEnrollment.letters?.[t.key] }">
                     <span class="letter-icon">{{ t.icon }}</span>
                     <div class="letter-info">
                       <div class="letter-name">{{ t.label }}</div>

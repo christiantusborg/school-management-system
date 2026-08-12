@@ -5,6 +5,16 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'student-programs-hide-old-letters',
+    date: '2026-08-12',
+    title: 'Student drawer → Programs: old letter rows hidden',
+    summary: 'The admin student Programs tab now lists only the new letters; the duplicate old built-in rows are hidden.',
+    details: [
+      'In a student\'s drawer → Programs → Letters, the old built-in letter rows (Offer/Admission/Transcript/Certificate/etc. with Regenerate/Upload old/Send) are hidden — the same letters appear below as the new config-created letters with version History.',
+      'The live Provisional Transcript row is kept. No data or documents were removed.',
+    ],
+  },
+  {
     id: 'letters-old-always-hidden',
     date: '2026-08-12',
     title: 'Old letters are now always hidden on the Letters row',
