@@ -5,6 +5,17 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'letters-old-as-version-1',
+    date: '2026-08-12',
+    title: 'Old letters now appear as version 1 in the new letter history',
+    summary: 'Every already-issued built-in letter is registered as version 1 so it shows in the new letter History.',
+    details: [
+      'Each student\'s previously generated (or staff-uploaded) built-in letters are now recorded as "version 1" in the new letter version history, pointing at the exact PDF already on file with its original date. Nothing was re-rendered.',
+      'Open a letter\'s History (admin or partner student view) to see the original issued letter as v1; future regenerations add v2, v3, and so on.',
+      'Students keep seeing and downloading all their existing letters exactly as before.',
+    ],
+  },
+  {
     id: 'letters-show-hide-old',
     date: '2026-08-12',
     title: 'Show/Hide old letters + (O) marker on the letter chips',
