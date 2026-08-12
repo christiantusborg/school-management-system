@@ -23,7 +23,7 @@
       <button :class="['tab-btn', { active: tab === 'statistics' }]" @click="tab = 'statistics'">Statistics</button>
       <button :class="['tab-btn', { active: tab === 'crm' }]" @click="tab = 'crm'">CRM</button>
       <button :class="['tab-btn', { active: tab === 'mail' }]" @click="tab = 'mail'">Mail</button>
-      <button v-if="isSuperAdmin" :class="['tab-btn', { active: tab === 'changelog' }]" @click="tab = 'changelog'">Changelog</button>
+      <button v-if="auth.can('changelog.view')" :class="['tab-btn', { active: tab === 'changelog' }]" @click="tab = 'changelog'">Changelog</button>
       <button v-if="!isSales" :class="['tab-btn', { active: tab === 'messages' }]" @click="tab = 'messages'">
         Messages
         <span v-if="pendingMsgCount" class="tab-badge">{{ pendingMsgCount }}</span>

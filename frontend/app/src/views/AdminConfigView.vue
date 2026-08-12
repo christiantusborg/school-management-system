@@ -52,6 +52,7 @@
           endpoint="/v1/school/employment-industries" id-key="employmentIndustryId" />
         <PathwayManager v-else-if="t.key === 'pathways'" v-show="activeTab === t.key" />
         <LetterTypesConfigTab v-else-if="t.key === 'letterTypes'" v-show="activeTab === t.key" />
+        <RolesPermissionsManager v-else-if="t.key === 'rolesPermissions'" v-show="activeTab === t.key" />
         <CrudManager v-else v-show="activeTab === t.key" :config="t.config" />
       </template>
     </div>
@@ -73,6 +74,7 @@ import FacultyProfileConfigTab from '../components/admin/FacultyProfileConfigTab
 import ModuleCohortConfigTab from '../components/admin/ModuleCohortConfigTab.vue'
 import RubricConfigTab from '../components/admin/RubricConfigTab.vue'
 import LetterTypesConfigTab from '../components/admin/LetterTypesConfigTab.vue'
+import RolesPermissionsManager from '../components/admin/RolesPermissionsManager.vue'
 
 const router = useRouter()
 
@@ -84,9 +86,10 @@ function logout() {
 // Letter Types is SuperAdministrator-only (backend enforces writes too).
 const entities = [
   { key: 'documentTypes',   label: 'Document Types',   config: { title: 'Document Types',   endpoint: '/v1/school/system-config/document-types' } },
-  ...(auth.adminLevel === 'SuperAdministrator'
-    ? [{ key: 'letterTypes', label: 'Letter Types' }]
-    : []),
+  // Roles & Permissions stays SuperAdmin-only (it governs the matrix itself).
+  ...(auth.adminLevel === 'SuperAdministrator' ? [{ key: 'rolesPermissions', label: 'Roles & Permissions' }] : []),
+  // Letter Types now follows the access matrix.
+  ...(auth.can('letter_types.manage') ? [{ key: 'letterTypes', label: 'Letter Types' }] : []),
   { key: 'educationLevels', label: 'Education Levels', config: { title: 'Education Levels', endpoint: '/v1/school/system-config/education-levels' } },
   { key: 'modesOfStudy',    label: 'Modes of Study',   config: { title: 'Modes of Study',   endpoint: '/v1/school/system-config/modes-of-study' } },
   { key: 'pathways',        label: 'Entry Requirements',         config: { title: 'Entry Requirements',         endpoint: '/v1/school/system-config/pathways' } },

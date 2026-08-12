@@ -5,6 +5,18 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'access-matrix-rbac',
+    date: '2026-08-12',
+    title: 'Configurable Roles & Permissions (access matrix) — phase 1',
+    summary: 'A Super Administrator can now configure what each admin role is allowed to do, from a new System Config → Roles & Permissions tab. On rollout nothing changed for anyone: the matrix starts as an exact copy of the access rules the app already had.',
+    details: [
+      'Admin → System Config → Roles & Permissions (Super Administrator only): a grid of every gated action × the six roles. Tick a box to grant a permission to a role; untick to remove it. Super Administrator is always full-access and cannot be changed.',
+      'Permissions are enforced on the server (not just hidden in the UI), so a role genuinely cannot perform an action it lacks — and the buttons/tabs for it disappear too.',
+      'Every change is recorded: the tab has a "View change history" showing who changed which role\'s permission and from → to.',
+      'This is phase 1 (whole areas and specific actions — e.g. delete student, remove programme, regenerate letters, CRM settings, mail accounts). Field-level control and partner-tier permissions are planned next. Sales users still see only their own assigned partners as before (that data-scoping is unchanged).',
+    ],
+  },
+  {
     id: 'datasheet-multiple-files-field',
     date: '2026-08-12',
     title: '"File upload" fields now accept multiple files',

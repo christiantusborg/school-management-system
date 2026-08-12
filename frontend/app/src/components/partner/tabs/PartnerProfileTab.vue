@@ -229,8 +229,7 @@ const assignedSales = ref([])
 const savingSales = ref(false)
 const salesOk = ref(false)
 const salesError = ref('')
-const canAssignSales = computed(() =>
-  ['SuperAdministrator', 'Administrator'].includes(auth.adminLevel))
+const canAssignSales = computed(() => auth.can('partners.assign_sales'))
 async function loadSales() {
   try {
     salesStaff.value = (await apiClient.get('/v1/admin/sales-staff')).data.items ?? []

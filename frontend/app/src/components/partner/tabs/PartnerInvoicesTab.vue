@@ -69,11 +69,11 @@
               <button v-if="mode === 'admin' && inv.status !== 'Paid' && canMarkPaid" class="btn-sm inv-markpaid"
                       :disabled="markingId === inv.id" @click="markPaid(inv)">
                 {{ markingId === inv.id ? 'Marking…' : '✓ Mark paid' }}</button>
-              <button v-if="mode === 'admin' && inv.status === 'Paid' && auth.isSuperAdmin" class="btn-sm"
+              <button v-if="mode === 'admin' && inv.status === 'Paid' && auth.can('invoices.delete')" class="btn-sm"
                       :disabled="markingId === inv.id" @click="unmarkPaid(inv)">↺ Mark unpaid</button>
               <button v-if="mode === 'admin' && inv.status !== 'Paid' && canDelete(inv)" class="btn-sm inv-del"
                       :disabled="deletingId === inv.id"
-                      :title="auth.isSuperAdmin ? 'Delete this invoice (items return to the pick list)' : 'Deletable within 1 hour of creation'"
+                      :title="auth.can('invoices.delete') ? 'Delete this invoice (items return to the pick list)' : 'Deletable within 1 hour of creation'"
                       @click="deleteInv(inv)">🗑</button>
             </td>
           </tr>
@@ -126,7 +126,7 @@ const markingId = ref('')
 const openInv = reactive({})
 const templateOpen = ref(false)
 
-const canMarkPaid = computed(() => auth.adminLevel !== 'Sales' && auth.adminLevel !== null)
+const canMarkPaid = computed(() => auth.can('invoices.mark_paid'))
 const selected = computed(() => items.value.filter(i => i.checked))
 const allChecked = computed(() => items.value.length > 0 && items.value.every(i => i.checked))
 const selectedTotals = computed(() => {
@@ -205,7 +205,7 @@ async function downloadPdf(inv) {
   }
 }
 function canDelete(inv) {
-  if (auth.isSuperAdmin) return true
+  if (auth.can('invoices.delete')) return true
   return (Date.now() - new Date(inv.createdAt).getTime()) < 3600_000
 }
 const deletingId = ref('')

@@ -1228,7 +1228,7 @@
               </template>
             </div>
 
-            <div v-if="programSubTab === 'advanced' && auth.adminLevel === 'SuperAdministrator'" class="tab-pane">
+            <div v-if="programSubTab === 'advanced' && auth.can('students.remove_programme')" class="tab-pane">
               <div class="adv-danger">
                 <div class="adv-warn">
                   ⚠️ DANGER — REMOVE THIS PROGRAMME FROM THE STUDENT ⚠️<br />
@@ -1677,7 +1677,7 @@ const ALL_PROGRAM_SUBTABS = [
 ]
 // Advanced (permanent programme removal) is SuperAdministrator only.
 const PROGRAM_SUBTABS = computed(() =>
-  ALL_PROGRAM_SUBTABS.filter(t => !t.superAdminOnly || auth.adminLevel === 'SuperAdministrator'))
+  ALL_PROGRAM_SUBTABS.filter(t => !t.superAdminOnly || auth.can('students.remove_programme')))
 const programSubTab = ref('enrolment')
 
 // ── Add another programme to this student (Programs left menu) ──────────────
@@ -1839,8 +1839,7 @@ const commencementSaveOk = ref(false)
 
 // Per-enrolment programme + specialization change. Admin edit, gated to the
 // top two admin levels like the other enrolment overrides.
-const canEditSpecialization = computed(() =>
-  ['SuperAdministrator', 'Administrator'].includes(auth.adminLevel))
+const canEditSpecialization = computed(() => auth.can('students.edit_specialization'))
 const enrolmentProgOptions = ref([])
 // School filter for the programme dropdown: narrows programmes to one school.
 const enrolSchoolFilter = ref('')
@@ -2413,17 +2412,16 @@ const emailSend = ref({ open: false, key: '', label: '', cc: '', bcc: '', sendin
 
 // Duration override is reserved for the top two admin levels: changing it
 // shifts an admitted student's completion date.
-const canEditDuration = computed(() =>
-  ['SuperAdministrator', 'Administrator'].includes(auth.adminLevel))
+const canEditDuration = computed(() => auth.can('students.edit_duration'))
 
 // Deleting an applicant is destructive, so it matches the backend gate:
 // Administrator and SuperAdministrator only.
-const canDeleteStudent = canEditDuration
+const canDeleteStudent = computed(() => auth.can('students.delete'))
 const deletingStudentId = ref(null)
 
 // Manual Student ID + Old-student flag — Admission Office (Administrator+) only,
 // matching the backend gate.
-const canEditLegacyId = canEditDuration
+const canEditLegacyId = computed(() => auth.can('students.edit_legacy_id'))
 const legacyDraft = reactive({ isLegacy: false, studentNumber: '' })
 const savingLegacy = ref(false)
 const legacyError = ref('')
@@ -2478,7 +2476,7 @@ async function deleteStudent(s) {
 
 // Regenerating a released letter re-renders its PDF with current data, so it
 // is gated to the same top two admin levels as the duration override.
-const canRegenerateLetters = canEditDuration
+const canRegenerateLetters = computed(() => auth.can('students.regenerate_letters'))
 
 // The proposal/project approval letters are routine Admission Office work:
 // every non-read-only admin level can generate them (backend enforces too).
@@ -3400,8 +3398,7 @@ const handledByDraft = ref(null)
 const savingHandledBy = ref(false)
 const handledByError = ref('')
 const handledByOk = ref(false)
-const canSetHandledBy = computed(() =>
-  ['SuperAdministrator', 'Administrator', 'Manager', 'Editor'].includes(auth.adminLevel))
+const canSetHandledBy = computed(() => auth.can('students.set_handled_by'))
 async function loadSalesStaff() {
   try { salesStaff.value = (await api.get('/v1/admin/sales-staff')).data.items ?? [] }
   catch { salesStaff.value = [] }

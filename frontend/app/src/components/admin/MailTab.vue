@@ -7,7 +7,7 @@
       <button class="mail-btn mail-btn-primary" :disabled="!accounts.length" @click="openCompose()">✎ New mail</button>
       <input v-model="search" class="mail-search" placeholder="Search subject / sender…" @keyup.enter="loadMessages" />
       <span v-if="err" class="mail-err">{{ err }}</span>
-      <button v-if="isSuperAdmin" class="mail-gear" title="Mail accounts (SuperAdmin)" @click="openConfig">⚙</button>
+      <button v-if="auth.can('mail.accounts_manage')" class="mail-gear" title="Mail accounts (SuperAdmin)" @click="openConfig">⚙</button>
     </div>
 
     <div class="mail-layout">
@@ -208,6 +208,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import api from '../../api/client.js'
+import { auth } from '../../store/auth.js'
 
 const emit = defineEmits(['open-student', 'open-partner', 'open-lead'])
 function openLink(l) {

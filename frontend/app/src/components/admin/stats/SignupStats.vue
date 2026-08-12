@@ -19,7 +19,7 @@
     <div v-if="loading" class="loading-row">Loading…</div>
     <template v-else-if="data">
       <!-- SuperAdministrator: the full board -->
-      <template v-if="data.isSuper">
+      <template v-if="auth.can('statistics.financial')">
         <p class="ss-total">
           <strong>{{ data.total }}</strong> {{ metricNoun }} in period ·
           <strong>{{ data.staffSignups }}</strong> attributed to staff{{ data.salesOnly ? ' (Sales only)' : '' }} ·
@@ -110,6 +110,7 @@
 <script setup>
 import { ref, computed, h, watch, onMounted } from 'vue'
 import api from '../../../api/client.js'
+import { auth } from '../../../store/auth.js'
 
 const props = defineProps({ from: { type: String, default: '' }, to: { type: String, default: '' } })
 const data = ref(null)

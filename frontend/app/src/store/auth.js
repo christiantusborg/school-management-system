@@ -6,6 +6,7 @@ export const auth = reactive({
   user: null,
   error: null,
   loading: false,
+  permissions: [],   // effective access-matrix permission keys (admins)
 
   // MFA pending state
   mfaPendingId: null,
@@ -120,6 +121,16 @@ export const auth = reactive({
             : data.roles?.includes('Student') ? 'student'
             : null,
       }
+      // Admins carry an effective-permission list (the access matrix) used to
+      // gate UI. Best-effort: never block login if it can't be fetched.
+      if (this.user.role === 'employee') {
+        try {
+          const p = await api.get('/v1/admin/my-permissions')
+          this.permissions = p.data?.permissions ?? []
+        } catch { this.permissions = [] }
+      } else {
+        this.permissions = []
+      }
     } catch {
       this.logout()
     }
@@ -137,6 +148,7 @@ export const auth = reactive({
     try { await api.post('/v1/logout') } catch { /* ignore */ }
     this.user = null
     this.error = null
+    this.permissions = []
     this.mfaPendingId = null
     this.mfaAvailableMethods = []
     localStorage.removeItem('adminToken')
@@ -150,6 +162,13 @@ export const auth = reactive({
     const roles = this.user?.roles ?? []
     const levels = ['SuperAdministrator', 'Administrator', 'Manager', 'Editor', 'Viewer', 'Sales']
     return levels.find(l => roles.includes(l)) ?? null
+  },
+
+  // Access matrix: does the current admin hold this permission?
+  // SuperAdministrator always does (it bypasses the matrix).
+  can(key) {
+    if (this.isSuperAdmin) return true
+    return (this.permissions ?? []).includes(key)
   },
 })
 

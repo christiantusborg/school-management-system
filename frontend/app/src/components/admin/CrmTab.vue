@@ -236,7 +236,7 @@ const KPIS = [
   { id: 'rotting', label: 'Rotting' }, { id: 'stale', label: 'Stale 14d+' },
   { id: 'hot', label: 'Hot' }, { id: 'unassigned', label: 'Unassigned' },
 ]
-const isAdministrator = ['SuperAdministrator', 'Administrator'].includes(auth.adminLevel)
+const isAdministrator = auth.can('crm.settings')
 const subTabs = [
   { id: 'board', label: 'Board' },
   { id: 'myday', label: 'My Day' },
