@@ -129,6 +129,41 @@ public sealed class AdminProgrammesV1LetterTemplatesEndpoint : IEndpointMarker
         entity.IsPublished = true;
         entity.UpdatedAt = DateTime.UtcNow;
 
+        // Keep the NEW (dynamic twin) letter in step with the OLD built-in one:
+        // saving/publishing a built-in letter mirrors its content + published
+        // state onto the twin at the SAME (programme, partner, language), so the
+        // live dynamic letter reflects the edit. Only for built-in (enum) rows;
+        // the twin is created on first mirror if it doesn't exist yet.
+        if (definitionId is null)
+        {
+            var twinDefId = LetterReleaseService.EnumTwinDefinitionId(letterType);
+            if (twinDefId != Guid.Empty)
+            {
+                var twin = await db.LetterTemplates.FirstOrDefaultAsync(t =>
+                    t.ProgrammeId == programmeId && t.PartnerId == partnerId &&
+                    t.LetterTypeDefinitionId == twinDefId &&
+                    t.Language == lang && t.DeletedAt == null, ct);
+                if (twin is null)
+                {
+                    twin = new LetterTemplate
+                    {
+                        LetterTemplateId = Guid.NewGuid(),
+                        ProgrammeId = programmeId,
+                        PartnerId = partnerId.Value,
+                        LetterType = letterType,
+                        LetterTypeDefinitionId = twinDefId,
+                        Language = lang,
+                    };
+                    db.LetterTemplates.Add(twin);
+                }
+                twin.BodyHtml = entity.BodyHtml;
+                twin.CertificateBackgroundPath = entity.CertificateBackgroundPath;
+                twin.CertificateLayoutJson = entity.CertificateLayoutJson;
+                twin.IsPublished = entity.IsPublished;
+                twin.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { letterTemplateId = entity.LetterTemplateId, isPublished = entity.IsPublished });
     }

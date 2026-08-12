@@ -5,6 +5,17 @@
 // of plain-text bullet lines.
 export const CHANGELOG = [
   {
+    id: 'letters-old-publish-syncs-new',
+    date: '2026-08-12',
+    title: 'Saving an old letter also publishes its new twin',
+    summary: 'Publishing a built-in (old) letter now mirrors its design and published state onto the new letter at the same location.',
+    details: [
+      'When you save/publish an OLD built-in letter for a programme + partner (+ language), the matching NEW letter at the same location is updated with the same design and published automatically — so the live letter always reflects your edit.',
+      'Applies per exact location (programme, partner, language); the new twin is created on the spot if it did not exist yet.',
+      'One-directional (old → new). Editing a new letter directly does not touch the old one, which stays dormant until cleanup.',
+    ],
+  },
+  {
     id: 'letters-cutover-dynamic',
     date: '2026-08-12',
     title: 'Letters now generate through the new config-created system',
