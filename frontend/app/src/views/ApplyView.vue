@@ -254,7 +254,7 @@
             </div>
           </div>
           <div class="pathway-block">
-            <div class="section-divider">Pathway (qualification route) — optional</div>
+            <div class="section-divider">Entry Requirement (qualification route) — optional</div>
             <div class="field">
               <select v-model="row.pathwayId" :disabled="!row.programmeId || pathwaysFor(row.programmeId).length === 0">
                 <option :value="null">— not chosen —</option>

@@ -89,7 +89,7 @@ const entities = [
     : []),
   { key: 'educationLevels', label: 'Education Levels', config: { title: 'Education Levels', endpoint: '/v1/school/system-config/education-levels' } },
   { key: 'modesOfStudy',    label: 'Modes of Study',   config: { title: 'Modes of Study',   endpoint: '/v1/school/system-config/modes-of-study' } },
-  { key: 'pathways',        label: 'Pathways',         config: { title: 'Pathways',         endpoint: '/v1/school/system-config/pathways' } },
+  { key: 'pathways',        label: 'Entry Requirements',         config: { title: 'Entry Requirements',         endpoint: '/v1/school/system-config/pathways' } },
   { key: 'partnerDocs',     label: 'Partnership Documents' },
   { key: 'facultyProfile',  label: 'Faculty Profile Information' },
   { key: 'moduleCohorts',   label: 'Module Cohorts' },

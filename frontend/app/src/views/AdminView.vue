@@ -933,7 +933,7 @@ const GEAR_TABS = [
   { k: 'users',      label: 'Users' },
   { k: 'programmes', label: 'Programmes' },
   { k: 'certs',      label: 'Partnership Documents' },
-  { k: 'faculties',  label: 'Faculties' },
+  { k: 'faculties',  label: 'Faculty' },
 ]
 const manageTab = ref('students')
 const gearOpen = ref(false)

@@ -95,7 +95,7 @@
             </span>
           </div>
           <div class="detail-row">
-            <span class="detail-label">Pathways</span>
+            <span class="detail-label">Entry Requirements</span>
             <span class="detail-value">{{ pathwayNames(c.pathwayIds) || '—' }}</span>
           </div>
           <div v-if="c.rejectionReason" class="detail-row">

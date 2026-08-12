@@ -30,7 +30,7 @@
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'contacts' }]" @click="mainTab = 'contacts'">Contacts</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'mail' }]" @click="mainTab = 'mail'">Mail</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'agreements' }]" @click="mainTab = 'agreements'">Agreements</button>
-      <button :class="['main-tab-btn', { active: mainTab === 'faculties' }]" @click="mainTab = 'faculties'">Faculties</button>
+      <button :class="['main-tab-btn', { active: mainTab === 'faculties' }]" @click="mainTab = 'faculties'">Faculty</button>
       <button :class="['main-tab-btn', { active: mainTab === 'cohorts' }]" @click="mainTab = 'cohorts'">Module Cohorts</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'invoices' }]" @click="mainTab = 'invoices'">Invoices</button>
       <button v-if="!auth.user?.isTeacher" :class="['main-tab-btn', { active: mainTab === 'import' }]" @click="mainTab = 'import'">Import</button>
@@ -457,7 +457,7 @@
             <div class="prog-edit-row pathway-row-toggle" @click="togglePathwayPanel(clone.id)">
               <label class="prog-edit-label" style="cursor:pointer">
                 <span class="arrow-sm">{{ pathwayOpen.has(clone.id) ? '▾' : '▸' }}</span>
-                Pathways
+                Entry Requirements
               </label>
               <span class="badge-count-p">{{ (clone.pathwayIds ?? []).length }} selected</span>
             </div>
@@ -470,7 +470,7 @@
                          @change="togglePathwayOnClone(clone, p.pathwayId)" />
                   {{ p.name }}
                 </label>
-                <p v-if="!pathwaysCatalog.length" class="ro-empty">No pathways defined.</p>
+                <p v-if="!pathwaysCatalog.length" class="ro-empty">No entry requirements defined.</p>
               </div>
             </div>
 
@@ -561,7 +561,7 @@
               <span class="muted">{{ clone.minDurationMonths ?? '—' }} – {{ clone.maxDurationMonths ?? '—' }} months</span>
             </div>
             <div v-if="(clone.pathwayIds ?? []).length" class="prog-edit-row">
-              <label class="prog-edit-label">Pathways</label>
+              <label class="prog-edit-label">Entry Requirements</label>
               <div class="ro-pathway-list">
                 <span v-for="pid in clone.pathwayIds" :key="pid" class="ro-pathway-pill">
                   {{ pathwaysCatalog.find(p => p.pathwayId === pid)?.name ?? `#${pid}` }}
@@ -955,7 +955,7 @@
             <h2>New Student Application</h2>
             <p class="drawer-sub">Step {{ regStep }} of 3 —
               <span v-if="regStep === 1">Registration Form</span>
-              <span v-else-if="regStep === 2">Document Verification &amp; Pathway</span>
+              <span v-else-if="regStep === 2">Document Verification &amp; Entry Requirement</span>
               <span v-else>Issue Offer</span>
             </p>
           </div>
@@ -1083,8 +1083,8 @@
             </label>
           </div>
 
-          <h4 class="section-heading" style="margin-top:1.5rem">Section B — Qualification Pathway</h4>
-          <p class="hint-text">Select the entry pathway that matches the applicant's qualifications.</p>
+          <h4 class="section-heading" style="margin-top:1.5rem">Section B — Qualification Entry Requirement</h4>
+          <p class="hint-text">Select the entry requirement that matches the applicant's qualifications.</p>
           <div class="pathway-list">
             <label v-for="pw in regPathways" :key="pw.id" class="pathway-item">
               <input type="radio" :value="pw.id" v-model="regPathway" />
@@ -1106,7 +1106,7 @@
             <div class="summary-row"><span class="summary-label">Programme</span><span>{{ regForm.programme }}</span></div>
             <div class="summary-row"><span class="summary-label">Specialization</span><span>{{ regForm.specialization }}</span></div>
             <div class="summary-row">
-              <span class="summary-label">Pathway</span>
+              <span class="summary-label">Entry Requirement</span>
               <span>{{ regPathways.find(p => p.id === regPathway)?.label ?? '—' }}</span>
             </div>
             <div class="summary-row">

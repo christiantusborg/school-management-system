@@ -246,13 +246,13 @@
         <!-- ═══════ Step 5: Programme ═══════ -->
         <div v-else-if="step === 5" class="rw-step-content">
           <h4 class="rw-section-heading">Programme selection</h4>
-          <p class="rw-hint">Confirm the chosen programme and pathway suit the applicant's profile.</p>
+          <p class="rw-hint">Confirm the chosen programme and entry requirement suit the applicant's profile.</p>
           <div v-if="!enrollment" class="rw-empty">No enrolment found on this student.</div>
           <div v-else class="rw-prog-card">
             <div class="rw-readonly-field"><label>Programme</label><div>{{ enrollment.programme || '—' }}</div></div>
             <div class="rw-readonly-field"><label>Specialization</label><div>{{ enrollment.specialization || '—' }}</div></div>
             <div class="rw-readonly-field"><label>Mode of study</label><div>{{ enrollment.modeOfStudy || '—' }}</div></div>
-            <div class="rw-readonly-field"><label>Pathway</label><div>{{ enrollment.selectedPathway || '—' }}</div></div>
+            <div class="rw-readonly-field"><label>Entry Requirement</label><div>{{ enrollment.selectedPathway || '—' }}</div></div>
           </div>
           <DecisionPanel sectionKey="programme" :draft="draft"
             :chips="REASON_CHIPS.programme" @approve="approve('programme')" @reject="reject('programme', $event)" />

@@ -87,7 +87,7 @@
           </select>
         </div>
         <div class="field" style="margin-top:0.85rem">
-          <label>Pathways</label>
+          <label>Entry Requirements</label>
           <div class="pathway-grid">
             <label v-for="p in pathways" :key="p.pathwayId" class="pathway-row">
               <input type="checkbox"
@@ -95,7 +95,7 @@
                      @change="toggleNewPathway(p.pathwayId)" />
               {{ p.name }}
             </label>
-            <p v-if="!pathways.length" class="empty-note">No pathways defined.</p>
+            <p v-if="!pathways.length" class="empty-note">No entry requirements defined.</p>
           </div>
         </div>
         <p v-if="newProg.error" class="form-error">{{ newProg.error }}</p>
@@ -150,7 +150,7 @@
 
           <div class="section-label section-label-toggle" @click="togglePathwaySection(prog.programmeId)">
             <span class="section-arrow">{{ xPathway === prog.programmeId ? '▾' : '▸' }}</span>
-            PATHWAYS
+            ENTRY REQUIREMENTS
             <span class="badge-count">{{ (progPathways[prog.programmeId] ?? []).length }} selected</span>
           </div>
           <div v-if="xPathway === prog.programmeId" class="pathway-edit-block">
@@ -161,7 +161,7 @@
                        @change="togglePathwayForProg(prog, p.pathwayId)" />
                 {{ p.name }}
               </label>
-              <p v-if="!pathways.length" class="empty-note">No pathways defined.</p>
+              <p v-if="!pathways.length" class="empty-note">No entry requirements defined.</p>
             </div>
             <div v-if="pathwayBusy[prog.programmeId]" class="form-error-inline">Saving…</div>
             <div v-if="pathwayErr[prog.programmeId]" class="form-error">{{ pathwayErr[prog.programmeId] }}</div>
@@ -749,7 +749,7 @@ async function togglePathwayForProg(prog, pathwayId) {
     })
     progPathways[id] = current
   } catch (e) {
-    pathwayErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save pathways'
+    pathwayErr[id] = e.response?.data?.message ?? e.message ?? 'Failed to save entry requirements'
   } finally {
     pathwayBusy[id] = false
   }

@@ -2,7 +2,7 @@
   <div class="crud-root">
     <div class="crud-header">
       <div>
-        <h2 class="crud-title">Pathways</h2>
+        <h2 class="crud-title">Entry Requirements</h2>
         <p class="crud-sub" v-if="!loading">{{ items.length }} item{{ items.length !== 1 ? 's' : '' }}</p>
       </div>
       <button class="btn-primary" @click="openCreate">+ Add New</button>
@@ -26,7 +26,7 @@
             <td colspan="5" class="empty-row">Loading…</td>
           </tr>
           <tr v-else-if="items.length === 0">
-            <td colspan="5" class="empty-row">No pathways yet.</td>
+            <td colspan="5" class="empty-row">No entry requirements yet.</td>
           </tr>
           <template v-else>
             <tr v-for="item in items" :key="item.pathwayId" class="data-row">
@@ -59,13 +59,13 @@
       <div class="overlay" @click="closeForm"></div>
       <div class="drawer">
         <div class="drawer-header">
-          <h2>{{ editTarget ? 'Edit' : (cloning ? 'Clone' : 'Add') }} Pathway</h2>
+          <h2>{{ editTarget ? 'Edit' : (cloning ? 'Clone' : 'Add') }} Entry Requirement</h2>
           <button class="drawer-close" @click="closeForm">✕</button>
         </div>
         <div class="drawer-form">
           <div class="field">
             <label>Name <span class="req">*</span></label>
-            <input v-model="formName" placeholder="e.g. Pathway 1: Direct Entry" />
+            <input v-model="formName" placeholder="e.g. Entry Requirement 1: Direct Entry" />
           </div>
           <div class="field">
             <label>Minimum years of work experience</label>
@@ -82,7 +82,7 @@
               </label>
               <p v-if="!educationLevels.length" class="muted">No education levels defined.</p>
             </div>
-            <p class="hint">Pathway is hidden from students whose degree isn't checked. Select all that qualify.</p>
+            <p class="hint">Entry Requirement is hidden from students whose degree isn't checked. Select all that qualify.</p>
           </div>
           <div class="field">
             <label>Required Documents</label>
@@ -111,7 +111,7 @@
       <div class="overlay" @click="confirmDelete = null"></div>
       <div class="confirm-modal">
         <p class="confirm-msg">
-          Delete <strong>{{ confirmDelete.name }}</strong>? This will soft-delete the pathway.
+          Delete <strong>{{ confirmDelete.name }}</strong>? This will soft-delete the entry requirement.
         </p>
         <div class="confirm-actions">
           <button class="btn-cancel" @click="confirmDelete = null">Cancel</button>
@@ -244,7 +244,7 @@ async function save() {
     return
   }
   if (formLevelIds.value.length === 0) {
-    formError.value = 'Pick at least one accepted prior degree (otherwise no student will see this pathway)'
+    formError.value = 'Pick at least one accepted prior degree (otherwise no student will see this entry requirement)'
     return
   }
   saving.value = true
