@@ -7,12 +7,12 @@ export const CHANGELOG = [
   {
     id: 'datasheet-multiple-files-field',
     date: '2026-08-12',
-    title: 'New "Multiple files" field type for datasheets & Faculty Profile',
-    summary: 'A new field type lets one field hold many uploaded documents (e.g. transcripts for every degree), added from a single selector, each with its own download and remove.',
+    title: '"File upload" fields now accept multiple files',
+    summary: 'Any "File upload" field on a datasheet or Faculty Profile can now hold as many documents as you like (e.g. a transcript for every degree) from one selector — no field-type switching needed, and each file has its own download and remove.',
     details: [
-      'In the datasheet builder and System Config → Faculty Profile Information, the field-type list now includes "Multiple files" (next to the single "File upload").',
-      'On the fill form a "Multiple files" field shows one selector that accepts several files at once; each uploaded file is listed with its own ⤓ download and ✕ remove, and you can keep adding more.',
-      'Works on both the admin and partner sides, for Faculty Profiles and datasheets. Existing single "File upload" fields are unchanged — switch a field to "Multiple files" in the builder to allow many.',
+      'In the datasheet builder and System Config → Faculty Profile Information, the field type is simply "File upload (one or many)" — there is no longer a separate "Multiple files" type to choose.',
+      'On the fill form (admin and partner sides, Faculty Profiles and datasheets) a "File upload" field shows one selector that accepts several files at once; each uploaded file is listed with its own ⤓ download and ✕ remove, and you can keep adding more.',
+      'Fully backward compatible: files already uploaded to existing "File upload" fields keep showing and downloading exactly as before — nothing is lost.',
       'Note: a newly added file becomes downloadable after you Save (it shows "save to download" until then).',
     ],
   },

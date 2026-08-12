@@ -70,8 +70,7 @@
                 <option value="date">Date (calendar)</option>
                 <option value="select">Dropdown</option>
                 <option value="bool">Yes / No</option>
-                <option value="file">File upload</option>
-                <option value="files">Multiple files</option>
+                <option value="file">File upload (one or many)</option>
                 <option value="autoid">Auto ID (system)</option>
                 <option value="computed">Combined (system)</option>
               </select>

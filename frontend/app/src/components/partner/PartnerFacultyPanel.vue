@@ -81,18 +81,10 @@
                   <input type="checkbox" :checked="cell(fieldsRow(sec), f.id).value === 'true'"
                          @change="cell(fieldsRow(sec), f.id).value = $event.target.checked ? 'true' : ''" /> Yes
                 </label>
-                <div v-else-if="f.type === 'file'" class="pf-file">
-                  <template v-if="cell(fieldsRow(sec), f.id).value">
-                    <span class="pf-file-ok">✓ {{ cell(fieldsRow(sec), f.id).fileName || 'file' }}</span>
-                    <button v-if="cell(fieldsRow(sec), f.id).valueId" type="button" class="pf-btn" @click="downloadCell(cell(fieldsRow(sec), f.id))">⤓</button>
-                    <button type="button" class="pf-btn pf-btn-danger" @click="clearCell(fieldsRow(sec), f.id)">✕</button>
-                  </template>
-                  <input v-else type="file" @change="uploadCell(fieldsRow(sec), f.id, $event)" />
-                </div>
-                <div v-else-if="f.type === 'files'" class="pf-files">
-                  <div v-for="(fi, i) in filesOf(cell(fieldsRow(sec), f.id).value)" :key="i" class="pf-file">
+                <div v-else-if="f.type === 'file' || f.type === 'files'" class="pf-files">
+                  <div v-for="(fi, i) in cellFiles(cell(fieldsRow(sec), f.id))" :key="i" class="pf-file">
                     <span class="pf-file-ok">✓ {{ fi.name || 'file' }}</span>
-                    <button v-if="cell(fieldsRow(sec), f.id).valueId" type="button" class="pf-btn" @click="downloadFilesItem(cell(fieldsRow(sec), f.id), i)">⤓</button>
+                    <button v-if="cell(fieldsRow(sec), f.id).valueId" type="button" class="pf-btn" @click="downloadFilesItem(cell(fieldsRow(sec), f.id), i, fi)">⤓</button>
                     <span v-else class="pf-muted">(save to download)</span>
                     <button type="button" class="pf-btn pf-btn-danger" @click="removeFilesItem(fieldsRow(sec), f.id, i)">✕</button>
                   </div>
@@ -121,17 +113,10 @@
                         <input type="checkbox" :checked="cell(row, f.id).value === 'true'"
                                @change="cell(row, f.id).value = $event.target.checked ? 'true' : ''" />
                       </label>
-                      <div v-else-if="f.type === 'file'" class="pf-file">
-                        <template v-if="cell(row, f.id).value">
-                          <span class="pf-file-ok">✓ {{ cell(row, f.id).fileName || 'file' }}</span>
-                          <button v-if="cell(row, f.id).valueId" type="button" class="pf-btn" @click="downloadCell(cell(row, f.id))">⤓</button>
-                        </template>
-                        <input v-else type="file" @change="uploadCell(row, f.id, $event)" />
-                      </div>
-                      <div v-else-if="f.type === 'files'" class="pf-files">
-                        <div v-for="(fi, i) in filesOf(cell(row, f.id).value)" :key="i" class="pf-file">
+                      <div v-else-if="f.type === 'file' || f.type === 'files'" class="pf-files">
+                        <div v-for="(fi, i) in cellFiles(cell(row, f.id))" :key="i" class="pf-file">
                           <span class="pf-file-ok">✓ {{ fi.name || 'file' }}</span>
-                          <button v-if="cell(row, f.id).valueId" type="button" class="pf-btn" @click="downloadFilesItem(cell(row, f.id), i)">⤓</button>
+                          <button v-if="cell(row, f.id).valueId" type="button" class="pf-btn" @click="downloadFilesItem(cell(row, f.id), i, fi)">⤓</button>
                           <span v-else class="pf-muted">(save to download)</span>
                           <button type="button" class="pf-btn pf-btn-danger" @click="removeFilesItem(row, f.id, i)">✕</button>
                         </div>
@@ -201,6 +186,15 @@ function displayValue(c, f) {
 function filesOf(v) {
   if (!v) return []
   try { const a = JSON.parse(v); return Array.isArray(a) ? a : [] } catch { return [] }
+}
+
+// Backward-compatible list for a cell that may hold either the multi-file JSON
+// array, or a LEGACY single-file token string (value = raw token, name in fileName).
+function cellFiles(cell) {
+  const v = cell && cell.value
+  if (!v) return []
+  try { const a = JSON.parse(v); if (Array.isArray(a)) return a } catch (e) {}
+  return [{ token: v, name: (cell.fileName || 'file'), legacy: true }]
 }
 
 async function load() {
@@ -348,13 +342,14 @@ async function uploadFilesCell(row, fieldId, ev) {
   profError.value = ''
   try {
     const c = cell(row, fieldId)
-    const list = filesOf(c.value)
+    const uploaded = []
     for (const file of files) {
       const fd = new FormData()
       fd.append('file', file)
       const res = await apiClient.post('/v1/partner/my/faculty-files', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-      list.push({ token: res.data.token, name: res.data.fileName })
+      uploaded.push({ token: res.data.token, name: res.data.fileName })
     }
+    const list = [...cellFiles(c).map(f => ({ token: f.token, name: f.name })), ...uploaded]
     row.values[fieldId] = { value: JSON.stringify(list), fileName: '', valueId: c.valueId || '' }
   } catch (e) {
     profError.value = e.response?.data?.error ?? e.message ?? 'Upload failed'
@@ -366,19 +361,24 @@ async function uploadFilesCell(row, fieldId, ev) {
 
 function removeFilesItem(row, fieldId, index) {
   const c = cell(row, fieldId)
-  const list = filesOf(c.value)
+  const list = cellFiles(c).map(f => ({ token: f.token, name: f.name }))
   list.splice(index, 1)
   // Empty list clears the cell so the "empty = delete" save logic removes it.
   row.values[fieldId] = { value: list.length ? JSON.stringify(list) : '', fileName: '', valueId: c.valueId || '' }
 }
 
-async function downloadFilesItem(c, index) {
+async function downloadFilesItem(c, index, item) {
+  if (!c.valueId) return
   try {
-    const res = await apiClient.get(`/v1/partner/my/faculty-values/${c.valueId}/file/${index}`, { responseType: 'blob' })
+    // Legacy single files were stored under the old single-file path (no index).
+    const path = item?.legacy
+      ? `/v1/partner/my/faculty-values/${c.valueId}/file`
+      : `/v1/partner/my/faculty-values/${c.valueId}/file/${index}`
+    const res = await apiClient.get(path, { responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url
-    a.download = filesOf(c.value)[index]?.name || 'faculty-file'
+    a.download = item?.name || c.fileName || 'faculty-file'
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   } catch {
